@@ -298,7 +298,7 @@ def duplicates(article_id: int, b: Business = Depends(get_business), db: Session
 
 
 class RegenerateIn(BaseModel):
-    part: Literal["full", "intro", "section", "conclusion", "faqs", "title", "meta"]
+    part: Literal["full", "intro", "section", "conclusion", "faqs", "title", "meta", "h1", "slug"]
     section_id: str | None = Field(default=None, max_length=20)  # for "section": an id from /regenerate/sections
     body: str | None = None  # the editor's current (maybe unsaved) HTML; the saved body when omitted
     # the editor's current (maybe unsaved) fields, for "title" / "meta"; the saved values when omitted
@@ -306,6 +306,7 @@ class RegenerateIn(BaseModel):
     meta_description: str | None = Field(default=None, max_length=500)
     keyword: str | None = Field(default=None, max_length=255)
     secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+    slug: str | None = Field(default=None, max_length=100)  # the editor's current web address, for "slug"
 
 
 class SectionsIn(BaseModel):
@@ -328,7 +329,7 @@ def regenerate_part(article_id: int, body: RegenerateIn, b: Business = Depends(g
     a = _get(db, b, article_id)
     try:
         return rg.regenerate(a, b, body.part, body.body, body.section_id,
-                             fields=body.model_dump(include={"title", "meta_description", "keyword", "secondary_keywords"}))
+                             fields=body.model_dump(include={"title", "meta_description", "keyword", "secondary_keywords", "slug"}))
     except rg.RegenError as exc:
         raise HTTPException(exc.code, str(exc))
 
@@ -608,7 +609,7 @@ def set_featured_image(article_id: int, body: FeaturedImageIn, b: Business = Dep
     if body.alt is not None:
         a.featured_image_alt = body.alt.strip() or None
     elif not a.featured_image_alt:
-        a.featured_image_alt = (a.title or a.keyword or "")[:255] or None
+        a.featured_image_alt = (re.sub(r"[^\w]+", "-", (a.keyword or "").lower()).strip("-") or a.title or "")[:255] or None  # the primary keyword, e.g. "wedding-dress"
     _refresh_schema(a, b)
     db.commit()
     return row(a)
@@ -683,16 +684,13 @@ def delete_content_image(article_id: int, name: str, b: Business = Depends(get_b
 
 
 def _ready_or_409(db: Session, a: Article, b: Business) -> None:
-    """Before publishing a new post: every mandatory requirement must pass (sections, FAQs, metadata, contact details, slug, business relevance,
-    and the last AI review's factual accuracy / promotion verdicts). Each failure is returned with the correction to make. A post that is already
-    live can still be updated."""
+    """Before publishing a new post: the SEO checklist is refreshed so it shows what is still missing. It is information only and never
+    blocks publishing (the user decides when the article is ready)."""
     if seo._is_live(a):
         return
     rep = seo.build(db, a, b, with_ai=False, previous=(a.stats or {}).get("seo_report"))
     seo.save(db, a, rep)
     db.commit()
-    if rep["blocking"]:
-        raise HTTPException(409, "Not ready to publish. Fix these first: " + " · ".join(f"{x['label']} — {x['fix']}" for x in rep["blocking"]))
 
 
 @router.post("/{article_id}/publish")

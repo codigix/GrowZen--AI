@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Clock, ExternalLink, Loader2, 
 import { Badge, Button, Card, Field, Modal, inputCls } from './SeoUi';
 import { api, usePoll } from './seoApi';
 import Select from '../components/Select';
+import { TimeAmPm } from './ScheduleTime';
 
 /** Publishing status of an article in GrowZen (from the server: publishing_status). */
 export const PUB_STATUS = {
@@ -34,11 +35,12 @@ function nowIn(tz) {
 }
 const addDays = (ymd, n) => { const d = new Date(`${ymd}T00:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
 const pad = (n) => String(n).padStart(2, '0');
-/** The next 15-minute slot after now in the publishing time zone (e.g. 16:41 -> 16:45, 23:50 -> 00:00 next day). */
+/** Today's date and almost exactly the current time (one minute ahead, so it is always still in the future when the
+ * dialog opens), e.g. 16:41 -> 16:42, 23:59 -> 00:00 next day. */
 function nextSlot(tz) {
   const now = nowIn(tz);
   const [h, m] = now.time.split(':').map(Number);
-  const mins = Math.floor((h * 60 + m) / 15) * 15 + 15;
+  const mins = h * 60 + m + 1;
   return mins >= 1440 ? { date: addDays(now.date, 1), time: `${pad(Math.floor((mins - 1440) / 60))}:${pad((mins - 1440) % 60)}` }
     : { date: now.date, time: `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}` };
 }
@@ -150,7 +152,7 @@ export function ScheduleModal({ b, article, mode = 'schedule', onClose, onDone, 
             {mode === 'schedule' && (
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Publication date"><input type="date" className={inputCls} min={now.date} value={form.date} onChange={setWhen('date')} /></Field>
-                <Field label={`Publication time (${tzShort(tz)})`}><input type="time" className={inputCls} value={form.time} onChange={setWhen('time')} /></Field>
+                <Field label={`Publication time (${tzShort(tz)})`}><TimeAmPm value={form.time} onChange={v => setWhen('time')({ target: { value: v } })} /></Field>
               </div>
             )}
             {mode === 'schedule' && <p className="flex items-center gap-1.5 text-[11px] text-slate-500"><Clock size={12} /> Times are in {tz}{tz === 'Asia/Kolkata' ? ' (India Standard Time)' : ''}.</p>}

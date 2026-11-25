@@ -1223,6 +1223,7 @@ WRITE_PLAN = {  # the gold-standard blog template: approximately 500 words per s
     "long": {"intro": (3, 150), "sub1": (3, 170), "sub2": (3, 170), "extra": (3, 160), "sections": 5, "faqs": 5},
 }
 PARA_MIN_CHARS = 500  # the template's minimum paragraph size
+INTRO_CHUNK_WORDS = 60  # the introduction: exactly 3 short, natural paragraphs of about 60 words (3-4 sentences)
 SECTION_CHUNK_WORDS = 70  # main sections: small paragraph chunks of about 70 words (3-4 sentences), ~500 words per section in total
 _SENTENCE_END = re.compile(r"[.!?…][\"'”’)\]]*$")
 
@@ -2250,8 +2251,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 "",
                 "FORMAT OF THIS ANSWER:",
                 "- Plain-text paragraphs only, separated by ONE blank line: no headings, labels, markdown, bullets or numbering (lists are added separately).",
-                f"- Write detailed content in readable chunks (each paragraph chunk about 140 to 170 words, totaling approximately 500 words per section) that develops ONE"
-                " point with explanation, an example or a tip; each paragraph makes a NEW point and starts with different words.",
+                "- Write in short, readable paragraph chunks of the size asked above (never one long block), each developing ONE"
+                " point with explanation, an example or a tip; each paragraph makes a NEW point and starts with different words. Write naturally, not formally.",
                 "- Bold primary and secondary keywords naturally (bold text only, no background highlights).",
                 "- Stay inside this part's scope; the other outline sections cover their own points.",
             ]
@@ -2285,12 +2286,14 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 return lambda txt: progress(label, "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
 
             # 2. Introduction
-            n, w = wp["intro"]
+            # the introduction: exactly 3 SHORT, natural paragraphs (3-4 sentences, ~60 words each), not long formal blocks
+            n, w = 3, INTRO_CHUNK_WORDS
             step(f"Writing Introduction ({n} paragraphs)...")
             intro_prompt = "\n".join([
                 f'You are an expert content writer for {brand}{loc_str}. Write the INTRODUCTION of the blog article "{title}".',
                 outline_line,
-                f"Write exactly {n} paragraphs of about {w} words each.",
+                f"Write exactly {n} short paragraphs of about {w} words (3 to 4 sentences) each, separated by ONE blank line.",
+                "- Write naturally, like a friendly expert talking to the reader: plain words, no formal or stiff phrasing, no filler openings.",
                 f'- The very first sentence must contain the exact phrase "{primary}".',
                 *kw_rule(intro_kws),
                 f"- Hook the reader, explain why {primary} matters to them{loc_str}, and preview what the article covers. Do not go into the details of the later sections.",
@@ -2300,7 +2303,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 f'You are an expert content writer for {brand}{loc_str}. Write the INTRODUCTION of the blog article "{title}".',
                 outline_line,
                 *brief_rules,
-                f'- "paragraphs": exactly {n} paragraphs, each a full chunk of 4 to 6 sentences (at least {PARA_MIN_CHARS} characters, about {w} words). The very first sentence must contain the exact phrase "{primary}".',
+                f'- "paragraphs": exactly {n} SHORT paragraphs, each 3 to 4 sentences (about {w} words). The very first sentence must contain the exact phrase "{primary}".',
+                "  Write naturally, like a friendly expert talking to the reader: plain words, no formal or stiff phrasing, no filler openings.",
                 f"  Start with an engaging, relevant opening; explain the topic and why it matters to the reader{loc_str}, and what the article covers, in natural prose. Do not go into the details of later sections.",
                 (f'  Mention "{brand}" naturally in one of the chunks' if business_fits else
                  f'  In the last chunk, mention "{brand}" once as a related option it really offers ({offers}), e.g. renting for an occasion instead of buying;'
@@ -2313,7 +2317,7 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 'Answer with JSON only: {"paragraphs": ["...", "..."]}',
             ]), n * 260 + 400)
             # (no "What you will learn" bullet list any more: the introduction is natural paragraphs only)
-            intro_html = "\n".join(x for x in [_p(x) for x in (intro_json.get("paragraphs") if isinstance(intro_json.get("paragraphs"), list) else [])[:4]] if x)
+            intro_html = "\n".join(x for x in [_p(x) for x in (intro_json.get("paragraphs") if isinstance(intro_json.get("paragraphs"), list) else [])[:3]] if x)
             if intro_html.count("<p>") >= 2 and primary.lower() in _text(intro_html).lower():
                 parts.append(intro_html)
                 intro_txt = "done"

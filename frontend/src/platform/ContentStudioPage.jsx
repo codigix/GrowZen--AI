@@ -20,7 +20,7 @@ import SeoChecklist from './SeoChecklist';
 import { ResearchBriefStep, WorkflowPanel, runResearch } from './SeoWorkflow';
 import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
-import RegenerateContent, { SeoField } from './RegenerateContent';
+import RegenerateContent, { SeoField, AiFieldButton } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import PostedBlogs from './PostedBlogs';
 import { KeywordTopicPlanner, LayoutCheckCard, ResumeCard, ArticleDownloads } from './BlogFlow';
@@ -288,6 +288,18 @@ const ARTICLE_LENGTHS = [
   { id: 'long', label: 'Long', words: '~2,500 words', time: '~15–22 min' }
 ];
 const mins = (sec) => (sec >= 60 ? `${Math.floor(sec / 60)}m ${Math.round(sec % 60)}s` : `${Math.round(sec)}s`);
+/** "in 38 min", "in 2h 15m", "in 3 days", or "any moment now" for a scheduled publish time (recomputed on every render, so it stays current as the list refreshes). */
+const timeUntil = (iso) => {
+  const ms = iso ? new Date(iso).getTime() - Date.now() : NaN;
+  if (Number.isNaN(ms)) return '';
+  if (ms <= 60000) return 'any moment now';
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 60) return `in ${totalMin} min`;
+  const h = Math.floor(totalMin / 60), m = totalMin % 60;
+  if (h < 24) return `in ${h}h${m ? ` ${m}m` : ''}`;
+  const d = Math.floor(h / 24), remH = h % 24;
+  return `in ${d} day${d === 1 ? '' : 's'}${remH ? ` ${remH}h` : ''}`;
+};
 
 const ARTICLE_STATUS = { pending: ['Pending', 'gray'], generating: ['Generating', 'blue'], completed: ['Completed', 'green'], failed: ['Failed', 'red'] };
 // Generated articles list: the filter an article falls under, its accent colour, and the filter chips
@@ -450,12 +462,14 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
                 {x.schedule?.attempts > 0 && x.schedule?.error && ps === 'scheduled' && (
                   <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800">
                     <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                    <span>The scheduled time came{x.schedule.planned_for ? ` (${new Date(x.schedule.planned_for).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''} but publishing failed ({x.schedule.attempts} {x.schedule.attempts === 1 ? 'try' : 'tries'}). It tries again at <b>{scheduleText(x.schedule)}</b>.<span className="block mt-0.5 text-rose-700/90">{x.schedule.error}</span></span>
+                    <span>The scheduled time came{x.schedule.planned_for ? ` (${new Date(x.schedule.planned_for).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''} but publishing failed ({x.schedule.attempts} {x.schedule.attempts === 1 ? 'try' : 'tries'}). It tries again at <b>{scheduleText(x.schedule)}</b> <span className="text-[11px] font-medium text-rose-700/80">({timeUntil(x.schedule.due_at)})</span>.<span className="block mt-0.5 text-rose-700/90">{x.schedule.error}</span></span>
                   </div>
                 )}
                 {x.schedule && (ps === 'scheduled' || ps === 'publishing') && !(x.schedule.attempts > 0 && x.schedule.error) && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-900">
-                    <Clock size={13} className="shrink-0" /> <span>{ps === 'publishing' ? 'Publishing now to ' : 'Publishes automatically: '}<b>{scheduleText(x.schedule)}</b></span>
+                    <Clock size={13} className="shrink-0" />
+                    <span>{ps === 'publishing' ? 'Publishing now to ' : 'Publishes automatically: '}<b>{scheduleText(x.schedule)}</b></span>
+                    {ps === 'scheduled' && <span className="text-[11px] font-medium text-amber-700/80">({timeUntil(x.schedule.due_at)})</span>}
                   </div>
                 )}
                 {ps === 'failed' && (
@@ -759,8 +773,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const useRef2 = (v) => { const clean = v.trim(); setRefUrl(clean); try { if (clean) localStorage.setItem(refKey, clean); else localStorage.removeItem(refKey); } catch { /* kept for this page only */ } };
   const [kwBusyP, setKwBusyP] = useState(false);
   const [chunkBusy, setChunkBusy] = useState(false);
+  const syncingTo = useRef(null); // a saved body the draft is being loaded from (null once the draft shows it)
   useEffect(() => {
     if (selectedArticle) {
+      if ((selectedArticle.body || '') !== draft) syncingTo.current = selectedArticle.body || '';
       setDraft(selectedArticle.body || '');
       setMeta({
         keyword: selectedArticle.keyword || '',
@@ -770,7 +786,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         meta_description: selectedArticle.meta_description || ''
       });
     }
-  }, [selectedArticle]);
+  }, [selectedArticle]); // eslint-disable-line react-hooks/exhaustive-deps
   // edits not saved yet are kept in this browser, so leaving the page does not lose them
   const bk = selectedArticle ? `growzen.blogedit.${b.id}.${selectedArticle.id}` : null;
   const [restore, setRestore] = useState(null);
@@ -778,11 +794,19 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     if (!bk) return;
     try {
       const v = JSON.parse(localStorage.getItem(bk) || 'null');
+      // edits kept before the article was last saved on the server (e.g. an older copy of a just-written article) are never offered back
+      const savedAt = Date.parse(selectedArticle.updated_at || '') || 0;
+      if (v && savedAt && !(v.at > savedAt)) { localStorage.removeItem(bk); return; }
       if (v && (v.draft !== (selectedArticle.body || '') || v.meta?.title !== (selectedArticle.title || '') || v.meta?.meta_description !== (selectedArticle.meta_description || ''))) setRestore(v);
     } catch { /* nothing kept */ }
   }, [bk]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!bk || restore) return;
+    // the draft is still being loaded from a newer saved copy (an older cached copy came first): that is not the user's edit, so nothing is kept
+    if (syncingTo.current !== null) {
+      if (draft !== syncingTo.current) return;
+      syncingTo.current = null;
+    }
     const same = draft === (selectedArticle.body || '') && meta.title === (selectedArticle.title || '') && meta.meta_description === (selectedArticle.meta_description || '');
     try { if (!same) localStorage.setItem(bk, JSON.stringify({ draft, meta, at: Date.now() })); } catch { /* not kept */ }
   }, [draft, meta, bk, restore, selectedArticle]);
@@ -1059,14 +1083,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const saveArticle = () => {
     setSaveBusy(true);
     return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: articleFields() })
-      .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } toast('Draft saved'); if (onSaved) onSaved(); })
+      .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } toast('✓ Changes saved successfully'); if (onSaved) onSaved(); })
       .catch(e => toast(e.message))
       .finally(() => setSaveBusy(false));
   };
   // article images placed on the Images & Analysis step: the article is saved with them at once (publishing sends the saved article)
   const saveWithBody = (body) => api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: { ...articleFields(), body } })
     .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } if (onSaved) onSaved(); });
-  const [scheduledDate] = useState(() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // tomorrow 10:00, local
+  const [scheduledDate] = useState(() => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // right now, local (refreshed again when Schedule is actually picked)
 
   // Real Details step: "Include" adds one factual sentence (only what the business profile says) to the draft, then the check turns green.
   // Name, place and services go after the introduction's first paragraph; phone and website go at the end, before the schema block.
@@ -1371,6 +1395,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       <input className="flex-1 min-w-0 px-2.5 py-2 text-[13px] font-mono outline-none" value={meta.slug.trim() ? meta.slug : slugify(meta.keyword)} aria-label="Web address slug" maxLength={100}
                         onChange={e => setMeta(m => ({ ...m, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-\s]+/g, '').replace(/\s+/g, '-') }))}
                         onBlur={() => setMeta(m => ({ ...m, slug: slugify(m.slug, 100) === slugify(m.keyword) ? '' : slugify(m.slug, 100) }))} />
+                      <AiFieldButton busy={fieldBusy === 'slug'} disabled={Boolean(fieldBusy)} title="Write a new web address with AI (keeps the primary keyword)" onClick={() => regenRef.current?.run('slug')} />
                     </div>
                     {meta.slug.trim() && slugify(meta.slug, 100) !== slugify(meta.keyword) && <Button size="sm" onClick={() => setMeta(m => ({ ...m, slug: '' }))}>Use the primary keyword</Button>}
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${slugHasKeyword ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>{slugHasKeyword ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}{slugHasKeyword ? 'Has the primary keyword' : 'Without the primary keyword'}</span>
@@ -1432,7 +1457,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 )}
                 <Field label="Blog title (H1)" hint="The heading readers see on the blog page. It can differ from the SEO title (which is shown in Google).">
                   <div className="flex items-center gap-2">
-                    <input className={inputCls} value={h1Text} onChange={e => setBlogTitle(e.target.value)} placeholder="The article's main heading" />
+                    <div className="relative flex-1 min-w-0">
+                      <input className={`${inputCls} pr-11`} value={h1Text} onChange={e => setBlogTitle(e.target.value)} placeholder="The article's main heading" />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2"><AiFieldButton busy={fieldBusy === 'h1'} disabled={Boolean(fieldBusy)} title="Write a new Blog title (H1) with AI" onClick={() => regenRef.current?.run('h1')} /></span>
+                    </div>
                     <span className={`text-[11.5px] font-semibold shrink-0 tabular-nums ${h1Text.length >= 35 && h1Text.length <= 90 ? 'text-emerald-700' : 'text-amber-700'}`}>{h1Text.length} / 35-90</span>
                   </div>
                   {h1Text && meta.keyword.trim() && !h1Text.toLowerCase().includes(meta.keyword.trim().toLowerCase()) && <div className="mt-1 text-[11.5px] text-amber-800">The Blog title does not contain the primary keyword “{meta.keyword}”.</div>}
@@ -1451,8 +1479,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     <div className="flex flex-wrap items-center gap-2">
                       {selectedArticle && <ArticleDownloads b={b} article={{ ...selectedArticle, body: draft, title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, slug: meta.slug.trim() || slugify(meta.keyword), secondary_keywords: secondaryNow }} />}
                       {selectedArticle && <RegenerateContent ref={regenRef} b={b} article={selectedArticle} body={draft} onAccept={setDraft} toast={toast} onFieldBusy={setFieldBusy}
-                        fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean) }}
-                        onField={(field, value) => setMeta(m => ({ ...m, [field]: value }))} />}
+                        fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean), slug: meta.slug.trim() || slugify(meta.keyword) }}
+                        onField={(field, value) => (field === 'h1' ? setBlogTitle(value) : setMeta(m => ({ ...m, [field]: value })))} />}
                       <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
                         <button
                           type="button"
@@ -1538,7 +1566,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-slate-600">
                   <span>{(selectedArticle.suggested_keywords || []).length > 0 && <><span className="text-slate-500">Suggested tags:</span> {selectedArticle.suggested_keywords.join(', ')}</>}</span>
-                  <Button size="sm" busy={saveBusy} onClick={saveArticle}>Save changes</Button>
+                  {/* (Save changes is in the bar at the bottom of the step, next to "Next Step") */}
                 </div>
                 {(selectedArticle.warnings || []).length > 0 && (
                   <div className="space-y-1.5">
@@ -1700,6 +1728,21 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             )}
           </PublishDestinations>
         )}
+        {/* the same "Next Step" as at the top of the card, so a long page does not need scrolling back up */}
+        {step !== 0 && step !== PUBLISH_STEP && (
+          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2">
+            {selectedArticle && draft !== (selectedArticle.body || '') && <span className="text-[11.5px] text-amber-800 mr-auto">Changes not saved yet</span>}
+            {selectedArticle && <Button size="sm" busy={saveBusy} onClick={saveArticle}>Save changes</Button>}
+            <Button variant="primary" size="sm" busy={genBusy} onClick={() => {
+              next();
+              // the next step opens at its top, not at the bottom where this button is
+              requestAnimationFrame(() => document.getElementById('eeat-pipeline-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+            }}>
+              Next Step: {STEPS[step + 1]}
+              <ChevronRight size={13} />
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -1746,8 +1789,7 @@ function PublishDestinations({ b, children }) {
 }
 
 /** Blog publishing setup, on its own: connect the website (WordPress, React or HTML) once, any time after the business is added. */
-function PublishingSetup({ b }) {
-  const toast = window.__seoToast || console.log;
+function PublishingSetup({ b, toast = window.__seoToast || console.log }) {
   return (
     <div className="space-y-4">
       <Card>
@@ -1786,6 +1828,8 @@ export default function ContentStudioPage() {
       return raw && tab === 'blog' ? JSON.parse(raw) : null;
     } catch { return null; }
   });
+  // the page's own toast (shown at the bottom of the screen): "Changes saved successfully", errors, etc. (window.__seoToast is never set, so messages only reached the console)
+  const [toast, toastNode] = useToast();
   const [openArticleId, setOpenArticleId] = useState(() => { const n = Number(new URLSearchParams(window.location.search).get('article')); return Number.isInteger(n) && n > 0 ? n : null; }); // a Growth task links to one article
 
   const handleSelectTopic = (topic) => {
@@ -1816,13 +1860,14 @@ export default function ContentStudioPage() {
           />
 
           {tab === 'trends' && <TrendingTopicsTab b={b} onSelectTopic={handleSelectTopic} />}
-          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onPickTopic={handleSelectTopic} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
-          {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
+          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onPickTopic={handleSelectTopic} onShowArticles={() => setTab('articles')} toast={toast} />}
+          {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={toast}
             onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} onShowPosted={() => setTab('posted')} />}
-          {tab === 'posted' && <PostedBlogs b={b} toast={window.__seoToast || console.log} onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
+          {tab === 'posted' && <PostedBlogs b={b} toast={toast} onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
           {tab === 'promote' && <PromoteBlogs b={b} onShowPosted={() => setTab('posted')} />}
-          {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}
-          {tab === 'publishing' && <PublishingSetup b={b} />}
+          {tab === 'calendar' && <PublishingCalendar b={b} toast={toast} onOpenArticle={openInWriter} />}
+          {tab === 'publishing' && <PublishingSetup b={b} toast={toast} />}
+          {toastNode}
         </div>
       )}
     </SeoShell>
