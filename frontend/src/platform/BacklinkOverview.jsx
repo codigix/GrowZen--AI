@@ -5,6 +5,7 @@ import { ResponsiveContainer, LineChart, Line, Legend, AreaChart, Area, BarChart
 import { Card, Badge, Button, ErrorNote, SkList } from './SeoUi';
 import { api, useApi, fmt } from './seoApi';
 import { downloadCsv, usePager, Pager } from './DataTable';
+import Select from '../components/Select';
 
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : Number(n).toLocaleString('en-US'));
 const MONTH = (m) => { const [y, mo] = m.split('-'); return new Date(Number(y), Number(mo) - 1, 1).toLocaleString('en', { month: 'short', year: 'numeric' }); };
@@ -365,7 +366,7 @@ export function GraphTab({ b }) {
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
                 <div className="relative border-b lg:border-b-0 lg:border-r border-slate-100 p-3">
                   <div className="flex items-center gap-2 mb-1"><label className="text-12.5 text-slate-500 flex items-center gap-1.5">Colour by
-                    <select value={colorBy} onChange={e => setColorBy(e.target.value)} className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12.5 text-slate-800" aria-label="Colour by"><option value="category">Kind of site</option><option value="risk">Risk</option><option value="authority">Authority</option></select></label></div>
+                    <Select value={colorBy} onChange={e => setColorBy(e.target.value)} className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12.5 text-slate-800" aria-label="Colour by"><option value="category">Kind of site</option><option value="risk">Risk</option><option value="authority">Authority</option></Select></label></div>
                   <div className="absolute right-4 top-12 z-10 flex flex-col gap-1.5">{[[Plus, 'Zoom in', () => setZoom(z => Math.min(2.2, z + 0.25))], [Minus, 'Zoom out', () => setZoom(z => Math.max(0.6, z - 0.25))], [Maximize2, 'Reset the zoom', () => setZoom(1)]].map(([I, l, fn]) => <button key={l} type="button" onClick={fn} aria-label={l} title={l} className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-300 hover:bg-slate-50 flex items-center justify-center cursor-pointer"><I size={15} /></button>)}</div>
                   <Network nodes={d.network} domain={d.domain} tall colorBy={colorBy} zoom={zoom} onPick={setPicked} picked={picked} cats={cats} />
                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-12 text-slate-600">{colorBy === 'category' ? cats.map((c, i) => <span key={c} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CAT_COLORS[i % CAT_COLORS.length] }} />{c}</span>)

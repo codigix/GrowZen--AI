@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Download, ExternalLink, Loader2, Search, Sen
 import { SeoShell, Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { api, useApi } from './seoApi';
+import Select from '../components/Select';
 
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : String(Math.round(n)));
 const kdColor = (v) => (v < 15 ? '#059669' : v < 30 ? '#65a30d' : v < 50 ? '#d97706' : v < 70 ? '#ea580c' : '#dc2626');
@@ -143,8 +144,8 @@ function Overview({ b, keyword, country, data, kd, kdMap, askKd, send, busy, hub
           <div className="px-4 py-3 flex flex-wrap items-center gap-2">
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter" aria-label="Filter keywords" className="ai-glass-input h-8 w-44 px-3 text-13 rounded" />
             <div className="inline-flex rounded ring-1 ring-inset ring-slate-300 overflow-hidden">{[['all', 'All'], ['questions', 'Questions']].map(([k, l]) => <button key={k} type="button" aria-pressed={type === k} onClick={() => setType(k)} className={`px-3 h-8 text-13 cursor-pointer ${type === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600'}`}>{l}</button>)}</div>
-            <select value={minVol} onChange={e => setMinVol(e.target.value)} aria-label="Minimum volume" className="h-8 rounded ring-1 ring-inset ring-slate-300 bg-white px-2 text-13"><option value="">Volume</option>{[10, 100, 1000, 10000].map(v => <option key={v} value={v}>{kfmt(v)}+</option>)}</select>
-            <select value={kdBand} onChange={e => setKdBand(e.target.value)} aria-label="KD band" className="h-8 rounded ring-1 ring-inset ring-slate-300 bg-white px-2 text-13"><option value="">KD %</option><option value="easy">Under 30 (read ones)</option><option value="mid">30 to 59</option><option value="hard">60 and over</option></select>
+            <Select value={minVol} onChange={e => setMinVol(e.target.value)} aria-label="Minimum volume" className="h-8 rounded ring-1 ring-inset ring-slate-300 bg-white px-2 text-13"><option value="">Volume</option>{[10, 100, 1000, 10000].map(v => <option key={v} value={v}>{kfmt(v)}+</option>)}</Select>
+            <Select value={kdBand} onChange={e => setKdBand(e.target.value)} aria-label="KD band" className="h-8 rounded ring-1 ring-inset ring-slate-300 bg-white px-2 text-13"><option value="">KD %</option><option value="easy">Under 30 (read ones)</option><option value="mid">30 to 59</option><option value="hard">60 and over</option></Select>
             {(q || minVol || kdBand || type !== 'all' || topic) && <button type="button" onClick={() => { setQ(''); setMinVol(''); setKdBand(''); setType('all'); setTopic(''); }} className="text-13 text-indigo-600 hover:underline cursor-pointer inline-flex items-center gap-1"><X size={12} />Clear</button>}
           </div>
           <div className="overflow-x-auto border-t border-slate-100">
@@ -257,7 +258,7 @@ function Body({ b, hub = '' }) {
       <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
         <div className="flex items-center rounded-lg ring-1 ring-inset ring-slate-300 bg-white overflow-hidden"><input value={typed} onChange={e => setTyped(e.target.value)} aria-label="Keyword" placeholder="Enter a keyword, e.g. ai automation" className="h-10 w-72 sm:w-96 px-3 text-14 outline-none" />{typed && <button type="button" aria-label="Clear" onClick={() => setTyped('')} className="px-2 text-slate-400 hover:text-slate-700 cursor-pointer"><X size={14} /></button>}<button type="submit" aria-label="Search" className="h-10 px-3 bg-slate-50 border-l border-slate-300 text-slate-600 hover:bg-slate-100 cursor-pointer"><Search size={16} /></button></div>
         <label className="inline-flex items-center gap-1 text-13 text-slate-600">Database
-          <select value={data?.country || country || ''} onChange={e => navigate(url({ c: e.target.value }))} aria-label="Database (country)" className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13 text-slate-800">{!(data?.country || country) && <option value="">Your country</option>}{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select>
+          <Select value={data?.country || country || ''} onChange={e => navigate(url({ c: e.target.value }))} aria-label="Database (country)" className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13 text-slate-800">{!(data?.country || country) && <option value="">Your country</option>}{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</Select>
         </label>
       </form>
       {!hub && <div className="flex gap-6 border-b border-slate-200" role="tablist">

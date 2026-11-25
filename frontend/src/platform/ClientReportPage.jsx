@@ -3,6 +3,7 @@ import { ResponsiveContainer, ComposedChart, Area, Bar, Line, XAxis, YAxis, Cart
 import { Phone, Navigation, MousePointerClick, Eye, Star, FileText, Printer, TrendingUp } from 'lucide-react';
 import { Spark, Delta } from './StatBits';
 import DataTable from './DataTable';
+import Select from '../components/Select';
 
 const monthName = (m) => { const [y, mo] = String(m).split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }); };
 const short = (m) => { const [y, mo] = String(m).split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('en-GB', { month: 'short' }) + (mo === 1 ? ` ${String(y).slice(2)}` : ''); };
@@ -136,7 +137,7 @@ export default function ClientReportPage({ token }) {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
           {d.business.logo && <img src={d.business.logo} alt="" referrerPolicy="no-referrer" className="w-10 h-10 rounded-lg object-cover ring-1 ring-slate-200" />}
           <div className="min-w-0 mr-auto"><h1 className="text-18 font-semibold text-slate-900 truncate">{d.business.name}</h1><p className="text-12 text-slate-500">Google profile report{d.business.city ? ` · ${d.business.city}` : ''} · live, updated {new Date(d.generated_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p></div>
-          <select value={month} onChange={e => { setD(null); setMonth(e.target.value); }} aria-label="Month" className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-13">{lastMonths().map(m => <option key={m} value={m}>{monthName(m)}</option>)}</select>
+          <Select value={month} onChange={e => { setD(null); setMonth(e.target.value); }} aria-label="Month" className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-13">{lastMonths().map(m => <option key={m} value={m}>{monthName(m)}</option>)}</Select>
           <button type="button" onClick={() => window.print()} className="h-9 px-3 rounded-lg border border-slate-300 bg-white text-13 font-medium inline-flex items-center gap-1.5 cursor-pointer print:hidden"><Printer size={14} />Print / PDF</button>
         </div>
       </header>

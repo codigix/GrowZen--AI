@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, BarChart3, Crosshair, Download, Loader2, MoreHorizo
 import { SeoShell, Button, ErrorNote, Modal, useAction, useToast } from './SeoUi';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { api, useApi } from './seoApi';
+import Select from '../components/Select';
 
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : String(Math.round(n)));
 const INTENT = { informational: ['I', '#4338ca', '#e0e7ff', 'Informational'], commercial: ['C', '#b45309', '#fef3c7', 'Commercial'], transactional: ['T', '#047857', '#d1fae5', 'Transactional'], navigational: ['N', '#9d174d', '#fce7f3', 'Navigational'], local: ['L', '#0e7490', '#cffafe', 'Local'] };
@@ -20,7 +21,7 @@ function Spark({ v }) {
   return <svg width={w} height={h} role="img" aria-label={`Searches over ${v.length} months: ${v[0]} to ${v[v.length - 1]}`}><title>{`Last ${v.length} months: ${v[0]} → ${v[v.length - 1]}`}</title><polygon points={`0,${h} ${pts} ${w},${h}`} fill={up ? '#dbeafe' : '#fee2e2'} opacity=".7" /><polyline points={pts} fill="none" stroke={up ? '#2563eb' : '#dc2626'} strokeWidth="1.5" /></svg>;
 }
 
-const Sel = ({ label, value, onChange, children }) => <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13 text-slate-700 cursor-pointer">{children}</select>;
+const Sel = ({ label, value, onChange, children }) => <Select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13 text-slate-700 cursor-pointer">{children}</Select>;
 
 function Body({ b }) {
   const r = useApi(`/businesses/${b.id}/keyword-workspace/saved`);

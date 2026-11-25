@@ -26,6 +26,7 @@ import PostedBlogs from './PostedBlogs';
 import { KeywordTopicPlanner, LayoutCheckCard, ResumeCard, ArticleDownloads } from './BlogFlow';
 import PromoteBlogs from './PromoteBlogs';
 import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
+import Select from '../components/Select';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Images & Analysis', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -204,14 +205,14 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         {seeds.length > 0 && <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Topics for</span>{seeds.map(x => <button key={x} type="button" onClick={() => setPicked(x)} aria-pressed={x === seed} className={`h-7 px-2.5 rounded-full font-semibold cursor-pointer ring-1 ring-inset ${x === seed ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>{x}</button>)}</div>}
         <div className="ml-auto flex flex-wrap items-center gap-2 text-12 text-slate-600">
           <label className="inline-flex items-center gap-1.5">Location
-            <select value={country} onChange={e => setCountry(e.target.value)} aria-label="Search location" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
+            <Select value={country} onChange={e => setCountry(e.target.value)} aria-label="Search location" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
               {Object.entries(KP_COUNTRIES).map(([c, n]) => <option key={c} value={c}>{n}</option>)}
-            </select>
+            </Select>
           </label>
           <label className="inline-flex items-center gap-1.5">Period
-            <select value={range} onChange={e => setRange(Number(e.target.value))} aria-label="Period" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
+            <Select value={range} onChange={e => setRange(Number(e.target.value))} aria-label="Period" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
               <option value={3}>Last 3 months</option><option value={6}>Last 6 months</option><option value={12}>Last 12 months</option>
-            </select>
+            </Select>
           </label>
           <span className="inline-flex items-center gap-1.5 text-11.5 text-slate-500" title="Google Keyword Planner reports monthly figures, not weekly or daily"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Google Keyword Planner · monthly data</span>
         </div>

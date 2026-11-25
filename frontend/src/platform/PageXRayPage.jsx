@@ -8,6 +8,7 @@ import { HistoryPanel, RenderingCard, SiteScan } from './PageXRayHistory';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 import FullPageCard from './PageXRayLighthouse';
 import { PageOverview } from './KeywordPlacement';
+import Select from '../components/Select';
 
 const MAX_URLS = 3;
 // The fix tasks of the page on screen (own website only): { 'seo.title': {id, status, severity, how, ...} }, and the project id.
@@ -271,9 +272,9 @@ function ChecksTable({ d, filter }) {
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100">
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search checks…" aria-label="Search checks" className="h-9 w-52 max-w-full px-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
         {[['all', 'All areas'], ...SCORE_AREAS.map(([k, l]) => [k, l])].map(([k, l]) => <button key={k} type="button" onClick={() => setArea(k)} aria-pressed={area === k} className={pill(area === k)}>{l}</button>)}
-        <select value={grp} onChange={e => setGrp(e.target.value)} aria-label="Filter by part of the page" className="h-8 px-2 rounded-lg text-12 font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 bg-white cursor-pointer">
+        <Select value={grp} onChange={e => setGrp(e.target.value)} aria-label="Filter by part of the page" className="h-8 px-2 rounded-lg text-12 font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 bg-white cursor-pointer">
           <option value="all">All parts of the page</option>{groups.map(g => <option key={g} value={g}>{g}</option>)}
-        </select>
+        </Select>
         <span className="ml-auto text-12 text-slate-500">{rows.length} check{rows.length === 1 ? '' : 's'} · click a row for everything about it</span>
       </div>
       <div className="overflow-x-auto">

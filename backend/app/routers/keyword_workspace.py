@@ -239,3 +239,23 @@ def mark_picked(body: NamesIn, b: Business = Depends(get_business), db: Session 
 def saved_keywords(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     from ..services import keyword_prepare  # noqa: PLC0415
     return keyword_prepare.saved(db, b)
+
+
+@router.get("/area-pin")
+def area_pin(label: str = Query(min_length=2, max_length=160), country: str = Query("IN", max_length=2), b: Business = Depends(get_business)):
+    """The map position of a chosen place, for the location map."""
+    from ..services import keyword_locations  # noqa: PLC0415
+    try:
+        return {"pin": keyword_locations.place_pin(label, country)}
+    except Exception as exc:  # noqa: BLE001 -- the map is a help: the place still works without a pin
+        return {"pin": None, "reason": str(exc)[:160]}
+
+
+@router.get("/area-at")
+def area_at(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180), country: str = Query("IN", max_length=2), b: Business = Depends(get_business)):
+    """The place at a point clicked on the location map."""
+    from ..services import keyword_locations  # noqa: PLC0415
+    try:
+        return {"place": keyword_locations.place_at(lat, lng, country)}
+    except Exception as exc:  # noqa: BLE001
+        return {"place": None, "reason": str(exc)[:160]}

@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Download, History, Loade
 import { SeoShell, Card, Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { api, useApi, fmt } from './seoApi';
+import Select from '../components/Select';
 
 const INTENT = { informational: ['I', '#4338ca', '#e0e7ff', 'Informational'], commercial: ['C', '#b45309', '#fef3c7', 'Commercial'], transactional: ['T', '#047857', '#d1fae5', 'Transactional'], navigational: ['N', '#7e22ce', '#f3e8ff', 'Navigational'], local: ['L', '#0369a1', '#e0f2fe', 'Local'] };
 const QUESTION = /^(what|how|why|when|where|which|who|can|does|do|is|are|should|will)\b/;
@@ -17,7 +18,7 @@ const wordsOf = (k) => k.split(/\s+/).filter(Boolean);
 const readRecent = () => { try { return JSON.parse(window.localStorage.getItem(RECENT_KEY) || '[]').filter(x => typeof x === 'string').slice(0, 8); } catch { return []; } };
 const saveRecent = (k) => { try { window.localStorage.setItem(RECENT_KEY, JSON.stringify([k, ...readRecent().filter(x => x !== k)].slice(0, 8))); } catch { /* the list is a convenience: without storage it is simply not kept */ } };
 
-/** A filter as a pill: grey while it is off, indigo with its choice once it is on. The real <select> sits invisibly over it, so it works with the keyboard and on a phone. */
+/** A filter as a pill: grey while it is off, indigo with its choice once it is on. The real <Select> sits invisibly over it, so it works with the keyboard and on a phone. */
 function Pill({ label, value, onChange, options }) {
   const on = value !== '';
   const cur = options.find(o => o[0] === value);
@@ -26,9 +27,9 @@ function Pill({ label, value, onChange, options }) {
       <span className="pl-3 pointer-events-none">{label}{on ? ':' : ''}</span>
       <span className="pl-1 pr-7 pointer-events-none font-semibold">{on ? (cur?.[2] || cur?.[1]) : ''}</span>
       <ChevronDown size={13} className="absolute right-2.5 pointer-events-none opacity-70" />
-      <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="absolute inset-0 w-full opacity-0 cursor-pointer">
+      <Select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="absolute inset-0 w-full opacity-0 cursor-pointer">
         <option value="">Any</option>{options.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -150,7 +151,7 @@ function Body({ b }) {
             {typed && <button type="button" onClick={() => setTyped('')} aria-label="Clear" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><X size={14} /></button>}</div>
           <Button variant="primary" icon={Wand2} disabled={typed.trim().length < 2} onClick={() => goTo(typed)}>Find keywords</Button>
           <label className="text-12.5 font-medium text-slate-500 flex items-center gap-1.5">Database
-            <select value={data?.country || country || ''} onChange={e => goTo(keyword || typed, e.target.value)} className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Database (country)">{!(data?.country || country) && <option value="">Your country</option>}{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select></label>
+            <Select value={data?.country || country || ''} onChange={e => goTo(keyword || typed, e.target.value)} className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Database (country)">{!(data?.country || country) && <option value="">Your country</option>}{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</Select></label>
           <span className="text-12.5 text-slate-500">Currency: <b className="text-slate-700">INR</b></span>
         </div>
         {recent.length > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-1.5"><span className="inline-flex items-center gap-1 text-12 font-medium text-slate-500"><History size={13} />Recent</span>{recent.map(k => <button key={k} type="button" onClick={() => goTo(k)} className="rounded-full bg-slate-100 hover:bg-indigo-50 px-2.5 py-0.5 text-12 text-slate-700 cursor-pointer">{k}</button>)}</div>}

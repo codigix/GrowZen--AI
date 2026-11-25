@@ -5,6 +5,7 @@ import { ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, CheckCircle2, Chev
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
+import Select from '../components/Select';
 
 const TAG_HELP = { gap: 'Competitors use it, you do not', win: 'You already rank in the top 3', almost: 'You are on page 2 of Google', shared: 'You and a competitor both use it', yours: 'Only your own places mention it', idea: 'Suggested by Google or AI' };
 // one plain line for what kind of opportunity it is, and under it where it was found
@@ -25,7 +26,7 @@ function Origin({ i }) {
 const SRC_SHORT = { website: 'Website', search_console: 'Search Console', profile: 'Profile', competitors: 'Competitor', google_ideas: 'Google', planner: 'Planner', area: 'Area', brief: 'Summary', ai: 'AI' };
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
-/** A filter as a pill: grey while it is off ("Searches"), indigo with its choice once it is on ("Searches: 500+"). The real <select> sits invisibly over it, so it works with the keyboard and on a phone. */
+/** A filter as a pill: grey while it is off ("Searches"), indigo with its choice once it is on ("Searches: 500+"). The real <Select> sits invisibly over it, so it works with the keyboard and on a phone. */
 function Pill({ label, value, onChange, options }) {
   const on = value !== '';
   const cur = options.find(o => o[0] === value);
@@ -34,9 +35,9 @@ function Pill({ label, value, onChange, options }) {
       <span className="pl-3 pointer-events-none">{label}{on ? ':' : ''}</span>
       <span className="pl-1 pr-7 pointer-events-none font-semibold">{on ? (cur?.[2] || cur?.[1]) : ''}</span>
       <ChevronDown size={13} className="absolute right-2.5 pointer-events-none opacity-70" />
-      <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="absolute inset-0 w-full opacity-0 cursor-pointer">
+      <Select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="absolute inset-0 w-full opacity-0 cursor-pointer">
         <option value="">Any</option>{options.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -358,12 +359,12 @@ export default function KeywordWorkspace({ b, onUse }) {
               {/* the figures are for this place and this time */}
               <div className="px-4 pb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
                 <label className="relative inline-flex items-center"><MapPin size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-                  <select value={place} onChange={e => setPlace(e.target.value)} aria-label="Location" className="h-8 appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-8 pr-7 text-12.5 font-medium text-slate-800 cursor-pointer hover:bg-slate-50">
-                    {places.map((x, n) => <option key={x.name} value={n === 0 ? '' : x.name}>{x.name}{x.kind === 'Country' ? '' : ` (${x.kind.toLowerCase()})`}</option>)}</select>
+                  <Select value={place} onChange={e => setPlace(e.target.value)} aria-label="Location" className="h-8 appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-8 pr-7 text-12.5 font-medium text-slate-800 cursor-pointer hover:bg-slate-50">
+                    {places.map((x, n) => <option key={x.name} value={n === 0 ? '' : x.name}>{x.name}{x.kind === 'Country' ? '' : ` (${x.kind.toLowerCase()})`}</option>)}</Select>
                   <ChevronDown size={13} className="absolute right-2.5 text-slate-400 pointer-events-none" /></label>
                 <label className="relative inline-flex items-center"><CalendarDays size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-                  <select value={period} onChange={e => setPeriod(e.target.value)} aria-label="Time" className="h-8 appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-8 pr-7 text-12.5 font-medium text-slate-800 cursor-pointer hover:bg-slate-50">
-                    <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select>
+                  <Select value={period} onChange={e => setPeriod(e.target.value)} aria-label="Time" className="h-8 appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-8 pr-7 text-12.5 font-medium text-slate-800 cursor-pointer hover:bg-slate-50">
+                    <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</Select>
                   <ChevronDown size={13} className="absolute right-2.5 text-slate-400 pointer-events-none" /></label>
                 {figBusy && <span className="text-12 text-slate-500 inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Asking Google Ads…</span>}
                 {!figBusy && figError && <span className="text-12 text-amber-700" title={figError}>{String(figError).slice(0, 80)}</span>}

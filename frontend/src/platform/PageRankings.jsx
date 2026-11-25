@@ -5,6 +5,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tool
 import { SeoShell, Card, Badge, Button, ErrorNote, Tabs } from './SeoUi';
 import DataTable from './DataTable';
 import { api, fmt } from './seoApi';
+import Select from '../components/Select';
 
 const COUNTRIES = [['IN', 'India'], ['US', 'United States'], ['GB', 'United Kingdom'], ['AU', 'Australia'], ['CA', 'Canada'], ['AE', 'United Arab Emirates'], ['SG', 'Singapore'], ['DE', 'Germany'], ['FR', 'France'], ['IT', 'Italy'], ['ES', 'Spain'], ['BR', 'Brazil'], ['NL', 'Netherlands'], ['ID', 'Indonesia'], ['TR', 'Turkey'], ['MX', 'Mexico'], ['JP', 'Japan'], ['ZA', 'South Africa']];
 const INTENT = { informational: ['Informational', '#6658dd'], navigational: ['Navigational', '#a855f7'], commercial: ['Commercial', '#f59e0b'], transactional: ['Transactional', '#10b981'], local: ['Local', '#0ea5e9'] };
@@ -114,7 +115,7 @@ export function PageRankingsBody({ b }) {
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative flex-1 min-w-[260px]"><Globe size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={typed} onChange={e => setTyped(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="Enter a page address, e.g. https://example.com/page" aria-label="Page address" className="h-10 w-full pl-9 pr-3 text-13.5 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
-          <select value={country || info?.country || ''} onChange={e => { const c = e.target.value; setCountry(c); }} aria-label="Country" className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13.5">{!country && !info?.country && <option value="">Your country</option>}{COUNTRIES.map(([c, n]) => <option key={c} value={c}>{n}</option>)}</select>
+          <Select value={country || info?.country || ''} onChange={e => { const c = e.target.value; setCountry(c); }} aria-label="Country" className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13.5">{!country && !info?.country && <option value="">Your country</option>}{COUNTRIES.map(([c, n]) => <option key={c} value={c}>{n}</option>)}</Select>
           <Button variant="primary" icon={Search} disabled={typed.trim().length < 4} onClick={submit}>Analyze</Button>
         </div>
         {url && (

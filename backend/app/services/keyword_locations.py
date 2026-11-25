@@ -53,7 +53,7 @@ def area_search(text: str, country: str) -> list[dict[str, str]]:
     if len(text) < 2:
         return []
     if not discovery.places_enabled():
-        return [{"name": x["area"], "label": x["label"], "source": "OpenStreetMap"} for x in suggest.areas(text, code)]
+        return [{"name": x["area"], "label": x["label"], "source": "OpenStreetMap", "lat": x.get("lat"), "lng": x.get("lng")} for x in suggest.areas(text, code)]
     r = suggest._google_client.post(f"{discovery.PLACES}/places:autocomplete", headers={"X-Goog-Api-Key": discovery.places_key()},
                                     json={"input": text, "includedRegionCodes": [countries.gl(code)], "includedPrimaryTypes": ["(regions)"]})
     if r.status_code != 200:
@@ -142,3 +142,37 @@ def for_keyword(b: Business, keyword: str, extra: list[str] | None = None) -> di
         reason = f"Google Ads did not answer ({'; '.join(getattr(exc, 'details', []) or [str(exc)])[:200]})."
     country_row = next((r for r in rows if r["kind"] == "Country"), None)
     return {"keyword": kw, "difficulty": country_row["index"] if country_row else None, "locations": rows, "reason": reason}
+
+
+def place_pin(label: str, country: str) -> dict[str, Any] | None:
+    """The map position of a place named as Google Maps or OpenStreetMap names it, inside the country: {label, lat, lng}, or None when it is not found."""
+    from . import suggest  # noqa: PLC0415
+    suggest._require_osm()
+    label = " ".join((label or "").split())[:160]
+    if len(label) < 2:
+        return None
+    items = suggest._nominatim("search", {"q": label, "format": "jsonv2", "limit": 1, "countrycodes": countries.code(country).lower(), "accept-language": "en"})
+    if not items:
+        return None
+    return {"label": label, "lat": float(items[0]["lat"]), "lng": float(items[0]["lon"])}
+
+
+def place_at(lat: float, lng: float, country: str) -> dict[str, Any] | None:
+    """The area, city and state at a map point, written like the place search writes them: {label, area, lat, lng}. None when the point is outside the country or has no name."""
+    from . import suggest  # noqa: PLC0415
+    suggest._require_osm()
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return None
+    item = suggest._nominatim("reverse", {"lat": round(lat, 6), "lon": round(lng, 6), "format": "jsonv2", "addressdetails": 1, "zoom": 12, "accept-language": "en"})
+    if not item or item.get("error"):
+        return None
+    a = item.get("address") or {}
+    if str(a.get("country_code") or "").upper() != countries.code(country).upper():
+        return None
+    p = suggest._address_parts(a)
+    name = p["area"] or p["city"]
+    if not name:
+        return None
+    city = p["city"] if p["city"] and p["city"] != name else None
+    label = ", ".join(x for x in (name, city, p["state"] if not city else None) if x)
+    return {"label": label, "area": name, "lat": lat, "lng": lng}

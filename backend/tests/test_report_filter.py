@@ -63,3 +63,9 @@ def test_the_filter_reaches_a_synchronous_endpoint_and_is_gone_after():
     assert c.get("/x").json() == {"days": None, "country": None}
     assert report_filter.current().days is None
     assert date.today() - timedelta(days=1) < date.today()
+
+
+def test_several_places_are_kept_in_order_and_the_first_is_the_primary_one():
+    f = report_filter.parse({"rf_location": "Baner, Pune|Wakad, Pune|Baner, Pune| |Kothrud, Pune|A|B|C"})
+    assert f.locations == ("Baner, Pune", "Wakad, Pune", "Kothrud, Pune", "A", "B")  # no repeats, at most five
+    assert f.location == "Baner, Pune"

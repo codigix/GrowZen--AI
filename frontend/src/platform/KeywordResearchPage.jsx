@@ -1067,11 +1067,11 @@ function Topics({ b, kw }) {
                         <span className="flex-1 min-w-0 truncate text-slate-800" title={k.keyword}>{k.keyword}</span>
                         {k.volume ? <span className="tabular-nums text-slate-500 w-14 text-right" title="Searches a month">{fmt(k.volume)}</span> : null}
                         <span className={`tabular-nums w-10 text-right ${k.rank ? 'text-slate-800 font-semibold' : 'text-slate-300'}`} title="Where it ranks on Google">{k.rank ? `#${k.rank}` : '—'}</span>
-                        <select value={loose ? '' : x.topic} disabled={busy === `m${k.id}`} onChange={e => e.target.value && move(k, e.target.value)} aria-label={`Move ${k.keyword} to another topic`} title="Move to another topic" className="h-7 max-w-[8.5rem] rounded border border-slate-200 bg-white text-12 text-slate-600 cursor-pointer">
+                        <Select value={loose ? '' : x.topic} disabled={busy === `m${k.id}`} onChange={e => e.target.value && move(k, e.target.value)} aria-label={`Move ${k.keyword} to another topic`} title="Move to another topic" className="h-7 max-w-[8.5rem] rounded border border-slate-200 bg-white text-12 text-slate-600 cursor-pointer">
                           <option value="">{loose ? 'Choose a topic' : 'Move to…'}</option>
                           {names.filter(n => n !== x.topic).map(n => <option key={n} value={n}>{n}</option>)}
                           {!loose && <option value={NOT_GROUPED}>Not grouped</option>}
-                        </select>
+                        </Select>
                       </li>))}
                   </ul>
                   {x.list.length > 8 && <p className="px-4 pb-1 text-12 text-slate-500">and {x.list.length - 8} more</p>}
@@ -1250,7 +1250,7 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
         </div>
         <label className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">Country<input aria-label="Country" className="h-8 w-14 px-2 text-13 rounded-md border border-slate-200 uppercase font-mono text-slate-800" maxLength={2} value={country} onChange={e => setCountry(e.target.value.toUpperCase())} /></label>
         <label className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">Limit
-          <select aria-label="Limit" className="h-8 px-2 text-13 rounded-md border border-slate-200 bg-white text-slate-800 cursor-pointer" value={limit} onChange={e => setLimit(Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></select>
+          <Select aria-label="Limit" className="h-8 px-2 text-13 rounded-md border border-slate-200 bg-white text-slate-800 cursor-pointer" value={limit} onChange={e => setLimit(Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></Select>
         </label>
         <Button size="sm" variant="primary" icon={Search} busy={busy === 'search'} disabled={!keyword.trim()} onClick={() => search()} className="ml-auto">Explore again</Button>
       </div>

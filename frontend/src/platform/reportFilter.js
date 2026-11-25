@@ -7,13 +7,21 @@ import { useEffect, useState } from 'react';
  */
 const KEY = 'bevisibe.report-filter';
 const EVENT = 'report-filter';
-export const DEFAULT_FILTER = { preset: 'default', from: '', to: '', country: '', location: '' };
+export const DEFAULT_FILTER = { preset: 'default', from: '', to: '', country: '', locations: [] }; // locations: [{ label, lat, lng }], the first is the primary place
+export const MAX_LOCATIONS = 5;
 export const PRESETS = [
   ['default', 'Default period'], ['7d', 'Last 7 days'], ['28d', 'Last 28 days'], ['90d', 'Last 3 months'], ['180d', 'Last 6 months'], ['365d', 'Last 12 months'],
   ['this_month', 'This month'], ['last_month', 'Last month'], ['this_year', 'This year'], ['last_year', 'Last year'],
 ];
 
-let state = (() => { try { return { ...DEFAULT_FILTER, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULT_FILTER }; } })();
+let state = (() => {
+  try {
+    const s = { ...DEFAULT_FILTER, ...JSON.parse(localStorage.getItem(KEY) || '{}') };
+    if (s.location && !(s.locations || []).length) s.locations = [{ label: s.location }]; // a single place saved by an earlier version
+    delete s.location;
+    return s;
+  } catch { return { ...DEFAULT_FILTER }; }
+})();
 let version = 0;
 
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -49,7 +57,7 @@ export function resolveRange(f = state) {
 }
 
 export const getFilter = () => state;
-export const isDefault = (f = state) => !resolveRange(f) && !f.country && !f.location;
+export const isDefault = (f = state) => !resolveRange(f) && !f.country && !(f.locations || []).length;
 
 export function setFilter(patch) {
   state = { ...state, ...patch };
@@ -65,7 +73,7 @@ export function filterQuery() {
   const p = new URLSearchParams();
   if (r) { p.set('rf_from', r.from); p.set('rf_to', r.to); }
   if (state.country) p.set('rf_country', state.country);
-  if (state.location) p.set('rf_location', state.location);
+  if ((state.locations || []).length) p.set('rf_location', state.locations.map(l => l.label).join('|'));
   return p.toString();
 }
 

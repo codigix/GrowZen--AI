@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronsUpDown, Download, Search } from 'lucide-react';
 import { Head } from './TableBits';
+import Select from '../components/Select';
 
 /**
  * The one way a table works in this app: search, filters, a sortable heading on every column that has a value to sort by,
@@ -40,7 +41,7 @@ export function Pager({ p, sizes = SIZES, label = 'rows' }) {
     <nav aria-label="Pages of the table" className="px-4 py-3 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-2 text-13 text-slate-600">
       <span role="status">Showing <b className="text-slate-900 tabular-nums">{p.total ? p.from + 1 : 0}</b> to <b className="text-slate-900 tabular-nums">{p.to}</b> of <b className="text-slate-900 tabular-nums">{p.total}</b> {label}</span>
       <label className="inline-flex items-center gap-1.5">Rows per page
-        <select value={p.size} onChange={e => p.setSize(Number(e.target.value))} aria-label="Rows per page" className="h-8 rounded-md border border-slate-200 bg-white text-13 cursor-pointer">{sizes.map(s => <option key={s} value={s}>{s}</option>)}</select>
+        <Select value={p.size} onChange={e => p.setSize(Number(e.target.value))} aria-label="Rows per page" className="h-8 rounded-md border border-slate-200 bg-white text-13 cursor-pointer">{sizes.map(s => <option key={s} value={s}>{s}</option>)}</Select>
       </label>
       <div className="ml-auto flex items-center gap-1">
         <button type="button" className={btn} disabled={p.page <= 1} onClick={() => p.setPage(1)} aria-label="First page"><ChevronsLeft size={15} /></button>
@@ -138,9 +139,9 @@ export default function DataTable({
           {search && <label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} className="h-8 w-56 pl-8 pr-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label>}
           {filters.map(f => (
             <label key={f.id} className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">{f.label}
-              <select value={fv[f.id] || ''} onChange={e => setFv(x => ({ ...x, [f.id]: e.target.value }))} aria-label={`Filter by ${f.label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer max-w-[11rem] ${fv[f.id] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
+              <Select value={fv[f.id] || ''} onChange={e => setFv(x => ({ ...x, [f.id]: e.target.value }))} aria-label={`Filter by ${f.label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer max-w-[11rem] ${fv[f.id] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
                 <option value="">All</option>{f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              </Select>
             </label>))}
           {toolbar}
           <span className="ml-auto flex flex-wrap items-center gap-2">

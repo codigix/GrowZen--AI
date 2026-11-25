@@ -5,6 +5,7 @@ import { Card, Button, Badge, Stat, ErrorNote, useAction, useToast, SkList, inpu
 import { api, useApi } from './seoApi';
 import Tip from './Tip';
 import { downloadFile } from './DataTable';
+import Select from '../components/Select';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
@@ -550,7 +551,7 @@ function TopPlatforms({ b, article }) {
       )}
       <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-2.5">
         <input value={f.q} onChange={e => setF(s => ({ ...s, q: e.target.value }))} placeholder="Search platforms" aria-label="Search platforms" className={`${selCls} !w-48`} />
-        <select aria-label="Type" className={selCls} value={f.kind} onChange={e => setF(s => ({ ...s, kind: e.target.value }))}><option value="">All types</option>{(d.kinds || []).map(k => <option key={k}>{k}</option>)}</select>
+        <Select aria-label="Type" className={selCls} value={f.kind} onChange={e => setF(s => ({ ...s, kind: e.target.value }))}><option value="">All types</option>{(d.kinds || []).map(k => <option key={k}>{k}</option>)}</Select>
         <label className={chk}><input type="checkbox" checked={f.free} onChange={e => setF(s => ({ ...s, free: e.target.checked }))} />Free to publish</label>
         {picked > 0 && <label className={chk}><input type="checkbox" checked={f.suggested} onChange={e => setF(s => ({ ...s, suggested: e.target.checked }))} />Picked for my business</label>}
         <span className="ml-auto text-12 text-slate-400">{list.length} shown</span>

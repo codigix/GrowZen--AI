@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, Info, Phone, Navigation, MousePointerClick, 
 import { Card, Badge, ChartTooltip, Legend, SERIES, INK } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import Select from '../components/Select';
 
 const C = { calls: SERIES[0], directions: SERIES[1], website_clicks: SERIES[2] };
 
@@ -152,15 +153,15 @@ export default function ProgressSection({ b, view = 'progress' }) {
   const sel = 'h-9 rounded border border-slate-300 bg-white px-2.5 text-13 text-slate-800 cursor-pointer';
   const toggle = (
     <div className="flex flex-wrap items-center gap-2">
-      <select aria-label="Date range" className={sel} value={range} onChange={e => setRange(e.target.value)}>{RANGES.map(([id, t]) => <option key={id} value={id}>{t}</option>)}</select>
+      <Select aria-label="Date range" className={sel} value={range} onChange={e => setRange(e.target.value)}>{RANGES.map(([id, t]) => <option key={id} value={id}>{t}</option>)}</Select>
       {custom && <>
         <input type="date" aria-label="From" className={sel} value={from} max={to || today()} onChange={e => setFrom(e.target.value)} />
         <span className="text-12 text-slate-500">to</span>
         <input type="date" aria-label="To" className={sel} value={to} min={from || undefined} max={today()} onChange={e => setTo(e.target.value)} />
       </>}
-      <select aria-label="Group by" className={sel} value={group} onChange={e => setGroup(e.target.value)}>
+      <Select aria-label="Group by" className={sel} value={group} onChange={e => setGroup(e.target.value)}>
         <option value="auto">Group: automatic</option><option value="week">Group: weekly</option><option value="month">Group: monthly</option>
-      </select>
+      </Select>
       {range !== 'all' && <button type="button" onClick={() => { setRange('all'); setGroup('auto'); }} className="h-9 px-3 rounded text-12.5 font-semibold text-indigo-600 hover:bg-indigo-50 cursor-pointer">Show everything</button>}
     </div>
   );

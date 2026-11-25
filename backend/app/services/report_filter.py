@@ -18,7 +18,8 @@ class Filter:
     start: date | None = None
     end: date | None = None
     country: str | None = None
-    location: str | None = None
+    location: str | None = None  # the first chosen place: the one Google results and Maps are read for
+    locations: tuple[str, ...] = ()  # every chosen place, up to five
 
     @property
     def has_period(self) -> bool:
@@ -48,8 +49,8 @@ def parse(params: dict[str, str]) -> Filter:
         start = max(min(start, end), date(2015, 1, 1))
     country = params.get("rf_country", "").strip().upper()
     country = country if re.fullmatch(r"[A-Z]{2}", country) else None
-    location = " ".join(params.get("rf_location", "").split())[:160] or None
-    return Filter(start, end, country, location)
+    places = tuple(dict.fromkeys(" ".join(x.split())[:160] for x in params.get("rf_location", "").split("|") if x.strip()))[:5]
+    return Filter(start, end, country, places[0] if places else None, places)
 
 
 def set_current(f: Filter):

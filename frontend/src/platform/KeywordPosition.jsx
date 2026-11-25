@@ -7,6 +7,7 @@ import { api, useApi } from './seoApi';
 import SerpFeaturesTab from './SerpFeaturesTab';
 import TrackingInsightsTab from './TrackingInsightsTab';
 import CompetitorsTab from './CompetitorsTab';
+import Select from '../components/Select';
 
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : String(Math.round(n)));
 const RANGES = [['28 days', 28], ['3 months', 90], ['6 months', 180]];
@@ -206,13 +207,13 @@ export default function KeywordPosition({ b, keyword }) {
         <label className="flex-1 min-w-[240px]"><div className="text-13 font-semibold text-slate-800 mb-1">Keyword</div>
           <div className="flex items-center gap-2 h-10 rounded-lg ring-1 ring-inset ring-slate-300 px-2">
             <span className="inline-flex items-center gap-1 h-7 pl-2.5 pr-1 rounded bg-slate-100 text-13 font-medium">{keyword}<button type="button" aria-label="Back to all keywords" onClick={() => go('')} className="p-0.5 hover:bg-slate-200 rounded cursor-pointer"><X size={12} /></button></span>
-            <select aria-label="Choose another tracked keyword" value="" onChange={e => e.target.value && go(e.target.value)} className="ml-auto h-8 text-13 bg-transparent text-slate-500 cursor-pointer max-w-[40%]"><option value="">Switch keyword…</option>{list.filter(k => k !== keyword).map(k => <option key={k} value={k}>{k}</option>)}</select>
+            <Select aria-label="Choose another tracked keyword" value="" onChange={e => e.target.value && go(e.target.value)} className="ml-auto h-8 text-13 bg-transparent text-slate-500 cursor-pointer max-w-[40%]"><option value="">Switch keyword…</option>{list.filter(k => k !== keyword).map(k => <option key={k} value={k}>{k}</option>)}</Select>
           </div>
         </label>
         <div><div className="text-13 font-semibold text-slate-800 mb-1">Search engine</div><div className="h-10 px-3 inline-flex items-center rounded-lg ring-1 ring-inset ring-slate-300 text-13">Google</div></div>
         <div><Lbl>Location</Lbl><LocationPick b={b} value={T.location} country={T.country} custom={T.custom} onPick={(v) => setTarget({ location: v })} /></div>
-        <div><Lbl>Device</Lbl><select aria-label="Device" value={T.device || 'desktop'} onChange={e => setTarget({ device: e.target.value })} className={selCls}>{DEVICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
-        <div><Lbl>Language</Lbl><select aria-label="Language" value={(T.language || 'en').slice(0, 2)} onChange={e => setTarget({ language: e.target.value })} className={selCls}>{Object.entries(T.languages || { en: 'English' }).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+        <div><Lbl>Device</Lbl><Select aria-label="Device" value={T.device || 'desktop'} onChange={e => setTarget({ device: e.target.value })} className={selCls}>{DEVICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></div>
+        <div><Lbl>Language</Lbl><Select aria-label="Language" value={(T.language || 'en').slice(0, 2)} onChange={e => setTarget({ language: e.target.value })} className={selCls}>{Object.entries(T.languages || { en: 'English' }).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></div>
         <Button variant="primary" icon={RefreshCw} busy={busy === 'update'} onClick={update}>Update report</Button>
       </div>
       {error && <ErrorNote>{error}</ErrorNote>}

@@ -7,6 +7,7 @@ import {
 import { SeoShell, Card, Badge, Button, Modal, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
 import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
+import Select from '../components/Select';
 
 /**
  * The SEO toolkit pages, each on data the platform really has (its own crawl, tracked keywords, Google results
@@ -601,8 +602,8 @@ function KeywordOverview({ b }) {
         <div className="flex flex-wrap gap-2">
           <label className="relative flex-1 min-w-[260px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && q.trim().length > 1 && go()} placeholder="Enter a keyword, e.g. dentist near me" aria-label="Keyword" className="w-full h-10 pl-9 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" /></label>
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Country
-            <select value={activeCountry} onChange={e => changeCountry(e.target.value === home ? '' : e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Country">
-              {(countriesApi.data || [{ code: home, name: home }]).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select></label>
+            <Select value={activeCountry} onChange={e => changeCountry(e.target.value === home ? '' : e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Country">
+              {(countriesApi.data || [{ code: home, name: home }]).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</Select></label>
           <div className="relative">
             <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={typed} onChange={e => search(e.target.value)} placeholder={chosen.length ? "Add another target area…" : "Add a target area: search Google Maps…"} aria-label="Search a target area on Google Maps" className="h-9 w-60 pl-9 pr-3 text-13 rounded-lg border border-slate-300 bg-white" />
@@ -614,9 +615,9 @@ function KeywordOverview({ b }) {
             {findErr && <p className="absolute text-11.5 text-rose-600 mt-1 whitespace-nowrap">{findErr}</p>}
           </div>
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Period
-            <select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Period">
+            <Select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Period">
               <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>
-              {[...monthList].reverse().map(x => <option key={`${x.year}-${x.month}`} value={`${x.year}-${x.month}`}>{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {String(x.year).slice(2)}</option>)}</select></label>
+              {[...monthList].reverse().map(x => <option key={`${x.year}-${x.month}`} value={`${x.year}-${x.month}`}>{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {String(x.year).slice(2)}</option>)}</Select></label>
           <Button variant="primary" icon={Search} busy={busy === 'go'} disabled={q.trim().length < 2} onClick={() => go()}>Analyze</Button>
         </div>
         {chosen.length > 0 && (

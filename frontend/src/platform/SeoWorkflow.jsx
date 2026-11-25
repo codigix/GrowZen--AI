@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, Loader2, Circle, RefreshCw, Sparkles, Plus, Trash2, ChevronDown, ChevronRight, ShieldCheck, Lightbulb } from 'lucide-react';
 import { api } from './seoApi';
 import { Button, Field, inputCls } from './SeoUi';
+import Select from '../components/Select';
 
 /**
  * The ChatGPT-style SEO workflow (backend: services/seo_workflow).
@@ -159,9 +160,9 @@ export function ResearchBriefStep({ b, input, onBack, onGenerate, genBusy, gener
             <Field label="Angle"><input className={inputCls} value={brief.angle || ''} onChange={e => setB('angle', e.target.value)} /></Field>
             <Field label="Target audience"><input className={inputCls} value={brief.audience || ''} onChange={e => setB('audience', e.target.value)} /></Field>
             <Field label="Search intent">
-              <select className={inputCls} value={brief.intent || 'informational'} onChange={e => setB('intent', e.target.value)}>
+              <Select className={inputCls} value={brief.intent || 'informational'} onChange={e => setB('intent', e.target.value)}>
                 {['informational', 'commercial', 'transactional', 'local', 'navigational'].map(x => <option key={x} value={x}>{x}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <div>
