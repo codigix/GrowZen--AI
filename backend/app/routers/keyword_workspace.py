@@ -212,3 +212,15 @@ def bulk_metrics(body: BulkIn, b: Business = Depends(get_business)):
     from ..services import keyword_metrics, market  # noqa: PLC0415
     found, note = keyword_metrics.lookup(body.keywords, body.country or market.serp_country(b))
     return {"rows": [{"keyword": k, "volume": (found.get(k) or {}).get("volume"), "cpc": (found.get(k) or {}).get("cpc"), "competition": (found.get(k) or {}).get("competition")} for k in dict.fromkeys(" ".join(x.lower().split()) for x in body.keywords if x.strip())], "note": note}
+
+
+class StrategyIn(BaseModel):
+    seeds: list[str] = Field(min_length=1, max_length=5)
+    country: str | None = Field(default=None, max_length=2)
+
+
+@router.post("/strategy")
+def strategy_builder(body: StrategyIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Seeds to a content plan: topics, each with a pillar page and subpages and the keywords for each. Nothing is saved."""
+    from ..services import keyword_strategy  # noqa: PLC0415
+    return keyword_strategy.build(db, b, body.seeds, body.country)
