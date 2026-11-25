@@ -19,7 +19,8 @@ ACTOR = "santhej~ranked-keywords-checker"
 COST_PER_KEYWORD = 0.003
 COST_START = 0.001
 COST_OVERVIEW = 0.02
-LOCATION_CODES = {"US": "2840", "GB": "2826", "UK": "2826", "CA": "2124", "AU": "2036", "IN": "2356", "DE": "2276"}
+LOCATION_CODES = {"US": "2840", "GB": "2826", "UK": "2826", "CA": "2124", "AU": "2036", "IN": "2356", "DE": "2276", "FR": "2250", "ES": "2724", "IT": "2380", "BR": "2076", "NL": "2528", "AE": "2784", "SG": "2702",
+                  "ID": "2360", "MX": "2484", "JP": "2392", "TR": "2792", "ZA": "2710", "SA": "2682", "PK": "2586", "BD": "2050", "NG": "2566", "NZ": "2554", "IE": "2372", "PH": "2608", "MY": "2458"}  # the countries a ranked-keywords read can be asked for
 
 
 def _norm(t: str) -> str:
@@ -116,7 +117,7 @@ def ranked(db: Session, b: Business, domain: str, limit: int = 100, min_volume: 
                          traffic=x.get("traffic_estimate", x.get("etv")), source="ranking"))
     if rows:
         store(db, b, domain, rows)
-    return {"rows": rows, "cost": cost_note(len(rows)), "note": None if rows else "This competitor has no ranked keywords above the volume filter."}
+    return {"rows": rows, "cost": cost_note(len(rows)), "country": market.serp_country(b), "note": None if rows else "This competitor has no ranked keywords above the volume filter."}
 
 
 def _merge(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -181,16 +182,16 @@ def gap(db: Session, b: Business) -> dict[str, Any]:
     by: dict[str, dict[str, Any]] = {}
     reads: dict[str, dict[str, Any]] = {d: {"domain": d, "keywords": 0, "read_at": None, "from_google": 0} for d in domains}
 
-    def add(kw: str, dom: str, pos: int | None, url: str | None, source: str, volume: int | None = None, **extra: Any) -> None:
+    def add(kw: str, dom: str, pos: int | None, url: str | None, source: str, volume: int | None = None, traffic: float | None = None, **extra: Any) -> None:
         e = by.setdefault(kw, {"keyword": kw, "volume": volume, "competitors": {}, **{k: v for k, v in extra.items() if v is not None}})
         if volume and not e.get("volume"):
             e["volume"] = volume
         cur = e["competitors"].get(dom)
         if cur is None or (pos is not None and (cur["position"] is None or pos < cur["position"])):
-            e["competitors"][dom] = {"domain": dom, "position": pos, "url": url, "source": source}
+            e["competitors"][dom] = {"domain": dom, "position": pos, "url": url, "source": source, "traffic": round(traffic, 1) if traffic is not None else None}
 
     for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id)):
-        add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc)
+        add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, r.traffic, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc)
         s = reads.setdefault(r.domain, {"domain": r.domain, "keywords": 0, "read_at": None, "from_google": 0})
         s["keywords"] += 1
         s["read_at"] = max(filter(None, [s["read_at"], r.read_at.isoformat() if r.read_at else None]), default=None)
@@ -224,4 +225,4 @@ def gap(db: Session, b: Business) -> dict[str, Any]:
     rows.sort(key=lambda r: (order[r["status"]], {"yes": 0, "maybe": 1, "have": 2, "no": 3}[r["fit"]], -(r["volume"] or 0)))
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in order}
     counts["useful_gaps"] = sum(1 for r in rows if r["status"] == "gap" and r["fit"] in ("yes", "maybe"))
-    return {"competitors": list(reads.values()), "rows": rows[:2000], "counts": counts, "total": len(rows), "own_read": bool(own and any(own.values()))}
+    return {"competitors": list(reads.values()), "rows": rows[:2000], "counts": counts, "total": len(rows), "country": market.serp_country(b), "own_read": bool(own and any(own.values()))}

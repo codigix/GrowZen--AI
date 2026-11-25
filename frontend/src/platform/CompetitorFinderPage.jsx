@@ -10,6 +10,7 @@ import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
+import { MapsTable, Pos as RankPos, RankingsTable } from './CompetitorTables';
 import { AnalysisStats, AutoBar, BacklinkTab, CompetitorsPanel, TopPagesTab, TrafficTab, useAnalysis, useAutoAnalysis, useRatings } from './CompetitorAnalysis';
 import PlacePicker from './PlacePicker';
 import Select from '../components/Select';
@@ -307,35 +308,12 @@ export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindM
 }
 
 function KeywordsTab({ r, onKeyword, onIdeas }) {
-  const cols = r.profiles.slice(0, 3);
-  const [q, setQ] = useState('');
-  const needle = q.trim().toLowerCase();
-  const kwRows = r.serps.filter(x => !needle || x.keyword.toLowerCase().includes(needle));
-  const kwVal = (x, k) => (k === 'kw' ? x.keyword : k === 'g' ? x.you_organic : k === 'm' ? x.you_local : k === 'top' ? x.organic[0]?.domain : k.startsWith('c:') ? cols.find(p => p.domain === k.slice(2))?.positions?.[x.keyword] : undefined);
-  const { sorted, sort, onSort } = useSorted(kwRows, kwVal);
-  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
-    <Card pad={false}>
-      <div className="px-5 py-3 border-b border-slate-200 flex items-center gap-3">
-        <div className="text-13 font-semibold text-slate-900">{r.keywords.length} keywords <span className="font-normal text-slate-500">· click a row for the full Google and Maps results</span></div>
-        <Button size="sm" className="ml-auto" icon={Lightbulb} onClick={onIdeas}>Keyword ideas ({r.ideas.competitor_keywords.length + r.ideas.questions.length + r.ideas.related.length})</Button>
-      </div>
-      <Table pager={pager} exportCsv={() => downloadCsv(`competitor-keywords-${slugOf(r.business?.name)}`, ['Keyword', 'You: Google position', 'You: Maps position', ...cols.map(p => `${p.domain}: Google position`), '#1 on Google'],
-        sorted.map(x => [x.keyword, x.you_organic ?? '', x.you_local ?? '', ...cols.map(p => p.positions?.[x.keyword] ?? ''), x.organic[0]?.domain || '']))} bar={r.serps.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="g" sort={sort} onSort={onSort} c="text-center">You · Google</Th><Th id="m" sort={sort} onSort={onSort} c="text-center">You · Maps</Th>{cols.map(p => <Th key={p.domain} id={`c:${p.domain}`} sort={sort} onSort={onSort} c="text-center" cls="normal-case max-w-[120px] truncate">{p.domain}</Th>)}<Th id="top" sort={sort} onSort={onSort}>#1 on Google</Th></>}>
-        {pager.rows.map(s => (
-          <tr key={s.keyword} className={`cursor-pointer hover:bg-slate-50 ${!s.you_organic ? 'bg-rose-50/30' : ''}`} onClick={() => onKeyword(s)}>
-            <td className="px-4 py-2.5 font-semibold text-slate-900">{s.keyword}</td>
-            <td className="px-4 py-2.5 text-center"><Pos value={s.you_organic} /></td>
-            <td className="px-4 py-2.5 text-center"><Pos value={s.you_local} maps /></td>
-            {cols.map(p => <td key={p.domain} className="px-4 py-2.5 text-center"><Pos value={p.positions?.[s.keyword]} /></td>)}
-            <td className="px-4 py-2.5 text-slate-600 truncate max-w-[200px]">{s.organic[0]?.domain || '—'}</td>
-          </tr>
-        ))}
-      </Table>
-      <div className="px-5 py-2.5 border-t border-slate-200 flex flex-wrap gap-3 text-11.5 text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><Pos value={1} /> top 3</span><span className="inline-flex items-center gap-1.5"><Pos value={7} /> page 1</span><span className="inline-flex items-center gap-1.5"><Pos /> not in the results</span>
-      </div>
-    </Card>
+    <div className="space-y-2">
+      <p className="text-12.5 text-slate-500">Your {r.keywords.length} researched keywords: where you and the main competitors rank on Google. Click a keyword for the full Google and Maps results.</p>
+      <RankingsTable r={r} onKeyword={onKeyword} onIdeas={onIdeas} />
+      <div className="flex flex-wrap gap-3 text-11.5 text-slate-500"><span className="inline-flex items-center gap-1.5"><Pos value={1} /> top 3</span><span className="inline-flex items-center gap-1.5"><Pos value={7} /> page 1</span><span className="inline-flex items-center gap-1.5"><Pos /> not in the results</span></div>
+    </div>
   );
 }
 
@@ -573,40 +551,8 @@ export function MapsTab({ r, kit }) {
     <HowChosen r={r} />
     {kit && <MapsAudit r={r} kit={kit} />}
     {r.local_competitors.length === 0 && <Card><p className="text-13 text-slate-600">No real competitor was found on Google Maps for these searches. {r.other_places?.length ? 'The businesses that came up sell something different: see the list below.' : ''}</p></Card>}
-    <Card pad={false}>
-      {nearOnly && <p className="px-4 py-2.5 border-b border-slate-100 text-12.5 text-slate-600">Only businesses within about 4 km of {r.business.name} are counted: the ones its customers can actually choose between.</p>}
-      <Table pager={pager} exportCsv={() => downloadCsv(`google-maps-competitors-${slugOf(r.business?.name)}`, ['Business', 'Category', 'Match score', 'Match', 'Why it matches', 'Distance (metres)', 'Visibility (%)', 'Best Maps position', 'Keywords it appears for', 'Rating', 'Reviews', 'Website'],
-        sorted.map(e => [e.name, e.category || '', e.mine ? '' : (e.relevance?.score ?? ''), e.mine ? 'You' : (e.relevance?.label_text || ''), e.relevance?.reason || '', e.distance_m ?? '', e.visibility ?? '', Number.isFinite(e.best) ? e.best : '', e.appearances ?? '', e.rating ?? '', e.reviews ?? '', e.website || '']))} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search businesses" /> : null} head={<><Th id="name" sort={sort} onSort={onSort}>Business</Th><Th id="match" sort={sort} onSort={onSort} first="desc">Match</Th>{kit && <Th id="audit" sort={sort} onSort={onSort}>Site audit</Th>}<Th id="dist" sort={sort} onSort={onSort} c="text-right">Distance</Th><Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right">Visibility</Th><Th id="best" sort={sort} onSort={onSort} c="text-center">Best</Th><Th id="res" sort={sort} onSort={onSort} first="desc" c="text-right">In results</Th><Th id="rating" sort={sort} onSort={onSort} first="desc">Rating</Th><Th id="rev" sort={sort} onSort={onSort} first="desc" cls="w-44">Reviews</Th><Th id="site" sort={sort} onSort={onSort}>Website</Th></>}>
-        {pager.rows.map(e => (
-          <tr key={e.name} className={e.mine ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}>
-            <td className="px-4 py-2.5"><div className={`font-medium ${e.mine ? 'text-emerald-800' : 'text-slate-900'}`}>{e.name}</div>{e.category && <div className="text-12 text-slate-500">{e.category}</div>}{e.relevance?.reason && <div className="text-11.5 text-slate-400 max-w-[320px]">{e.relevance.reason}</div>}</td>
-            <td className="px-4 py-2.5">{e.mine ? <Badge tone="green">You</Badge> : <MatchCell rel={e.relevance} />}</td>
-            {kit && <td className="px-4 py-2.5">{e.mine ? <span className="text-slate-400">—</span> : (() => {
-              const reg = kit.registered.find(c => (e.website ? hostOf(c.website) === (e.domain || hostOf(e.website)) : (c.place_id && c.place_id === e.cid) || (!c.website && c.name === e.name)));
-              const a = reg && kit.auditMap[reg.id];
-              if (!reg) return <span className="flex gap-1.5"><Button size="sm" icon={Gauge} onClick={() => kit.onAudit(e)} title={e.website ? 'Saves it as a competitor and audits its site and its Google listing' : 'No website: reads its Google listing and works out its services and keywords'}>Audit</Button>
-                <Button size="sm" icon={ShieldCheck} busy={kit.comparing === `new:${e.name}`} onClick={() => kit.onCompare(e)} title={compareHint(e)}>Compare</Button></span>;
-              return (
-                <div className="flex flex-col gap-1 min-w-[120px]">
-                  <span className={`text-12 font-semibold ${a?.status === 'done' ? 'text-emerald-700' : a?.status === 'failed' ? 'text-red-600' : running(a?.status) ? 'text-indigo-600' : 'text-slate-400'}`}>{a ? (SCORE_WORD[a.status] || a.status) + (a.listing && a.score != null ? ` · ${a.score}/100` : '') : 'Not audited'}{a?.listing ? <span className="font-normal text-slate-400"> · Google listing</span> : null}</span>
-                  <span className="flex gap-1.5">
-                    <Button size="sm" icon={Gauge} disabled={running(a?.status)} onClick={() => kit.onAudit(reg)}>{a ? 'Re-audit' : 'Audit'}</Button>
-                    <Button size="sm" icon={ShieldCheck} busy={kit.comparing === reg.id} onClick={() => kit.onCompare(reg)} title={compareHint(reg)}>Compare</Button>
-                  </span>
-                </div>
-              );
-            })()}</td>}
-            <td className="px-4 py-2.5 text-right tabular-nums text-slate-600" title="Straight-line distance from your business">{e.mine ? '' : e.distance_m == null ? '—' : e.distance_m < 1000 ? `${e.distance_m} m` : `${(e.distance_m / 1000).toFixed(1)} km`}</td>
-            <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{e.visibility}%</td>
-            <td className="px-4 py-2.5 text-center"><Pos value={Number.isFinite(e.best) ? e.best : null} maps /></td>
-            <td className="px-4 py-2.5 text-right tabular-nums">{e.appearances}/{r.keywords.length}</td>
-            <td className="px-4 py-2.5"><Stars rating={e.rating} /></td>
-            <td className="px-4 py-2.5"><div className="flex items-center gap-2" title={`${fmt(e.reviews)} reviews`}><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className={`block h-full rounded-full ${e.mine ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${((e.reviews || 0) / maxReviews) * 100}%` }} /></span><span className="w-12 text-right tabular-nums text-slate-700">{fmt(e.reviews)}</span></div></td>
-            <td className="px-4 py-2.5">{e.website ? <a href={e.website} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1"><Globe size={12} />{e.domain || 'site'}</a> : <span className="text-slate-400">{e.mine ? '' : 'None'}</span>}</td>
-          </tr>
-        ))}
-      </Table>
-    </Card>
+    {nearOnly && <p className="text-12.5 text-slate-600">Only businesses within about {Math.round((r.radius_m || 4000) / 100) / 10} km of {r.center?.chosen ? 'the chosen place' : r.business.name} are counted: the ones its customers can actually choose between.</p>}
+    <MapsTable r={r} />
     <OtherPlaces r={r} />
     </div>
   );

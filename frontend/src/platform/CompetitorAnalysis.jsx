@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom';
 import { BarChart3, Check, CheckCircle2, ExternalLink, Eye, Layers, Loader2, MapPin, MoreHorizontal, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { Button, Badge, ErrorNote, Modal, useToast } from './SeoUi';
-import { usePager, Pager, downloadCsv } from './DataTable';
+import DataTable from './DataTable';
+import { BANDS, DISTANCE, band } from './CompetitorTables';
 import Select from '../components/Select';
 import { api } from './seoApi';
 
@@ -139,43 +140,22 @@ export function AnalysisStats({ rows, status, isChosen, metrics }) {
 // ---------------------------------------------------------------------------------------------------------------------------------- the table
 export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearCount, allCount, radius, placeName, isChosen, metrics, reload, onChoose, onRemove, onAdd, onDetail, onKeywords, addBusy, addError, onFindMaps, findBusy }) {
   const [toast, toastNode] = useToast();
-  const [q, setQ] = useState('');
-  const [statusF, setStatusF] = useState('');
-  const [sortBy, setSortBy] = useState('match');
   const [sel, setSel] = useState(() => new Set());
   const [running, setRunning] = useState({}); // host -> 'running' | 'failed'
-  const [menu, setMenu] = useState(null);
   const [adding, setAdding] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
-  const box = useRef(null);
-
-  useEffect(() => {
-    if (menu == null) return undefined;
-    const on = (e) => { if (!e.target.closest?.('[data-menu]')) setMenu(null); };
-    document.addEventListener('mousedown', on);
-    return () => document.removeEventListener('mousedown', on);
-  }, [menu]);
+  const viewRef = useRef([]); // the rows the table shows now (filtered, sorted): the header checkbox selects these
+  const view = viewRef.current;
 
   const queue = auto?.prog?.queue || [];
   const failedBy = auto?.prog?.failed || {};
   const st = (c) => running[c.host] || (auto?.prog?.running && auto.prog.current === c.host ? 'running' : auto?.prog?.running && queue.includes(c.host) ? 'queued' : metrics[c.host]?.status || 'pending');
-  const m = (c) => metrics[c.host] || {};
-  const value = {
-    match: (c) => c.maps?.relevance?.score ?? -1, da: (c) => m(c).da ?? -1, keywords: (c) => m(c).keywords ?? -1, traffic: (c) => m(c).traffic ?? -1,
-    distance: (c) => (c.maps?.distance_m == null ? 1e9 : -c.maps.distance_m), name: (c) => c.name.toLowerCase(),
-  };
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const f = rows.filter(c => (!needle || `${c.name} ${c.host}`.toLowerCase().includes(needle)) && (!statusF || (statusF === 'chosen' ? isChosen(c) : statusF === 'notchosen' ? !isChosen(c) : st(c) === statusF)));
-    const v = value[sortBy];
-    return [...f].sort((a, c2) => (sortBy === 'name' ? v(a).localeCompare(v(c2)) : v(c2) - v(a)));
-  }, [rows, q, statusF, sortBy, metrics, running]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pager = usePager(shown, { size: 10, resetKey: `${q}|${statusF}|${sortBy}|${scope}` });
-  const toggle = (h) => setSel(s => { const n = new Set(s); n.has(h) ? n.delete(h) : n.add(h); return n; });
-  const pageAll = pager.rows.length > 0 && pager.rows.every(c => sel.has(c.key));
-  const picked = rows.filter(c => sel.has(c.key));
+  const data = useMemo(() => rows.map(c => ({ ...c, m: metrics[c.host] || {}, status: st(c), chosen: isChosen(c) })), [rows, metrics, running, auto?.prog, isChosen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const picked = data.filter(c => sel.has(c.key));
+  const toggle = (k) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const allOn = view.length > 0 && view.every(c => sel.has(c.key));
 
   const analyze = async (list) => {
     const todo = list.filter(c => c.host && running[c.host] !== 'running');
@@ -195,84 +175,73 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const choose = async (list, on) => { for (const c of list) await onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, on); setSel(new Set()); };
   const remove = async () => { for (const c of picked.filter(x => x.reg)) await onRemove(c.reg); setSel(new Set()); setConfirm(false); };
   const submitAdd = async (e) => { e.preventDefault(); if (await onAdd(url.trim(), name.trim())) { setUrl(''); setName(''); setAdding(false); } };
-  const exportCsv = () => downloadCsv('competitors', ['Competitor', 'Domain', 'Location', 'Distance (m)', 'Match score', 'Domain Authority', 'Organic keywords', 'Organic traffic (est.)', 'Referring domains', 'Selected', 'Status'],
-    shown.map(c => [c.name, c.host, c.maps?.address || '', c.maps?.distance_m ?? '', c.maps?.relevance?.score ?? '', m(c).da ?? '', m(c).keywords ?? '', m(c).traffic ?? '', m(c).rd ?? '', isChosen(c) ? 'yes' : 'no', STATUS[st(c)]?.[0] || st(c)]));
   const city = (c) => (c.maps?.address || '').split(',').slice(-3, -1).map(x => x.trim()).filter(Boolean).join(', ') || (c.maps?.address || '').split(',')[0];
+  const Icon = ({ label, onClick, children, disabled, tone = 'text-slate-500 hover:text-indigo-700' }) => <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className={`p-1.5 cursor-pointer disabled:opacity-30 disabled:cursor-default ${tone}`}>{children}</button>;
+
+  const cols = [
+    { id: 'sel', header: <input type="checkbox" aria-label="Select every row shown" checked={allOn} onChange={e => setSel(s => { const n = new Set(s); view.forEach(c => (e.target.checked ? n.add(c.key) : n.delete(c.key))); return n; })} className="accent-indigo-600" />, csv: false,
+      cell: c => <input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.key)} onChange={() => toggle(c.key)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
+    { id: 'name', header: 'Competitor', first: 'asc', value: c => c.name, className: 'px-3 py-2.5 min-w-[210px]',
+      cell: c => <button type="button" onClick={() => onDetail(c)} className="flex items-center gap-2.5 text-left cursor-pointer group max-w-[280px]"><Logo host={c.host} name={c.name} /><span className="min-w-0"><span className="block font-semibold text-slate-900 group-hover:text-indigo-700 truncate">{c.name}</span>{c.chosen && <span className="text-11 font-semibold text-emerald-700">Selected</span>}</span></button> },
+    { id: 'domain', header: 'Domain', value: c => c.host, cell: c => (c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline inline-flex items-center gap-1">{c.host}<ExternalLink size={11} /></a> : <span className="text-slate-300">no website</span>) },
+    { id: 'location', header: 'Location', value: c => city(c), className: 'px-3 py-2.5 max-w-[200px]', tip: { what: 'Where the business is, from its Google Maps address.' }, cell: c => <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-slate-400 shrink-0" /><span className="truncate" title={c.maps?.address || ''}>{city(c) || '—'}</span></span> },
+    { id: 'dist', header: 'Distance', right: true, value: c => c.maps?.distance_m ?? null, tip: { what: 'How far its Google Maps pin is from the place you are searching.' }, cell: c => (c.maps?.distance_m == null ? <span className="text-slate-300">—</span> : c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`) },
+    { id: 'da', header: 'DA', value: c => c.m.da ?? null, first: 'desc', tip: { what: 'Domain Authority, 0 to 100 (Moz).' }, className: 'px-3 py-2.5 text-center', thClass: 'px-3 py-3', cell: c => <span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(c.m.da)}`}>{c.m.da ?? '—'}</span> },
+    { id: 'kw', header: 'Ranking keywords', right: true, first: 'desc', value: c => c.m.keywords ?? null, tip: { what: 'How many keywords it ranks for in a ranked-keywords read, for the market below.' } },
+    { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: c => c.m.top3 ?? null, tip: { what: 'Keywords where it holds one of the first three positions.' } },
+    { id: 'top10', header: 'Top 10', right: true, first: 'desc', value: c => c.m.top10 ?? null, tip: { what: 'Keywords on page 1 of Google.' } },
+    { id: 'avg', header: 'Avg position', right: true, value: c => c.m.avg_position ?? null, cell: c => (c.m.avg_position == null ? '—' : `#${c.m.avg_position}`) },
+    { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: c => c.m.traffic ?? null, tip: { what: 'Estimated organic visits a month from the keywords it ranks for.' }, cell: c => kfmt(c.m.traffic) },
+    { id: 'rd', header: 'Ref. domains', right: true, first: 'desc', value: c => c.m.rd ?? null, cell: c => kfmt(c.m.rd), tip: { what: 'Websites linking to it (Moz).' } },
+    { id: 'match', header: 'Match', first: 'desc', value: c => c.maps?.relevance?.score ?? null, tip: { what: 'How well it matches your business on nine factors. Open the profile for the breakdown.' },
+      cell: c => (!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <span className="inline-flex items-center gap-1.5" title={c.maps.relevance.label_text}><b className="tabular-nums">{c.maps.relevance.score}</b><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span> : <span className="text-slate-300">—</span>) },
+    { id: 'status', header: 'Status', value: c => (STATUS[c.status] || STATUS.pending)[0], className: 'px-3 py-2.5 whitespace-nowrap',
+      cell: c => <span title={failedBy[c.host] || undefined}><Badge tone={failedBy[c.host] && c.status !== 'analyzed' ? 'amber' : (STATUS[c.status] || STATUS.pending)[1]}>{c.status === 'running' && <Loader2 size={11} className="animate-spin" />}{(STATUS[c.status] || STATUS.pending)[0]}</Badge></span> },
+    { id: 'chosen', header: 'Selected', value: c => (c.chosen ? 'Yes' : 'No'), hide: true },
+    { id: 'actions', header: 'Actions', right: true, csv: false, className: 'px-2 py-1.5 text-right whitespace-nowrap',
+      cell: c => (
+        <span className="inline-flex items-center">
+          <Icon label={`View ${c.name}`} onClick={() => onDetail(c)}><Eye size={16} /></Icon>
+          <Icon label="Analyze now: Domain Authority and ranked keywords" disabled={!c.host || c.status === 'running'} onClick={() => analyze([c])}><BarChart3 size={16} /></Icon>
+          <Icon label="Its keywords" onClick={() => onKeywords(c)}><Layers size={16} /></Icon>
+          <Icon label={c.chosen ? 'Remove from selected competitors' : 'Select as a competitor'} onClick={() => choose([c], !c.chosen)} tone={c.chosen ? 'text-emerald-600 hover:text-emerald-800' : 'text-slate-500 hover:text-emerald-700'}><CheckCircle2 size={16} /></Icon>
+          {c.reg && <Icon label="Remove this competitor" onClick={() => { setSel(new Set([c.key])); setConfirm(true); }} tone="text-slate-400 hover:text-rose-600"><Trash2 size={16} /></Icon>}
+        </span>) },
+  ];
+  const filters = [
+    { id: 'status', label: 'Status', options: [['analyzed', 'Analyzed'], ['partial', 'Partly read'], ['pending', 'Pending'], ['running', 'Analyzing'], ['queued', 'Waiting']], test: (c, v) => c.status === v },
+    { id: 'chosen', label: 'Selection', options: [['yes', 'Selected'], ['no', 'Not selected']], test: (c, v) => (v === 'yes' ? c.chosen : !c.chosen) },
+    { id: 'match', label: 'Match', options: [['direct', 'Direct competitor'], ['related', 'Related business'], ['unrelated', 'Not a competitor']], test: (c, v) => c.maps?.relevance?.label === v },
+    { id: 'dist', label: 'Distance', options: DISTANCE, test: (c, v) => c.maps?.distance_m != null && c.maps.distance_m <= Number(v) },
+    { id: 'da', label: 'Authority', options: [['strong', 'Strong (60+)'], ['mid', 'Medium (30 to 59)'], ['weak', 'Weak (under 30)'], ['unread', 'Not read']], test: (c, v) => (v === 'unread' ? c.m.da == null : c.m.da != null && (v === 'strong' ? c.m.da >= 60 : v === 'mid' ? c.m.da >= 30 && c.m.da < 60 : c.m.da < 30)) },
+    { id: 'rank', label: 'Rankings', options: [['top3', 'Has top 3 keywords'], ['top10', 'Has page 1 keywords'], ['none', 'No ranking keywords read']], test: (c, v) => (v === 'none' ? !c.m.keywords : v === 'top3' ? (c.m.top3 || 0) > 0 : (c.m.top10 || 0) > 0) },
+  ];
+  const toolbar = (
+    <>
+      <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden" role="group" aria-label="Where">
+        {[['near', `Within ${radius >= 1000 ? `${Math.round(radius / 100) / 10} km` : `${radius} m`} of ${placeName || 'the place'} (${nearCount})`], ['all', `Everywhere (${allCount})`]].map(([k, l]) => <button key={k} type="button" aria-pressed={scope === k} onClick={() => setScope(k)} className={`h-8 px-3 text-12 font-medium cursor-pointer ${scope === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}
+      </div>
+      <Button size="sm" icon={MapPin} busy={findBusy} onClick={onFindMaps} title="Find more competitors on Google Maps around the place">Find more</Button>
+      <Button size="sm" icon={Plus} variant="primary" onClick={() => setAdding(a => !a)} aria-expanded={adding}>Add competitor</Button>
+    </>
+  );
 
   return (
-    <div className="space-y-3" ref={box}>
-      <div className="rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="px-4 py-3 flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[220px] max-w-md"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search competitor by name or domain…" aria-label="Search competitors" className="h-10 w-full rounded-lg ring-1 ring-inset ring-slate-300 pl-9 pr-8 text-13 focus:ring-2 focus:ring-indigo-500 outline-none" />{q && <button type="button" aria-label="Clear" onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><X size={13} /></button>}</div>
-          <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden" role="group" aria-label="Where">
-            {[['near', `Within ${radius >= 1000 ? `${Math.round(radius / 100) / 10} km` : `${radius} m`} of ${placeName || 'the place'} (${nearCount})`], ['all', `Everywhere (${allCount})`]].map(([k, l]) => <button key={k} type="button" aria-pressed={scope === k} onClick={() => setScope(k)} className={`h-10 px-3 text-12.5 font-medium cursor-pointer ${scope === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}
-          </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Select value={statusF} onChange={e => setStatusF(e.target.value)} aria-label="Status" className="h-10 w-40 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13 text-left"><option value="">All status</option><option value="analyzed">Analyzed</option><option value="partial">Partly read</option><option value="pending">Pending</option><option value="chosen">Selected</option><option value="notchosen">Not selected</option></Select>
-            <Select value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="Sort by" className="h-10 w-52 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13 text-left">{[['match', 'Sort by: Match score'], ['da', 'Sort by: Domain Authority'], ['keywords', 'Sort by: Organic keywords'], ['traffic', 'Sort by: Organic traffic'], ['distance', 'Sort by: Distance'], ['name', 'Sort by: Name']].map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
-            <Button icon={MapPin} busy={findBusy} onClick={onFindMaps} title="Find more competitors on Google Maps around the place">Find more</Button>
-            <Button icon={Plus} variant="primary" onClick={() => setAdding(a => !a)} aria-expanded={adding}>Add competitor</Button>
-            <Button icon={BarChartIcon} disabled={!shown.length} onClick={exportCsv}>Export</Button>
-          </div>
-        </div>
-        {adding && (
-          <form onSubmit={submitAdd} className="px-4 pb-3 flex flex-wrap items-center gap-2">
-            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Website or domain, e.g. competitor.com" aria-label="Competitor website" className="h-10 flex-1 min-w-[220px] rounded-lg ring-1 ring-inset ring-slate-300 px-3 text-13 focus:ring-2 focus:ring-indigo-500 outline-none" />
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (optional)" aria-label="Competitor name" className="h-10 w-52 rounded-lg ring-1 ring-inset ring-slate-300 px-3 text-13 focus:ring-2 focus:ring-indigo-500 outline-none" />
-            <Button type="submit" variant="primary" busy={addBusy} disabled={url.trim().length < 3}>Add</Button>
-            <Button type="button" onClick={() => setAdding(false)}>Cancel</Button>
-            {addError && <div className="w-full"><ErrorNote>{addError}</ErrorNote></div>}
-          </form>
-        )}
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-13">
-            <thead className="bg-slate-50 text-12.5 text-slate-700 border-y border-slate-200">
-              <tr>
-                <th className="pl-4 py-3 w-10"><input type="checkbox" aria-label="Select this page" checked={pageAll} onChange={e => setSel(s => { const n = new Set(s); pager.rows.forEach(c => (e.target.checked ? n.add(c.key) : n.delete(c.key))); return n; })} className="accent-indigo-600" /></th>
-                <th className="px-2 py-3 text-left font-semibold w-8">#</th><th className="px-3 py-3 text-left font-semibold">Competitor name</th><th className="px-3 py-3 text-left font-semibold">Domain</th><th className="px-3 py-3 text-left font-semibold">Location</th>
-                <th className="px-3 py-3 text-center font-semibold" title="Domain Authority (Moz)">DA</th><th className="px-3 py-3 text-right font-semibold" title="Keywords it ranks for in a ranked-keywords read">Organic keywords</th><th className="px-3 py-3 text-right font-semibold" title="Estimated organic visits a month from those keywords">Organic traffic</th><th className="px-3 py-3 text-right font-semibold" title="Websites linking to it (Moz)">Ref. domains</th>
-                <th className="px-3 py-3 text-left font-semibold">Match</th><th className="px-3 py-3 text-left font-semibold">Status</th><th className="px-3 py-3 text-right font-semibold pr-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {pager.rows.map((c, i) => {
-                const s = st(c), x = m(c), [sl, tone] = STATUS[s] || STATUS.pending;
-                return (
-                  <tr key={c.key} className={sel.has(c.key) ? 'bg-indigo-50/50' : isChosen(c) ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-slate-50'}>
-                    <td className="pl-4 py-3"><input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.key)} onChange={() => toggle(c.key)} className="accent-indigo-600" /></td>
-                    <td className="px-2 py-3 tabular-nums text-slate-500">{(pager.page - 1) * pager.size + i + 1}</td>
-                    <td className="px-3 py-3 min-w-[210px]"><button type="button" onClick={() => onDetail(c)} className="flex items-center gap-2.5 text-left cursor-pointer group max-w-[280px]"><Logo host={c.host} name={c.name} /><span className="min-w-0"><span className="block font-semibold text-slate-900 group-hover:text-indigo-700 truncate">{c.name}</span>{isChosen(c) && <span className="text-11 font-semibold text-emerald-700">Selected</span>}</span></button></td>
-                    <td className="px-3 py-3">{c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline inline-flex items-center gap-1">{c.host}<ExternalLink size={11} /></a> : <span className="text-slate-300">no website</span>}</td>
-                    <td className="px-3 py-3 text-slate-600 max-w-[200px]"><span className="inline-flex items-center gap-1"><MapPin size={12} className="text-slate-400 shrink-0" /><span className="truncate" title={c.maps?.address || ''}>{city(c) || '—'}</span></span>{c.maps?.distance_m != null && <span className="block text-11.5 text-slate-400">{c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`} away</span>}</td>
-                    <td className="px-3 py-3 text-center"><span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(x.da)}`}>{x.da ?? '—'}</span></td>
-                    <td className="px-3 py-3 text-right tabular-nums">{num(x.keywords)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{kfmt(x.traffic)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{kfmt(x.rd)}</td>
-                    <td className="px-3 py-3">{!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <span className="inline-flex items-center gap-1.5" title={c.maps.relevance.label_text}><span className="font-semibold tabular-nums">{c.maps.relevance.score}</span><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span> : <span className="text-slate-300">—</span>}</td>
-                    <td className="px-3 py-3 whitespace-nowrap" title={failedBy[c.host] || undefined}><Badge tone={failedBy[c.host] && s !== 'analyzed' ? 'amber' : tone}>{s === 'running' && <Loader2 size={11} className="animate-spin" />}{sl}</Badge></td>
-                    <td className="px-3 py-3 pr-4 text-right whitespace-nowrap relative" data-menu>
-                      <button type="button" aria-label={`View ${c.name}`} title="View its profile" onClick={() => onDetail(c)} className="p-1.5 text-slate-500 hover:text-indigo-700 cursor-pointer"><Eye size={16} /></button>
-                      <button type="button" aria-label={`More actions for ${c.name}`} aria-expanded={menu === c.key} onClick={() => setMenu(menu === c.key ? null : c.key)} className="p-1.5 text-slate-500 hover:text-slate-900 cursor-pointer"><MoreHorizontal size={16} /></button>
-                      {menu === c.key && (
-                        <div role="menu" className="absolute right-3 top-full z-20 mt-0.5 w-52 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1 text-left">
-                          <button role="menuitem" type="button" disabled={!c.host || s === 'running'} onClick={() => { setMenu(null); analyze([c]); }} className="block w-full text-left px-3 py-2 text-13 hover:bg-slate-50 disabled:text-slate-300 cursor-pointer">Analyze now</button>
-                          <button role="menuitem" type="button" onClick={() => { setMenu(null); onKeywords(c); }} className="block w-full text-left px-3 py-2 text-13 hover:bg-slate-50 cursor-pointer">Its keywords</button>
-                          <button role="menuitem" type="button" onClick={() => { setMenu(null); choose([c], !isChosen(c)); }} className="block w-full text-left px-3 py-2 text-13 hover:bg-slate-50 cursor-pointer">{isChosen(c) ? 'Remove from selected' : 'Select it'}</button>
-                          {c.host && <a role="menuitem" href={`https://${c.host}`} target="_blank" rel="noreferrer" onClick={() => setMenu(null)} className="block px-3 py-2 text-13 hover:bg-slate-50">Open website</a>}
-                          {c.reg && <button role="menuitem" type="button" onClick={() => { setMenu(null); onRemove(c.reg); }} className="block w-full text-left px-3 py-2 text-13 text-rose-700 hover:bg-rose-50 cursor-pointer">Remove competitor</button>}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {!pager.rows.length && <tr><td colSpan={12} className="px-5 py-12 text-center text-13 text-slate-500">{rows.length ? 'No competitor matches these filters.' : scope === 'near' ? `No competitor found within ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} of ${placeName || 'this place'}. Try “Everywhere”, a larger distance or Find more.` : 'No competitors yet. Find them on Google Maps or add one by its website.'}</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex flex-wrap items-center px-4 py-2 border-t border-slate-100"><div className="text-13 text-slate-600">Showing {shown.length ? `${(pager.page - 1) * pager.size + 1} – ${Math.min(pager.page * pager.size, shown.length)}` : 0} of {shown.length} competitors</div><div className="ml-auto"><Pager p={pager} label="competitors" /></div></div>
-      </div>
+    <div className="space-y-3">
+      {adding && (
+        <form onSubmit={submitAdd} className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-2">
+          <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Website or domain, e.g. competitor.com" aria-label="Competitor website" className="h-10 flex-1 min-w-[220px] rounded-lg ring-1 ring-inset ring-slate-300 px-3 text-13 focus:ring-2 focus:ring-indigo-500 outline-none" />
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (optional)" aria-label="Competitor name" className="h-10 w-52 rounded-lg ring-1 ring-inset ring-slate-300 px-3 text-13 focus:ring-2 focus:ring-indigo-500 outline-none" />
+          <Button type="submit" variant="primary" busy={addBusy} disabled={url.trim().length < 3}>Add</Button>
+          <Button type="button" onClick={() => setAdding(false)}>Cancel</Button>
+          {addError && <div className="w-full"><ErrorNote>{addError}</ErrorNote></div>}
+        </form>
+      )}
+      <DataTable columns={cols} rows={data} rowKey={c => c.key} filters={filters} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1250} label="competitors"
+        exportName="competitors" searchPlaceholder="Search competitor by name or domain" onState={s => { viewRef.current = s.rows; }}
+        rowClass={c => (sel.has(c.key) ? 'bg-indigo-50/50' : c.chosen ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-slate-50')}
+        empty={rows.length ? 'No competitor matches these filters.' : scope === 'near' ? `No competitor found within ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} of ${placeName || 'this place'}. Try Everywhere, a larger distance or Find more.` : 'No competitors yet. Find them on Google Maps or add one by its website.'} />
+      <p className="text-12 text-slate-500">Ranking keywords, Top 3, Top 10, average position and traffic are for the market of this project{rating?.market ? ` (${rating.market})` : ''}, read from each competitor's ranked keywords. Distance and Match are for {placeName || 'the chosen place'}.</p>
 
       {sel.size > 0 && (
         <div className="sticky bottom-3 z-20"><div role="toolbar" aria-label="Selected competitors" className="rounded-xl bg-white shadow-xl ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
@@ -314,34 +283,60 @@ export function TrafficTab({ rows, analysis }) {
   const own = analysis.own;
   const list = rows.filter(c => c.host);
   const mk = (key) => [...(own ? [{ host: own.domain, name: own.domain, you: true, v: own[key] }] : []), ...list.map(c => ({ host: c.host, name: c.name, v: analysis.metrics[c.host]?.[key] ?? null }))].sort((a, c) => (c.v ?? -1) - (a.v ?? -1));
+  const data = useMemo(() => [...(own ? [{ host: own.domain, name: own.domain, you: true, ...own }] : []), ...list.map(c => ({ host: c.host, name: c.name, ...(analysis.metrics[c.host] || {}) }))], [own, rows, analysis.metrics]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = unread(analysis, rows);
+  const cols = [
+    { id: 'site', header: 'Site', first: 'asc', value: r => r.host, cell: r => <span className="font-medium">{r.host}{r.you && <span className="ml-2 text-11 font-semibold text-emerald-700">You</span>}</span> },
+    { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: r => r.traffic ?? null, cell: r => kfmt(r.traffic), tip: { what: 'Estimated visits a month from its ranked keywords. Yours: Google clicks in the last 28 days.' } },
+    { id: 'keywords', header: 'Ranking keywords', right: true, first: 'desc', value: r => r.keywords ?? null, cell: r => num(r.keywords) },
+    { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: r => r.top3 ?? null },
+    { id: 'top10', header: 'Top 10', right: true, first: 'desc', value: r => r.top10 ?? null },
+    { id: 'avg', header: 'Avg position', right: true, value: r => r.avg_position ?? null, cell: r => (r.avg_position == null ? '—' : `#${r.avg_position}`) },
+    { id: 'da', header: 'DA', right: true, first: 'desc', value: r => r.da ?? null },
+    { id: 'read', header: 'Keywords read', value: r => r.kw_read_at || '', cell: r => (r.kw_read_at ? new Date(r.kw_read_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : r.you ? 'Search Console' : <span className="text-slate-400">not read</span>) },
+  ];
+  const filters = [
+    { id: 'read', label: 'Keywords', options: [['read', 'Read'], ['unread', 'Not read']], test: (r, v) => (v === 'read' ? r.keywords != null : r.keywords == null) },
+    { id: 'rank', label: 'Rankings', options: [['top3', 'Has top 3'], ['top10', 'Has page 1']], test: (r, v) => (v === 'top3' ? (r.top3 || 0) > 0 : (r.top10 || 0) > 0) },
+  ];
   return (
     <div className="space-y-4">
-      {n > 0 && <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-12.5 text-amber-900">{n} competitor{n === 1 ? ' has' : 's have'} not been analyzed yet, so {n === 1 ? 'its' : 'their'} traffic is “not read”. Select them on the Competitors tab and press Analyze selected.</div>}
+      {n > 0 && <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-12.5 text-amber-900">{n} competitor{n === 1 ? ' has' : 's have'} not been analyzed yet, so {n === 1 ? 'its' : 'their'} traffic is “not read”. They are analyzed automatically; you can also select them on the Competitors tab and press Analyze selected.</div>}
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Estimated organic traffic" sub="Visits a month from the keywords each competitor ranks for (an estimate from its ranked-keywords read). Yours is Google clicks in the last 28 days from Search Console."><Bars rows={mk('traffic')} /></Panel>
-        <Panel title="Organic keywords" sub="How many keywords each one ranks for (yours: your tracked keywords that rank)."><Bars rows={mk('keywords')} fmt={num} color="#0ea5e9" /></Panel>
+        <Panel title="Estimated organic traffic" sub="Visits a month from the keywords each competitor ranks for. Yours is Google clicks in the last 28 days from Search Console."><Bars rows={mk('traffic')} /></Panel>
+        <Panel title="Ranking keywords" sub="How many keywords each one ranks for (yours: your tracked keywords that rank)."><Bars rows={mk('keywords')} fmt={num} color="#0ea5e9" /></Panel>
         <Panel title="Keywords in the top 3" sub="Keywords where it holds one of the first three positions."><Bars rows={mk('top3')} fmt={num} color="#10b981" /></Panel>
         <Panel title="Keywords in the top 10" sub="Keywords on page 1 of Google."><Bars rows={mk('top10')} fmt={num} color="#f59e0b" /></Panel>
       </div>
+      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="traffic-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
     </div>
   );
 }
 
 export function BacklinkTab({ rows, analysis }) {
   const own = analysis.own;
-  const data = [...(own ? [{ host: own.domain, name: own.domain, you: true, ...own }] : []), ...rows.filter(c => c.host).map(c => ({ host: c.host, name: c.name, ...(analysis.metrics[c.host] || {}) }))];
+  const data = useMemo(() => [...(own ? [{ host: own.domain, name: own.domain, you: true, ...own }] : []), ...rows.filter(c => c.host).map(c => ({ host: c.host, name: c.name, ...(analysis.metrics[c.host] || {}) }))], [own, rows, analysis.metrics]);
   const bar = (key) => data.map(r => ({ host: r.host, name: r.name, you: r.you, v: r[key] ?? null })).sort((a, c) => (c.v ?? -1) - (a.v ?? -1));
+  const cols = [
+    { id: 'site', header: 'Site', first: 'asc', value: r => r.host, cell: r => <span className="font-medium">{r.host}{r.you && <span className="ml-2 text-11 font-semibold text-emerald-700">You</span>}</span> },
+    { id: 'name', header: 'Name', value: r => r.name, hide: true },
+    { id: 'da', header: 'Domain Authority', first: 'desc', value: r => r.da ?? null, className: 'px-3 py-2.5 text-center', cell: r => <span className={`inline-flex min-w-[34px] h-6 items-center justify-center rounded-md px-2 font-bold ${daTone(r.da)}`}>{r.da ?? '—'}</span> },
+    { id: 'pa', header: 'Page Authority', right: true, first: 'desc', value: r => r.pa ?? null },
+    { id: 'rd', header: 'Referring domains', right: true, first: 'desc', value: r => r.rd ?? null, cell: r => num(r.rd) },
+    { id: 'spam', header: 'Spam score', right: true, value: r => r.spam ?? null, cell: r => (r.spam == null ? '—' : `${r.spam}%`) },
+    { id: 'read', header: 'Last read', value: r => r.site_read_at || '', cell: r => (r.site_read_at ? new Date(r.site_read_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : <span className="text-slate-400">not read</span>) },
+  ];
+  const filters = [
+    { id: 'da', label: 'Authority', options: [['strong', 'Strong (60+)'], ['mid', 'Medium (30 to 59)'], ['weak', 'Weak (under 30)'], ['unread', 'Not read']], test: (r, v) => (v === 'unread' ? r.da == null : r.da != null && (v === 'strong' ? r.da >= 60 : v === 'mid' ? r.da >= 30 && r.da < 60 : r.da < 30)) },
+    { id: 'spam', label: 'Spam score', options: [['high', '10% and over'], ['low', 'Under 10%']], test: (r, v) => r.spam != null && (v === 'high' ? r.spam >= 10 : r.spam < 10) },
+  ];
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Domain Authority" sub="How strong each site is, 0 to 100 (Moz, through Apify)."><Bars rows={bar('da')} fmt={num} color="#8b5cf6" /></Panel>
         <Panel title="Referring domains" sub="How many different websites link to each site (Moz)."><Bars rows={bar('rd')} fmt={num} color="#6366f1" /></Panel>
       </div>
-      <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-x-auto">
-        <table className="w-full text-13"><thead className="bg-slate-50 text-12.5 text-slate-600"><tr><th className="px-4 py-2.5 text-left font-semibold">Site</th><th className="px-3 py-2.5 text-center font-semibold">DA</th><th className="px-3 py-2.5 text-center font-semibold">Page Authority</th><th className="px-3 py-2.5 text-right font-semibold">Referring domains</th><th className="px-3 py-2.5 text-center font-semibold">Spam score</th><th className="px-3 py-2.5 text-left font-semibold">Read</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{data.map(r => <tr key={r.host} className={r.you ? 'bg-emerald-50/50' : ''}><td className="px-4 py-2.5 font-medium">{r.host}{r.you && <span className="ml-2 text-11 font-semibold text-emerald-700">You</span>}</td><td className="px-3 py-2.5 text-center"><span className={`inline-flex min-w-[34px] h-6 items-center justify-center rounded-md px-2 font-bold ${daTone(r.da)}`}>{r.da ?? '—'}</span></td><td className="px-3 py-2.5 text-center tabular-nums">{r.pa ?? '—'}</td><td className="px-3 py-2.5 text-right tabular-nums">{num(r.rd)}</td><td className="px-3 py-2.5 text-center tabular-nums">{r.spam == null ? '—' : `${r.spam}%`}</td><td className="px-3 py-2.5 text-12 text-slate-500">{r.site_read_at ? new Date(r.site_read_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'not read'}</td></tr>)}</tbody></table>
-      </div>
+      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} initialSort={{ key: 'da', dir: 'desc' }} exportName="backlink-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
       <p className="text-12 text-slate-500">The links themselves, the sites that link to a competitor and not to you, are on the <Link className="text-indigo-600 underline" to="/backlinks/overview">Backlinks</Link> page (Compare).</p>
     </div>
   );
@@ -349,23 +344,23 @@ export function BacklinkTab({ rows, analysis }) {
 
 export function TopPagesTab({ b, rows }) {
   const [list, setList] = useState(null);
-  const [dom, setDom] = useState('');
   const domains = rows.map(c => c.host).filter(Boolean);
-  useEffect(() => { let on = true; api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/pages`, { method: 'POST', body: { domains } }).then(r => on && setList(r.pages)).catch(() => on && setList([])); return () => { on = false; }; }, [b.id, domains.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shown = (list || []).filter(p => !dom || p.domain === dom);
-  const pager = usePager(shown, { size: 20, resetKey: dom });
+  useEffect(() => { let on = true; api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/pages`, { method: 'POST', body: { domains } }).then(r => on && setList(r.pages || [])).catch(() => on && setList([])); return () => { on = false; }; }, [b.id, domains.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!list) return <div className="flex items-center justify-center gap-2 py-14 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Loading…</div>;
-  return (
-    <div className="rounded-xl bg-white ring-1 ring-slate-200">
-      <div className="px-4 pt-4 flex flex-wrap items-center gap-3"><div><h3 className="text-15 font-semibold text-slate-900">Top pages</h3><p className="text-12.5 text-slate-500">The pages that bring each competitor its organic traffic, from its ranked-keywords read.</p></div>
-        <Select value={dom} onChange={e => setDom(e.target.value)} aria-label="Competitor" className="ml-auto h-9 w-52 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13 text-left"><option value="">All competitors</option>{[...new Set(list.map(p => p.domain))].map(d => <option key={d} value={d}>{d}</option>)}</Select>
-        <Button icon={BarChartIcon} disabled={!shown.length} onClick={() => downloadCsv('competitor-top-pages', ['Competitor', 'Page', 'Keywords', 'Est. traffic', 'Best position', 'Top keyword'], shown.map(p => [p.domain, p.url, p.keywords, p.traffic, p.best ?? '', p.top_keyword || '']))}>Export</Button></div>
-      <div className="overflow-x-auto mt-3"><table className="w-full text-13"><thead className="bg-slate-50 text-12.5 text-slate-600"><tr><th className="px-4 py-2.5 text-left font-semibold">Page</th><th className="px-3 py-2.5 text-left font-semibold">Competitor</th><th className="px-3 py-2.5 text-right font-semibold">Keywords</th><th className="px-3 py-2.5 text-right font-semibold">Est. traffic</th><th className="px-3 py-2.5 text-right font-semibold">Best position</th><th className="px-3 py-2.5 text-left font-semibold">Top keyword</th></tr></thead>
-        <tbody className="divide-y divide-slate-100">{pager.rows.map(p => <tr key={p.url}><td className="px-4 py-2.5 max-w-[360px]"><a href={p.url} target="_blank" rel="noreferrer" title={p.url} className="text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{p.url.replace(/^https?:\/\/(www\.)?/, '')}</span><ExternalLink size={11} className="shrink-0" /></a></td><td className="px-3 py-2.5 text-slate-600">{p.domain}</td><td className="px-3 py-2.5 text-right tabular-nums">{num(p.keywords)}</td><td className="px-3 py-2.5 text-right tabular-nums">{kfmt(p.traffic)}</td><td className="px-3 py-2.5 text-right tabular-nums">#{p.best ?? '—'}</td><td className="px-3 py-2.5 text-slate-700">{p.top_keyword || '—'}</td></tr>)}
-          {!pager.rows.length && <tr><td colSpan={6} className="px-4 py-12 text-center text-13 text-slate-500">No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here.</td></tr>}</tbody></table></div>
-      <div className="border-t border-slate-100"><Pager p={pager} label="pages" /></div>
-    </div>
-  );
+  const cols = [
+    { id: 'url', header: 'Page', first: 'asc', value: p => p.url, className: 'px-3 py-2.5 max-w-[360px]', cell: p => <a href={p.url} target="_blank" rel="noreferrer" title={p.url} className="text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{p.url.replace(/^https?:\/\/(www\.)?/, '')}</span><ExternalLink size={11} className="shrink-0" /></a> },
+    { id: 'domain', header: 'Competitor', value: p => p.domain },
+    { id: 'keywords', header: 'Keywords', right: true, first: 'desc', value: p => p.keywords },
+    { id: 'traffic', header: 'Est. traffic', right: true, first: 'desc', value: p => p.traffic, cell: p => kfmt(p.traffic) },
+    { id: 'best', header: 'Best position', right: true, value: p => p.best ?? null, cell: p => (p.best ? `#${p.best}` : '—') },
+    { id: 'top', header: 'Top keyword', value: p => p.top_keyword || '' },
+  ];
+  const filters = [
+    { id: 'domain', label: 'Competitor', options: [...new Set(list.map(p => p.domain))].map(d => [d, d]), test: (p, v) => p.domain === v },
+    { id: 'best', label: 'Best position', options: BANDS.filter(x => x[0] !== 'none'), test: (p, v) => band(p.best) === v },
+    { id: 'traffic', label: 'Traffic', options: [['100', '100+ a month'], ['1000', '1,000+ a month']], test: (p, v) => p.traffic >= Number(v) },
+  ];
+  return <DataTable columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />;
 }
 
 export { hostOf };
