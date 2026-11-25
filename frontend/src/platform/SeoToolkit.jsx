@@ -5,6 +5,7 @@ import {
   AlertTriangle, CheckCircle2, ChevronRight, Minus, TrendingUp, Trophy, Globe, HelpCircle, Lightbulb, Bot, Download, Loader2, X
 } from 'lucide-react';
 import { SeoShell, Card, Badge, Button, Modal, ErrorNote, ScoreRing, scoreLevel, useAction, useToast, useModulePath, Sk, SkStats, SkTable, SkCard } from './SeoUi';
+import PlacePicker from './PlacePicker';
 import { api, useApi, fmt, fmtDateTime } from './seoApi';
 import DataTable, { usePager, Pager, useSorted, SortTh, downloadCsv } from './DataTable';
 import Select from '../components/Select';
@@ -409,21 +410,11 @@ function KeywordOverview({ b }) {
   const [place, setPlace] = useState(''); // location filter: '' = the whole country
   const [country, setCountry] = useState(''); // '' = the project's own country
   const [chosen, setChosen] = useState([]); // target areas picked from the map search: [{ name }], up to five; none means the whole country
-  const [typed, setTyped] = useState('');
-  const [found, setFound] = useState([]);
-  const [findErr, setFindErr] = useState('');
   const countriesApi = useApi('/discover/countries');
   const home = b.country || 'IN';
   const activeCountry = country || home;
-  const search = (v) => {
-    setTyped(v); setFindErr('');
-    if (v.trim().length < 2) { setFound([]); return; }
-    api(`/businesses/${b.id}/keyword-workspace/area-search?q=${encodeURIComponent(v.trim())}&country=${activeCountry}`).then(r => setFound(r.results || [])).catch(e => setFindErr(e.message || 'The map service did not answer.'));
-  };
   const namesOf = (l) => l.map(x => x.label || x.name); // the full Google Maps line ("Baner, Pune, Maharashtra, India") is what Google Ads is asked for, so a name used in several places is the right one
   const rerun = (names, c) => { if (data || q.trim().length > 1) go(data?.keyword ?? q, names, c); };
-  const pickArea = (x) => { const next = chosen.some(e => e.name === x.name) ? chosen : [...chosen, { name: x.name, label: x.label }].slice(0, 5); setChosen(next); setTyped(''); setFound([]); rerun(namesOf(next), activeCountry); };
-  const dropArea = (name) => { const next = chosen.filter(e => e.name !== name); setChosen(next); rerun(namesOf(next), activeCountry); };
   const changeCountry = (c) => { setCountry(c); setChosen([]); rerun([], c || home); };
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
   const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); navigate({ search: new URLSearchParams({ ...Object.fromEntries(params), q: kw }).toString() }, { replace: true }); // the keyword stays in the address, so the other tab of the page opens on it
@@ -604,29 +595,15 @@ function KeywordOverview({ b }) {
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Country
             <Select value={activeCountry} onChange={e => changeCountry(e.target.value === home ? '' : e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Country">
               {(countriesApi.data || [{ code: home, name: home }]).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</Select></label>
-          <div className="relative">
-            <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={typed} onChange={e => search(e.target.value)} placeholder={chosen.length ? "Add another target area…" : "Add a target area: search Google Maps…"} aria-label="Search a target area on Google Maps" className="h-9 w-60 pl-9 pr-3 text-13 rounded-lg border border-slate-300 bg-white" />
-            {found.length > 0 && (
-              <ul className="absolute z-20 mt-1 w-80 max-h-60 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg divide-y divide-slate-100">
-                {found.map(x => <li key={x.label}><button type="button" onClick={() => pickArea(x)} className="w-full text-left px-3 py-2 text-13 hover:bg-indigo-50 cursor-pointer"><MapPin size={12} className="inline mr-1.5 text-indigo-500" />{x.label}</button></li>)}
-                <li className="px-3 py-1 text-11 text-slate-400">{found[0].source}</li>
-              </ul>)}
-            {findErr && <p className="absolute text-11.5 text-rose-600 mt-1 whitespace-nowrap">{findErr}</p>}
-          </div>
+          <PlacePicker b={{ ...b, country: activeCountry }} multiple max={5} width={250} value={chosen.map(x => ({ label: x.label || x.name }))}
+            onChange={(next) => { const n = next.map(x => ({ name: x.label, label: x.label })); setChosen(n); rerun(namesOf(n), activeCountry); }} />
           <label className="text-12 font-medium text-slate-500 flex items-center gap-1.5">Period
             <Select value={period} onChange={e => setPeriod(e.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Period">
               <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>
               {[...monthList].reverse().map(x => <option key={`${x.year}-${x.month}`} value={`${x.year}-${x.month}`}>{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {String(x.year).slice(2)}</option>)}</Select></label>
           <Button variant="primary" icon={Search} busy={busy === 'go'} disabled={q.trim().length < 2} onClick={() => go()}>Analyze</Button>
         </div>
-        {chosen.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Target areas">
-            <span className="text-12 font-medium text-slate-500 mr-1">Target areas</span>
-            {chosen.map(x => <span key={x.name} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 ring-1 ring-inset ring-indigo-200 pl-2.5 pr-1 py-0.5 text-12.5 font-medium text-indigo-800"><MapPin size={11} />{x.name}<button type="button" onClick={() => dropArea(x.name)} aria-label={`Remove ${x.name}`} className="rounded-full p-0.5 hover:bg-indigo-100 cursor-pointer"><X size={12} /></button></span>)}
-            {chosen.length > 1 && <span className="text-11.5 text-slate-500">figures are added over the {chosen.length} areas</span>}
-          </div>
-        )}
+        {chosen.length > 1 && <p className="mt-2 text-11.5 text-slate-500">The figures are added over the {chosen.length} places chosen.</p>}
         <ErrorNote>{error}</ErrorNote>
         <p className="text-11.5 text-slate-400 mt-2">Numbers come from the Google Ads Keyword Planner, for the country and the target areas chosen above (none chosen: the whole country). Costs are in the currency of the Google Ads account. It shows how often a keyword is searched and what it costs; who ranks for it is on Position Tracking and Competitors.</p>
       </Card>

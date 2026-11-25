@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Calendar, ChevronDown, MapPin, RotateCcw, Search, X } from 'lucide-react';
 import { api, useApi } from './seoApi';
-import LocationsMap from './LocationsMap';
+import PlacePicker from './PlacePicker';
 import { MAX_LOCATIONS, PRESETS, describePeriod, isDefault, resetFilter, resolveRange, setFilter, useReportFilter } from './reportFilter';
 import Select from '../components/Select';
 
@@ -14,10 +14,7 @@ export default function ReportFilterBar({ business }) {
   const f = useReportFilter();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState(f.preset === 'month' ? 'month' : f.preset === 'year' ? 'year' : f.preset === 'custom' ? 'custom' : 'presets');
-  const [typed, setTyped] = useState('');
-  const [found, setFound] = useState([]);
   const box = useRef(null);
-  const [note, setNote] = useState('');
   const places = f.locations || [];
   const countries = useApi(open ? '/discover/countries' : null);
   const now = new Date();
@@ -33,33 +30,6 @@ export default function ReportFilterBar({ business }) {
 
   const country = f.country || business?.country || 'IN';
   const countryName = (countries.data || []).find(c => c.code === f.country)?.name || f.country;
-  const search = (v) => {
-    setTyped(v); setNote('');
-    if (!business || v.trim().length < 2) { setFound([]); return; }
-    api(`/businesses/${business.id}/keyword-workspace/area-search?q=${encodeURIComponent(v.trim())}&country=${country}`).then(r => setFound(r.results || [])).catch(() => setFound([]));
-  };
-  // a chosen place needs its map point: the search already has it (OpenStreetMap) or it is looked up
-  const addPlace = async (x) => {
-    setTyped(''); setFound([]); setNote('');
-    if (places.length >= MAX_LOCATIONS || places.some(p => p.label === x.label)) return;
-    let { lat, lng } = x;
-    if (lat == null && business) {
-      const r = await api(`/businesses/${business.id}/keyword-workspace/area-pin?label=${encodeURIComponent(x.label)}&country=${country}`).catch(() => null);
-      lat = r?.pin?.lat; lng = r?.pin?.lng;
-    }
-    setFilter({ locations: [...places, { label: x.label, lat: lat ?? null, lng: lng ?? null }].slice(0, MAX_LOCATIONS) });
-  };
-  const removePlace = (label) => setFilter({ locations: places.filter(p => p.label !== label) });
-  const fromMap = async (lat, lng) => {
-    if (!business) return;
-    if (places.length >= MAX_LOCATIONS) { setNote(`At most ${MAX_LOCATIONS} locations: remove one first.`); return; }
-    setNote('Looking up that place…');
-    const r = await api(`/businesses/${business.id}/keyword-workspace/area-at?lat=${lat}&lng=${lng}&country=${country}`).catch(() => null);
-    if (!r?.place) { setNote(`No named area in ${countryName || country} at that point.`); return; }
-    setNote('');
-    if (places.some(p => p.label === r.place.label)) { setNote(`${r.place.label} is already chosen.`); return; }
-    setFilter({ locations: [...places, { label: r.place.label, lat: r.place.lat, lng: r.place.lng }] });
-  };
   const range = resolveRange(f);
   const summary = [describePeriod(f), f.country && countryName, places.length > 0 && (places.length === 1 ? places[0].label.split(',')[0] : `${places.length} locations`)].filter(Boolean).join(' · ');
   const active = !isDefault(f);
@@ -88,34 +58,13 @@ export default function ReportFilterBar({ business }) {
           {range && <div className="mt-1.5 text-12 text-slate-500">{range.from} to {range.to}</div>}
 
           <div className="mt-4"><Lbl>Country</Lbl>
-            <Select aria-label="Country" value={f.country} onChange={e => { setFilter({ country: e.target.value, locations: [] }); setNote(''); }} className={fieldCls}>
+            <Select aria-label="Country" value={f.country} onChange={e => setFilter({ country: e.target.value, locations: [] })} className={fieldCls}>
               <option value="">Project's own country</option>{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
             </Select>
           </div>
 
-          <div className="mt-3">
-            <div className="flex items-center"><Lbl>Locations</Lbl><span className="ml-auto text-11.5 text-slate-400">{places.length} of {MAX_LOCATIONS}</span></div>
-            {places.length > 0 && (
-              <ul className="mb-2 flex flex-wrap gap-1.5">
-                {places.map((p, i) => (
-                  <li key={p.label} className={`inline-flex items-center gap-1.5 h-7 pl-1.5 pr-1 rounded-full text-12 ring-1 ring-inset ${i === 0 ? 'bg-indigo-50 ring-indigo-200 text-indigo-800' : 'bg-sky-50 ring-sky-200 text-sky-800'}`}>
-                    <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-10 font-bold text-white ${i === 0 ? 'bg-indigo-600' : 'bg-sky-500'}`}>{i + 1}</span>
-                    <span className="max-w-[210px] truncate" title={p.label}>{p.label}</span>
-                    <button type="button" aria-label={`Remove ${p.label}`} onClick={() => removePlace(p.label)} className="p-0.5 rounded-full hover:bg-black/10 cursor-pointer"><X size={11} /></button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {places.length < MAX_LOCATIONS && (
-              <div className="relative">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={typed} onChange={e => search(e.target.value)} placeholder={places.length ? 'Add another city or area' : 'Search a city or area (Google Maps)'} aria-label="Search a location" className={`${fieldCls} pl-8`} />
-                {found.length > 0 && <ul role="listbox" aria-label="Places found" className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg bg-white shadow-lg ring-1 ring-slate-200">{found.filter(x => !places.some(p => p.label === x.label)).map(x => <li key={x.label}><button type="button" role="option" onClick={() => addPlace(x)} className="w-full text-left px-2.5 py-1.5 text-13 hover:bg-slate-50 cursor-pointer inline-flex items-center gap-2"><MapPin size={12} className="text-slate-400 shrink-0" /><span className="truncate">{x.label}</span></button></li>)}</ul>}
-              </div>
-            )}
-            {note && <div className="mt-1 text-11.5 text-amber-700">{note}</div>}
-            <div className="mt-2"><LocationsMap places={places} country={country} onClick={fromMap} /></div>
-            <div className="mt-1 text-11.5 text-slate-500">{places.length ? 'Pin 1 is the primary place: Google results and Maps are read for it. Click the map to add a place.' : 'Click the map or search to add places. With none, the whole country is used.'}</div>
+          <div className="mt-3"><Lbl>Locations</Lbl>
+            {business ? <PlacePicker inline multiple max={MAX_LOCATIONS} b={{ ...business, country }} value={places} onChange={(next) => setFilter({ locations: next })} mapHeight={150} /> : <p className="text-12 text-slate-500">Open a project to choose places.</p>}
           </div>
 
           <p className="mt-3 text-11.5 leading-snug text-slate-500">The period cuts Search Console, Analytics and Business Profile figures, dashboards and rank history. The country sets the market for keyword volumes, Google results and Search Console. The location is used for Google results and Maps reads. Stored audits are snapshots and do not change.</p>

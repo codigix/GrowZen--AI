@@ -3,6 +3,7 @@ import { MapPin, Plus, X, Play, ArrowUp, ArrowDown, Loader2, Trophy, Target, Sea
 import { Card, Button, Badge, ErrorNote, useAction, SkList } from './SeoUi';
 import DataTable from './DataTable';
 import { api, useApi, fmtDateTime } from './seoApi';
+import PlacePicker from './PlacePicker';
 
 const MAX_KW = 12;
 const tone = (r) => (r == null ? 'bg-slate-100 text-slate-400' : r <= 3 ? 'bg-emerald-100 text-emerald-800' : r <= 10 ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800');
@@ -20,28 +21,17 @@ function RankChip({ cell }) {
   );
 }
 
-/** Add an area: type a suburb or region, pick it from the list the map service gives (it carries the pin). */
+/** Add an area: the shared place panel (search Google Maps or click the map). The chosen place goes to the grid with its pin. */
 function AddArea({ b, onAdd, busy }) {
-  const [q, setQ] = useState('');
-  const [list, setList] = useState([]);
-  const [err, setErr] = useState('');
-  const search = async (v) => {
-    setQ(v); setErr('');
-    if (v.trim().length < 2) { setList([]); return; }
-    try { const r = await api(`/discover/areas?q=${encodeURIComponent(v.trim())}&country=${encodeURIComponent(b.country || 'IN')}&near=${encodeURIComponent(b.city || '')}`); setList(r.results || []); } catch (e) { setErr(e.message || 'The map service did not answer.'); }
-  };
   return (
-    <div className="relative">
-      <div className="flex items-center gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={e => search(e.target.value)} placeholder="Add an area, e.g. Hinjewadi" className="h-9 w-64 pl-9 pr-3 text-13 rounded-lg border border-slate-300 bg-white" aria-label="Add an area" /></div>
-        {busy && <Loader2 size={14} className="animate-spin text-slate-400" />}
-      </div>
-      {list.length > 0 && (
-        <ul className="absolute z-20 mt-1 w-80 max-h-60 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg divide-y divide-slate-100">
-          {list.map(x => <li key={`${x.label}${x.lat}`}><button type="button" onClick={() => { onAdd({ name: x.label, lat: x.lat, lng: x.lng }); setQ(''); setList([]); }} className="w-full text-left px-3 py-2 text-13 hover:bg-indigo-50 cursor-pointer"><MapPin size={12} className="inline mr-1.5 text-slate-400" />{x.label}</button></li>)}
-        </ul>)}
-      {err && <p className="text-12 text-rose-600 mt-1">{err}</p>}
+    <div className="flex items-center gap-2">
+      <PlacePicker b={b} width={280} placeholder="Add an area, e.g. Hinjewadi" canSave={false} places={[]} onChange={async (name, pin) => {
+        if (!name) return;
+        let p = pin;
+        if (p?.lat == null) { const r = await api(`/businesses/${b.id}/keyword-workspace/area-pin?label=${encodeURIComponent(name)}&country=${encodeURIComponent(b.country || 'IN')}`).catch(() => null); p = r?.pin; }
+        onAdd({ name, lat: p?.lat ?? null, lng: p?.lng ?? null });
+      }} />
+      {busy && <Loader2 size={14} className="animate-spin text-slate-400" />}
     </div>
   );
 }

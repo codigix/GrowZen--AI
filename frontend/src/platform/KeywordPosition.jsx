@@ -4,6 +4,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, XCircle, ChevronDown, ExternalLink, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
+import PlacePicker from './PlacePicker';
 import SerpFeaturesTab from './SerpFeaturesTab';
 import TrackingInsightsTab from './TrackingInsightsTab';
 import CompetitorsTab from './CompetitorsTab';
@@ -105,36 +106,6 @@ const DEVICES = [['desktop', 'Desktop'], ['mobile', 'Mobile'], ['tablet', 'Table
 const Lbl = ({ children }) => <div className="text-13 font-semibold text-slate-800 mb-1">{children}</div>;
 const selCls = 'h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13 text-slate-800 cursor-pointer';
 
-/** The place Google is asked from: search Google Maps places inside the project's country, or go back to the project's own area. */
-function LocationPick({ b, value, country, custom, onPick }) {
-  const [typed, setTyped] = useState('');
-  const [found, setFound] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [err, setErr] = useState('');
-  const search = (v) => {
-    setTyped(v); setErr('');
-    if (v.trim().length < 2) { setFound([]); return; }
-    api(`/businesses/${b.id}/keyword-workspace/area-search?q=${encodeURIComponent(v.trim())}&country=${country || 'IN'}`).then(r => setFound(r.results || [])).catch(e => setErr(e.message || 'The map service did not answer.'));
-  };
-  const choose = (v) => { setOpen(false); setTyped(''); setFound([]); onPick(v); };
-  return (
-    <div className="relative">
-      <button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)} className={`${selCls} w-full min-w-[220px] max-w-[320px] flex items-center gap-2 text-left`}><span className="truncate flex-1">{value || 'Choose a location'}</span><ChevronDown size={14} className="text-slate-400 shrink-0" /></button>
-      {open && (
-        <div className="absolute z-30 mt-1 w-[340px] rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
-          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input autoFocus value={typed} onChange={e => search(e.target.value)} placeholder="Search a city or area" aria-label="Search a location" className="h-9 w-full rounded ring-1 ring-inset ring-slate-300 pl-8 pr-2 text-13" /></div>
-          {err && <div className="mt-1 text-12 text-rose-600">{err}</div>}
-          <ul role="listbox" className="mt-1 max-h-60 overflow-y-auto">
-            {found.map(x => <li key={x.label}><button type="button" role="option" onClick={() => choose(x.label)} className="w-full text-left px-2 py-1.5 rounded text-13 hover:bg-slate-50 cursor-pointer">{x.label}</button></li>)}
-            {typed.trim().length >= 2 && !found.length && !err && <li className="px-2 py-1.5 text-12.5 text-slate-500">No place found.</li>}
-          </ul>
-          {custom && <button type="button" onClick={() => choose('')} className="mt-1 w-full text-left px-2 py-1.5 rounded text-13 text-indigo-600 hover:bg-indigo-50 cursor-pointer">Use the project's own area again</button>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function KeywordPosition({ b, keyword }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState('Overview');
@@ -211,7 +182,7 @@ export default function KeywordPosition({ b, keyword }) {
           </div>
         </label>
         <div><div className="text-13 font-semibold text-slate-800 mb-1">Search engine</div><div className="h-10 px-3 inline-flex items-center rounded-lg ring-1 ring-inset ring-slate-300 text-13">Google</div></div>
-        <div><Lbl>Location</Lbl><LocationPick b={b} value={T.location} country={T.country} custom={T.custom} onPick={(v) => setTarget({ location: v })} /></div>
+        <div><Lbl>Location</Lbl><PlacePicker b={{ ...b, country: T.country || b.country }} value={T.custom ? T.location : ''} width={250} places={[{ name: T.custom ? "Project's own area" : (T.location || 'Project area'), kind: 'default' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} onChange={(v) => setTarget({ location: v })} /></div>
         <div><Lbl>Device</Lbl><Select aria-label="Device" value={T.device || 'desktop'} onChange={e => setTarget({ device: e.target.value })} className={selCls}>{DEVICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></div>
         <div><Lbl>Language</Lbl><Select aria-label="Language" value={(T.language || 'en').slice(0, 2)} onChange={e => setTarget({ language: e.target.value })} className={selCls}>{Object.entries(T.languages || { en: 'English' }).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></div>
         <Button variant="primary" icon={RefreshCw} busy={busy === 'update'} onClick={update}>Update report</Button>

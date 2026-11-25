@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Download, History, Loade
 import { SeoShell, Card, Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { api, useApi, fmt } from './seoApi';
+import PlacePicker from './PlacePicker';
 import Select from '../components/Select';
 
 const INTENT = { informational: ['I', '#4338ca', '#e0e7ff', 'Informational'], commercial: ['C', '#b45309', '#fef3c7', 'Commercial'], transactional: ['T', '#047857', '#d1fae5', 'Transactional'], navigational: ['N', '#7e22ce', '#f3e8ff', 'Navigational'], local: ['L', '#0369a1', '#e0f2fe', 'Local'] };
@@ -152,6 +153,8 @@ function Body({ b }) {
           <Button variant="primary" icon={Wand2} disabled={typed.trim().length < 2} onClick={() => goTo(typed)}>Find keywords</Button>
           <label className="text-12.5 font-medium text-slate-500 flex items-center gap-1.5">Database
             <Select value={data?.country || country || ''} onChange={e => goTo(keyword || typed, e.target.value)} className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Database (country)">{!(data?.country || country) && <option value="">Your country</option>}{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</Select></label>
+          <PlacePicker b={{ ...b, country: data?.country || country || b.country }} multiple max={5} width={250} value={areas.map(label => ({ label }))}
+            onChange={(next) => { const q = (keyword || typed).trim(); if (q.length > 1) navigate(`/keyword-management/magic?tab=ideas&q=${encodeURIComponent(q)}${(data?.country || country) ? `&c=${data?.country || country}` : ''}${next.length ? `&a=${encodeURIComponent(next.map(x => x.label).join('|'))}` : ''}`); }} />
           <span className="text-12.5 text-slate-500">Currency: <b className="text-slate-700">INR</b></span>
         </div>
         {recent.length > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-1.5"><span className="inline-flex items-center gap-1 text-12 font-medium text-slate-500"><History size={13} />Recent</span>{recent.map(k => <button key={k} type="button" onClick={() => goTo(k)} className="rounded-full bg-slate-100 hover:bg-indigo-50 px-2.5 py-0.5 text-12 text-slate-700 cursor-pointer">{k}</button>)}</div>}
