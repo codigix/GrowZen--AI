@@ -28,7 +28,7 @@ function Group({ g, state, set }) {
             <tr className="text-12 uppercase tracking-wide text-slate-500 bg-slate-50/70">
               <th className="px-4 py-2 w-8" /><th className="px-3 py-2 text-left">Keyword</th><th className="px-3 py-2 text-left">Kind</th>
               <th className="px-3 py-2 text-right">Searches / mo</th><th className="px-3 py-2 text-right">Index</th><th className="px-3 py-2 text-right">CPC</th>
-              <th className="px-3 py-2 text-left">Role</th><th className="px-3 py-2 text-left">Priority</th>
+              <th className="px-3 py-2 text-left">Competitors</th><th className="px-3 py-2 text-left">Role</th><th className="px-3 py-2 text-left">Priority</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -42,6 +42,7 @@ function Group({ g, state, set }) {
                   <td className="px-3 py-2 text-right tabular-nums">{r.volume == null ? '—' : r.volume === 0 ? <span className="text-slate-400" title="Google has no measured searches for this exact wording">0</span> : num(r.volume)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.difficulty ?? '—'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.cpc ? `₹${r.cpc}` : '—'}</td>
+                  <td className="px-3 py-2 text-12 text-slate-500">{r.competitors?.length ? <span title="Competitors found with this keyword in your workspace">{r.competitors.join(', ')}</span> : '—'}</td>
                   <td className="px-3 py-2"><Seg label="Role" value={s.role} onChange={v => set(r.keyword, { role: v, on: true })} options={[['primary', 'Primary', 'bg-indigo-600 text-white'], ['secondary', 'Secondary', 'bg-slate-700 text-white']]} /></td>
                   <td className="px-3 py-2"><Seg label="Priority" value={s.priority} onChange={v => set(r.keyword, { priority: v, on: true })} options={PRIO.map(p => [p, p, p === 'High' ? 'bg-rose-600 text-white' : p === 'Medium' ? 'bg-amber-500 text-white' : 'bg-slate-500 text-white'])} /></td>
                 </tr>
@@ -101,10 +102,12 @@ function Body({ b }) {
   }, [data, state, sec]);
 
   const save = () => run('save', async () => {
-    const body = chosen.map(r => ({ keyword: r.keyword, volume: r.volume ?? undefined, cpc: r.cpc ?? undefined, role: r.role, priority: r.priority, source: { type: 'prepare', from: r.origin } }));
+    const body = chosen.map(r => ({ keyword: r.keyword, volume: r.volume ?? undefined, cpc: r.cpc ?? undefined, role: r.role, priority: r.priority, cluster: r.origin, source: { type: 'prepare', from: r.origin } }));
     const res = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
+    await api(`/businesses/${b.id}/keyword-workspace/mark-picked`, { method: 'POST', body: { keywords: chosen.map(r => r.origin).concat(chosen.map(r => r.keyword)) } }).catch(() => null);
+    api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: chosen.slice(0, 25).map(r => r.keyword) }, timeout: 120000 }).catch(() => null); // where the site stands now (Search Console), so Track Results has a first reading
     toast(`${res.added} new keyword${res.added === 1 ? '' : 's'} added to My Keywords`);
-    navigate('/keyword-management/tracked');
+    navigate('/keyword-management/tracked', { state: { added: chosen.map(r => r.keyword), newCount: res.added } });
   });
 
   return (

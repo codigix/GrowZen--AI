@@ -618,3 +618,15 @@ def summary(db: Session, b: Business) -> dict[str, Any]:
     cands = list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)))
     return {"competitors": len(_competitor_domains(db, b)), "workspace": sum(1 for r in cands if merge_key(r.keyword) not in keys and not r.dismissed), "saved": len(saved),
             "ranking": sum(1 for k in saved if k.rank and k.rank <= 10)}
+
+
+def mark_picked(db: Session, b: Business, keywords: list[str]) -> int:
+    """Keywords saved from another page (Prepare Keywords) are marked picked in the workspace, so they leave the open list."""
+    keys = {merge_key(k) for k in keywords}
+    n = 0
+    for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)):
+        if r.norm in keys and not r.picked:
+            r.picked, r.dismissed = True, False
+            n += 1
+    db.commit()
+    return n

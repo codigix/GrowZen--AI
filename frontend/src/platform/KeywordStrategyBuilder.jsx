@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Download, Layers, Loader2, Plus, Save, X } from 'lucide-react';
 import { SeoShell, Card, Button, Badge, ErrorNote, useAction, useToast } from './SeoUi';
 import { usePager, Pager, downloadCsv } from './DataTable';
@@ -33,6 +33,7 @@ const pick = (pages, preset) => {
 
 function Body({ b }) {
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const seeds = useMemo(() => (params.get('s') || '').split('|').filter(Boolean).slice(0, 5), [params]);
   const [typed, setTyped] = useState('');
   const [data, setData] = useState(null);
@@ -41,7 +42,7 @@ function Body({ b }) {
   const [open, setOpen] = useState(() => new Set());
   const [sel, setSel] = useState(() => new Set());
   const [busy, error, run] = useAction();
-  const [toast, toastNode] = useToast();
+  const [, toastNode] = useToast();
 
   const create = (list) => run('build', async () => {
     setData(null); setSel(new Set());
@@ -58,15 +59,16 @@ function Body({ b }) {
   const topics = (data?.topics || []).filter(t => shown.some(p => p.topic === t.topic));
   const flat = useMemo(() => shown.flatMap(p => p.keywords.map(k => ({ ...k, page: p.lead, topic: p.topic, role: p.role }))), [shown]);
   const pager = usePager(flat, { size: 50, resetKey: `${preset}|${view}|${data?.seeds?.join()}` });
-  const chosenPages = shown.filter(p => sel.has(p.id));
-  const chosenKeywords = (chosenPages.length ? chosenPages : []).flatMap(p => p.keywords.map(k => ({ ...k, role: p.role, lead: p.lead })));
+  const chosenPages = sel.size ? shown.filter(p => sel.has(p.id)) : shown; // nothing ticked: the whole filtered plan
+  const chosenKeywords = chosenPages.flatMap(p => p.keywords.map(k => ({ ...k, role: p.role, lead: p.lead, topic: p.topic })));
   const toggleOpen = (t) => setOpen(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; });
   const toggleSel = (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const save = () => run('save', async () => {
-    const body = [...new Map(chosenKeywords.map(k => [k.keyword, { keyword: k.keyword, volume: k.volume ?? undefined, cpc: k.cpc ?? undefined, role: k.keyword === k.lead && k.role === 'Pillar page' ? 'primary' : 'secondary', priority: k.role === 'Pillar page' ? 'High' : 'Medium', source: { type: 'strategy_builder' } }])).values()].slice(0, 300);
+    const body = [...new Map(chosenKeywords.map(k => [k.keyword, { keyword: k.keyword, volume: k.volume ?? undefined, cpc: k.cpc ?? undefined, role: k.keyword === k.lead && k.role === 'Pillar page' ? 'primary' : 'secondary', priority: k.role === 'Pillar page' ? 'High' : 'Medium', cluster: k.topic, source: { type: 'strategy_builder', page: k.lead, page_role: k.role } }])).values()].slice(0, 300);
     const r = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
-    toast(`${r.added} new keyword${r.added === 1 ? '' : 's'} added to My Keywords`);
+    api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: body.slice(0, 25).map(x => x.keyword) }, timeout: 120000 }).catch(() => null);
+    navigate('/keyword-management/tracked', { state: { added: body.map(x => x.keyword), newCount: r.added } });
   });
 
   return (
@@ -104,7 +106,7 @@ function Body({ b }) {
             <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-slate-100">
               <div className="inline-flex rounded ring-1 ring-inset ring-slate-300 overflow-hidden">{[['plan', 'Topics and pages'], ['table', 'Table']].map(([k, l]) => <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)} className={`px-3 h-8 text-13 cursor-pointer ${view === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600'}`}>{l}</button>)}</div>
               <div className="ml-auto flex flex-wrap gap-2">
-                <Button size="sm" icon={Save} variant="primary" busy={busy === 'save'} disabled={!chosenPages.length} onClick={save}>{chosenPages.length ? `Add ${chosenKeywords.length} keywords to My Keywords` : 'Select pages to add'}</Button>
+                <Button size="sm" icon={Save} variant="primary" busy={busy === 'save'} disabled={!chosenPages.length} onClick={save}>{sel.size ? `Add ${chosenKeywords.length} keywords of ${chosenPages.length} selected pages` : `Add all ${chosenPages.length} pages (${chosenKeywords.length} keywords) to My Keywords`}</Button>
                 <Button size="sm" icon={Download} onClick={() => downloadCsv('keyword-strategy', ['Topic', 'Page', 'Role', 'Keyword', 'Volume', 'Index', 'Intent'], flat.map(r => [r.topic, r.page, r.role, r.keyword, r.volume ?? '', r.index ?? '', r.intent ?? '']))}>Export</Button>
               </div>
             </div>

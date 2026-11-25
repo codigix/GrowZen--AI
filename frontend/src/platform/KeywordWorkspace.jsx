@@ -296,7 +296,8 @@ export default function KeywordWorkspace({ b, onUse }) {
     setQ(plannerQ.trim()); setLimit(PAGE); r.reload(true);
     toast(`Google gave ${res.found} ideas: ${res.added} new added${res.left_out ? `, ${res.left_out} left out as not about your business` : ''}`);
   });
-  const pick = (list) => act('pick', list, `${list.length} keyword${list.length === 1 ? '' : 's'} saved to your list`);
+  // Picking opens Prepare Keywords, so every saved keyword is worded the way customers search it and has a role and a priority before it reaches My Keywords
+  const pick = (list) => { const names = rows.filter(i => list.includes(i.id)).map(i => i.keyword).slice(0, 12); if (names.length) navigate(`/keyword-management/prepare?k=${names.map(encodeURIComponent).join('|')}`); };
   const go = (v) => { setView(v); setLimit(PAGE); setSel(new Set()); };
   const empty = d.totals.all === 0;
   const sourcesWith = d.sources.filter(s => s.count);
@@ -428,7 +429,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                         </td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <span className="inline-flex gap-1.5">
-                            {!i.picked && show !== 'dismissed' && <Act icon={Check} tone="green" tip="Pick: save this keyword to your list (My Keywords) so you can give it a page and track it." onClick={() => pick([i.id])} />}
+                            {!i.picked && show !== 'dismissed' && <Act icon={Check} tone="green" tip="Pick and prepare: word it the way customers search (near me, in your areas), set primary or secondary and a priority, then save it to My Keywords." onClick={() => pick([i.id])} />}
                             {show === 'dismissed' ? <Act icon={Undo2} tone="slate" tip="Put back: return it to the list to look at." onClick={() => act('restore', [i.id], 'Put back in the list')} />
                               : !i.picked && <Act icon={EyeOff} tone="amber" tip="Set aside: hide it from this list. It stays under Set aside if you change your mind." onClick={() => act('dismiss', [i.id], 'Set aside')} />}
                             <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>
@@ -456,8 +457,7 @@ export default function KeywordWorkspace({ b, onUse }) {
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-32px)]">
           <div role="toolbar" aria-label="Selected keywords" className="bg-slate-900 text-white rounded-xl shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-3">
             <span className="text-13 font-semibold">{ids.length} selected</span>
-            <Button size="sm" icon={ArrowRight} onClick={() => navigate(`/keyword-management/prepare?k=${shown.filter(i => sel.has(i.id)).slice(0, 12).map(i => encodeURIComponent(i.keyword)).join('|')}`)}>Prepare</Button>
-            {view !== 'picked' && <Button size="sm" variant="primary" icon={CheckCircle2} busy={busy === 'pick'} onClick={() => pick(ids)}>Pick</Button>}
+            {view !== 'picked' && <Button size="sm" variant="primary" icon={ArrowRight} onClick={() => pick(ids)}>Pick and prepare</Button>}
 
             {view === 'dismissed' ? <Button size="sm" icon={Undo2} onClick={() => act('restore', ids, 'Put back in the list')}>Put back</Button>
               : <Button size="sm" icon={EyeOff} busy={busy === 'dismiss'} onClick={() => act('dismiss', ids, `${ids.length} set aside`)}>Set aside</Button>}

@@ -224,3 +224,12 @@ def strategy_builder(body: StrategyIn, b: Business = Depends(get_business), db: 
     """Seeds to a content plan: topics, each with a pillar page and subpages and the keywords for each. Nothing is saved."""
     from ..services import keyword_strategy  # noqa: PLC0415
     return keyword_strategy.build(db, b, body.seeds, body.country)
+
+
+class NamesIn(BaseModel):
+    keywords: list[str] = Field(min_length=1, max_length=500)
+
+
+@router.post("/mark-picked")
+def mark_picked(body: NamesIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    return {"marked": kw.mark_picked(db, b, body.keywords)}

@@ -44,12 +44,19 @@ def prepare(db: Session, b: Business, keywords: list[str], areas: list[str] | No
     phrases = [r["keyword"] for g in groups for r in g["rows"]]
     found, reason = keyword_metrics.lookup(phrases, market.serp_country(b))
     saved = _saved(db, b)
+    from .keyword_workspace import merge_key  # noqa: PLC0415
+    from ..models import KeywordCandidate  # noqa: PLC0415
+    rivals: dict[str, list[str]] = {}
+    for c in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)):
+        names = [str(x.get("domain") if isinstance(x, dict) else x) for x in (c.competitors or []) if x]
+        if names:
+            rivals[c.norm] = names[:3]  # what the workspace already knows of who has the keyword: no new paid read
     from .providers.base import intent_of  # noqa: PLC0415
     for g in groups:
         for r in g["rows"]:
             m = found.get(r["keyword"]) or {}
             r.update({"volume": m.get("volume"), "cpc": m.get("cpc"), "competition": m.get("competition"), "difficulty": m.get("difficulty"),
-                      "intent": intent_of(r["keyword"]), "saved": r["keyword"] in saved})
+                      "intent": intent_of(r["keyword"]), "saved": r["keyword"] in saved, "competitors": rivals.get(merge_key(r["keyword"]), [])})
         local = [r for r in g["rows"] if r["form"] != "base"]
         pool = local or g["rows"]
         best = max(pool, key=lambda r: (r.get("volume") or 0, r["form"] == "area"))

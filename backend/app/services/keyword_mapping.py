@@ -67,6 +67,7 @@ def plan(db: Session, b: Business) -> dict[str, Any]:
     by_path = {c["path"]: c for c in corp}
     assigned: dict[str, list[Keyword]] = {}
     missing, blog = [], []
+    plan_pages: dict[str, dict[str, Any]] = {}
     mapped = 0
     for k in kws:
         manual = _key(urlsplit(k.target_url).path or "/") if k.target_url else None
@@ -87,7 +88,14 @@ def plan(db: Session, b: Business) -> dict[str, Any]:
             if is_blog(k.keyword, k.intent):
                 blog.append(item | {"title": k.keyword[:1].upper() + k.keyword[1:], "slug": _slug(k.keyword)})
             else:
-                missing.append(item | {"title": k.keyword.title(), "slug": "/" + _slug(k.keyword)})
+                pg = ((k.source or {}) if isinstance(k.source, dict) else {}).get("page")  # the page the Strategy Builder planned for it
+                if pg:
+                    e = plan_pages.setdefault(pg, {"keyword": pg, "volume": 0, "intent": k.intent, "title": pg.title(), "slug": "/" + _slug(pg), "keywords": [], "planned": True})
+                    e["keywords"].append(k.keyword)
+                    e["volume"] += k.volume or 0
+                else:
+                    missing.append(item | {"title": k.keyword.title(), "slug": "/" + _slug(k.keyword)})
+    missing = list(plan_pages.values()) + missing
     out_pages = []
     for c in corp:
         ks = sorted(assigned.get(c["path"], []), key=lambda k: (-(k.volume or 0), len(k.keyword)))
