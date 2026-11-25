@@ -1751,8 +1751,20 @@ function KeywordPath({ b, tab, setTab }) {
 
 export default function KeywordResearchPage() {
   const [tab, setTab] = useUrlTab('workspace', ['workspace', 'mapping', 'ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use', 'status']);
+  const HEAD = {
+    workspace: ['Keyword Workspace', 'Every keyword from your website, Search Console, Google and competitors in one list, to compare and pick'],
+    tracked: ['Saved Keywords', 'The keywords you keep: primary or secondary, priority, searches, difficulty, the page that targets each and where it ranks'],
+    topics: ['Keyword Strategy Builder', 'Group your saved keywords into topics, see the lead keyword of each topic and which page it still needs'],
+    use: ['Where to Use Keywords', 'Put each saved keyword into your blog, posts, website and AI answers'],
+    mapping: ['Keyword Mapping', 'Choose the page that targets each keyword and fix keywords that compete for one page'],
+    status: ['Keyword Status', 'How each saved keyword is doing and what to do next'],
+    ai: ['AI Keyword Suggestions', 'Keywords written from what your business has done and could grow into'],
+    discover: ['Ideas for My Business', 'Real Google searches around your services and areas'],
+    planner: ['Google Numbers', 'Searches per month and cost for a keyword'],
+    explorer: ['Other Platforms', 'What people search on YouTube, Bing, Amazon and more'],
+  }[tab] || ['Keywords', 'Find, choose, use and track your keywords'];
   return (
-    <SeoShell step="keywords" title="Keywords" subtitle="Get keyword ideas from AI, pick the best, group them into topics, use them in your blog, posts and AI answers, then track where they rank">
+    <SeoShell step="keywords" title={HEAD[0]} subtitle={HEAD[1]}>
       {(b) => <KeywordPath key={b.id} b={b} tab={tab} setTab={setTab} />}
     </SeoShell>
   );

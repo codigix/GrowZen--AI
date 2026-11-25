@@ -37,6 +37,8 @@ export const SIDEBAR_GROUPS = [
     items: [
       { to: '/keyword-overview', label: 'Keyword Overview', icon: Search },
       { to: '/keyword-management/magic', label: 'Keyword Magic Tool', icon: Wand2 },
+      { to: '/keyword-management/workspace', label: 'Keyword Workspace', icon: Search },
+      { to: '/keyword-management/prepare', label: 'Prepare Keywords', icon: Wand2 },
       { to: '/keyword-management/topics', label: 'Keyword Strategy Builder', icon: Layers },
       { to: '/keyword-management/tracked', label: 'Saved Keywords', icon: Bookmark }
     ]
