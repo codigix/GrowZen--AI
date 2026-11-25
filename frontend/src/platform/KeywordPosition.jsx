@@ -22,7 +22,7 @@ function Tile({ label, value, sub, series, color = '#2563eb', tip }) {
     <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 min-w-0" title={tip}>
       <div className="text-13 text-slate-500">{label}</div>
       <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{value}</div>{sub}</div>
-      <div className="h-10 -mx-1 mt-1">{data.length > 1 && <ResponsiveContainer width="100%" height="100%"><AreaChart data={data}><Area type="monotone" dataKey="v" stroke={color} fill={color} fillOpacity={0.12} strokeWidth={1.5} isAnimationActive={false} /></AreaChart></ResponsiveContainer>}</div>
+      {data.length > 1 ? <div className="h-10 -mx-1 mt-1"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data}><Area type="monotone" dataKey="v" stroke={color} fill={color} fillOpacity={0.12} strokeWidth={1.5} isAnimationActive={false} /></AreaChart></ResponsiveContainer></div> : <div className="mt-1 text-11.5 text-slate-400">Trend appears after more checks</div>}
     </div>
   );
 }
@@ -201,7 +201,7 @@ export default function KeywordPosition({ b, keyword }) {
                   </div>
                 ) : <p className="text-13 text-slate-500">No status yet: press Update report to read the position.</p>}
               </Card>
-              <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
                 <Tile label={`Position · ${(DEVICES.find(x => x[0] === T.device) || DEVICES[0])[1]}`} value={devPos ? Math.round(devPos) : s.current ? s.current : '—'} sub={<Delta now={s.current} before={s.previous} />} series={inRange.filter(x => x.rank).map(x => -x.rank)} tip="Average position on Google over the last 28 days, from Search Console" />
                 <Tile label="Search Volume" value={kfmt(d.volume)} sub={null} tip="Monthly searches, Google Keyword Planner" color="#64748b" />
                 <Tile label="Visibility" value={d.visibility != null ? `${d.visibility}%` : '—'} series={inRange.map(x => x.visibility)} color="#059669" tip="Estimate: share of searches that click a result at this position, from a published average click curve" />
@@ -209,7 +209,7 @@ export default function KeywordPosition({ b, keyword }) {
                 <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4"><div className="text-13 text-slate-500">SERP Features{serp.data?.state === 'ok' && <span className="ml-1.5 font-semibold text-slate-800">{onFeatures} of {features.length}</span>}</div>
                   {serp.data?.state === 'ok' ? <div className="mt-2 flex flex-wrap gap-1.5">{features.filter(([, on]) => on).map(([n]) => <span key={n} className="px-2 py-0.5 rounded bg-slate-100 text-12 text-slate-700">{n}</span>)}{!features.some(([, on]) => on) && <span className="text-13 text-slate-400">None on this search</span>}</div> : serp.error || serp.data?.state === 'error' ? <div className="mt-2 text-12 text-slate-400">Not read</div> : <Loader2 size={14} className="animate-spin text-slate-400 mt-3" />}
                 </div>
-              <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
                 {[['Desktop position', (d.devices || {}).desktop?.position ? `#${Math.round(d.devices.desktop.position)}` : '—', (d.devices || {}).desktop ? `${d.devices.desktop.impressions} impressions` : 'No impressions'],
                   ['Mobile position', (d.devices || {}).mobile?.position ? `#${Math.round(d.devices.mobile.position)}` : '—', (d.devices || {}).mobile ? `${d.devices.mobile.impressions} impressions` : 'No impressions'],
                   ['Maps position', cur.maps_rank ? `#${cur.maps_rank}` : '—', cur.maps_rank ? 'in the local pack results' : 'not in the Maps results'],
