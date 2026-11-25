@@ -201,3 +201,22 @@ def test_only_real_website_domains_are_read(client, monkeypatch):
         assert out["running"] is False and calls == []  # nothing was due, nothing was called
     finally:
         db.close()
+
+
+def test_apifys_own_limit_messages_pause_the_provider_instead_of_retrying_every_competitor(client, monkeypatch):
+    from app.services import competitor_analysis as ca
+    ca._cooldown.clear()
+    msg = "No Apify key could be used (key 1: limit reached or not allowed; key 2: limit reached or not allowed; key 3: limit reached or not allowed)."
+    for m in (msg, "key 1: out of credit", "key 1: too many requests", "key 1: invalid token", "Real rankings could not be read (Apify answered 403)."):
+        assert ca._is_quota(m), m
+    assert not ca._is_quota("Apify answered 500") and not ca._is_quota("no figure returned")
+    bid = _project(client)
+    base = KW.format(bid=bid)
+    calls = []
+    monkeypatch.setattr(apify_metrics, "check", lambda doms, force=False: calls.append(doms[0]) or [{"domain": doms[0], "error": msg}])
+    monkeypatch.setattr(ck, "ranked", lambda db, b, d, limit=100, min_volume=10: {"rows": [], "cost": 0, "note": "Real rankings could not be read (Apify answered 403)."})
+    for d in ("a.example", "b.example", "c.example"):
+        client.post(f"{base}/analyze", json={"domain": d})
+    assert calls == ["a.example"]  # the first answer paused Apify: the other two were not sent
+    u = client.get(f"{base}/usage").json()
+    assert set(u["paused"]) == {"apify_moz", "apify_ranked"}

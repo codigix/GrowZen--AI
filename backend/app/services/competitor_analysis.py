@@ -106,7 +106,8 @@ def set_config(db: Session, b: Business, patch: dict[str, Any]) -> dict[str, Any
 
 def _is_quota(msg: str) -> bool:
     m = (msg or "").lower()
-    return any(w in m for w in ("429", "402", "quota", "rate limit", "usage limit", "limit exceeded", "credit"))
+    # Apify's own words (services/apify_metrics.py): 402 out of credit, 403 limit reached or not allowed, 429 too many requests, 401 invalid token. All of them mean "stop asking for a while".
+    return any(w in m for w in ("429", "402", "403", "401", "quota", "rate limit", "usage limit", "limit exceeded", "limit reached", "not allowed", "too many requests", "out of credit", "credit", "invalid token"))
 
 
 def _retryable(msg: str) -> bool:
