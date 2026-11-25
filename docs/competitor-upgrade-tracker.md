@@ -36,7 +36,7 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 | M | 8 | Top pages: URL, est. traffic, ranking keywords, top keyword + position, page drawer (keywords with your position, page-level opportunities, related terms, content opportunities + add to My Keywords) | DONE | page title and page-level backlinks show Not available: no connected provider reads them |
 | N | 9 | Backlinks: new/lost, follow/nofollow, anchor text | TODO | provider decision |
 | O | 10 | Google Maps tab: local rank tracking separate from discovery | PARTIAL | none |
-| P | 11 | Research tab: discovery, competitor research, location keywords, opportunities | PARTIAL | none |
+| P | 11 | Research tab with four sections: Keyword Discovery (seeds, services, places; searches, KD, CPC, intent, questions), Competitor Research (multi-competitor keywords with filters), Location-Based Keywords (service x chosen places x phrase shapes, searches checked), Keyword Opportunities (missing, low KD, high volume, commercial, long-tail, question) with bulk save to My Keywords | DONE | built on existing endpoints, no backend change. Tab now shows before a research run; the old run view is a fifth section. Not clicked through in a browser. Related-keyword ideas from Keyword Planner are not shown separately |
 | Q | 14 | Mapping: cannibalization, duplicate page targeting, statuses | PARTIAL | none |
 | R | 17 | End-to-end test of the 15-step workflow + large datasets | TODO | |
 | S | - | Schema on dev DB (already there, app creates it at start-up; alembic_version is stale, so upgrade was not run); committed | DONE | |
