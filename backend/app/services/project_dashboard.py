@@ -71,6 +71,10 @@ def plan(range_key: str, start: date | None, end: date | None, group: str | None
     """The period shown. By default everything so far (from the first thing stored for the project until today); a fixed number of days, this month or a custom range narrows it.
     Grouped by month when the range is long, by week when it is short, unless the person chose."""
     today = today or date.today()
+    from . import report_filter  # noqa: PLC0415
+    f = report_filter.current()
+    if f.has_period and not (range_key == "custom" and start and end):
+        range_key, start, end = "custom", f.start, f.end  # the period chosen in the page header
     if range_key == "custom" and start and end:
         s, e = (start, min(end, today)) if start <= end else (end, min(start, today))
     elif range_key in RANGES:

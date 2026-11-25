@@ -138,7 +138,8 @@ def track_competitor(body: CompetitorDomainIn, b: Business = Depends(get_busines
 @router.get("/rank-history")
 def rank_history(days: int = 90, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Each tracked keyword's checked positions over time."""
-    return {"history": organic.history(db, b, max(7, min(days, 365)))}
+    from ..services import report_filter  # noqa: PLC0415
+    return {"history": organic.history(db, b, max(7, min(report_filter.span(days), 365)))}
 
 
 LANGUAGES = {"en": "English", "hi": "Hindi", "mr": "Marathi", "gu": "Gujarati", "ta": "Tamil", "te": "Telugu", "bn": "Bengali", "kn": "Kannada", "ml": "Malayalam", "ar": "Arabic",

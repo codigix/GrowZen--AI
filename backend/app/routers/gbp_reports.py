@@ -27,6 +27,11 @@ MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 def _month(m: str | None) -> str:
+    if not m:
+        from ..services import report_filter  # noqa: PLC0415
+        f = report_filter.current()
+        if f.has_period:
+            m = f.end.strftime("%Y-%m")  # the month the chosen period ends in
     m = m or date.today().strftime("%Y-%m")
     if not MONTH.match(m):
         raise HTTPException(422, "Month must look like 2026-11.")

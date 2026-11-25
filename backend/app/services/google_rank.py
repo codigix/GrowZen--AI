@@ -39,8 +39,8 @@ def organic_positions(db: Session, b: Business, keywords: list[str], days: int =
     state, message, sc, site = gsc_access.search_console(db, b, host)
     if state != "ok":
         raise RankCheckError(message)
-    end = date.today() - timedelta(days=gsc.LAG_DAYS)
-    start = end - timedelta(days=days - 1)
+    from . import report_filter  # noqa: PLC0415
+    start, end = report_filter.period(days, gsc.LAG_DAYS)
     try:
         rows = sc.query(site, gsc._body(start, end, ["query", "page"], 25000, market.serp_country(b)))
     except Exception as exc:  # noqa: BLE001 - the reason (API not enabled, no permission) is Google's own message
@@ -91,9 +91,9 @@ def device_positions(db: Session, b: Business, keywords: list[str], days: int = 
     state, message, sc, site = gsc_access.search_console(db, b, host)
     if state != "ok":
         raise RankCheckError(message)
-    end = date.today() - timedelta(days=gsc.LAG_DAYS)
-    start = end - timedelta(days=days - 1)
-    key = (b.id, site, start, end, tuple(sorted(norm(k) for k in keywords)))
+    from . import report_filter  # noqa: PLC0415
+    start, end = report_filter.period(days, gsc.LAG_DAYS)
+    key = (b.id, site, start, end, market.serp_country(b), tuple(sorted(norm(k) for k in keywords)))
     hit = _device_cache.get(key)
     if hit and time.time() - hit[0] < 600:
         return hit[1]
@@ -137,10 +137,12 @@ def keyword_report(db: Session, b: Business, keyword: str, days: int = 180) -> d
     state, message, sc, site = gsc_access.search_console(db, b, host)
     if state != "ok":
         raise RankCheckError(message)
+    from . import report_filter  # noqa: PLC0415
     q = norm(keyword)
-    end = date.today() - timedelta(days=gsc.LAG_DAYS)
+    first, end = report_filter.period(days, gsc.LAG_DAYS)
+    days = (end - first).days + 1
     start = end - timedelta(days=days * 2 - 1)
-    key = (b.id, site, q, end, days)
+    key = (b.id, site, q, end, days, market.serp_country(b))
     hit = _kw_cache.get(key)
     if hit and time.time() - hit[0] < 600:
         return hit[1]

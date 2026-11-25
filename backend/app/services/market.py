@@ -22,7 +22,10 @@ def scope(b: Any) -> str:
 
 
 def target_countries(b: Any) -> list[str]:
-    """The countries searches are read for: the target countries (international), else the business's own."""
+    """The countries searches are read for: the country chosen in the report filter, else the target countries (international), else the business's own."""
+    from . import report_filter  # noqa: PLC0415
+    if report_filter.current().country:
+        return [report_filter.current().country]
     if scope(b) == "international":
         picked = [countries.code(c) for c in (getattr(b, "target_countries", None) or []) if c]
         if picked:
@@ -36,7 +39,13 @@ def serp_country(b: Any) -> str:
 
 
 def search_location(b: Any) -> str:
-    """Where Google is asked from: a city for a local project, a whole country otherwise."""
+    """Where Google is asked from: the place chosen in the report filter, else a city for a local project, a whole country otherwise."""
+    from . import report_filter  # noqa: PLC0415
+    f = report_filter.current()
+    if f.location:
+        return f.location
+    if f.country:
+        return countries.name(f.country)
     if scope(b) == "local":
         return countries.search_location(getattr(b, "city", None), countries.of(b))
     return countries.name(serp_country(b))

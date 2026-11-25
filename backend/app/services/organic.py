@@ -67,7 +67,8 @@ def find_listing(places: list[dict], b: Business) -> tuple[int | None, dict | No
 def targeting(b: Business) -> dict:
     """Where Google is asked from: the project's Position Tracking campaign (location, language, device), else its own area (market.py)."""
     cfg = b.track_config or {}
-    return {"location": cfg.get("location") or intel.default_location(b), "language": cfg.get("language") or "en", "device": cfg.get("device") or "desktop",
+    from . import report_filter  # noqa: PLC0415
+    return {"location": report_filter.current().location or cfg.get("location") or intel.default_location(b), "language": cfg.get("language") or "en", "device": cfg.get("device") or "desktop",
             "country": market.serp_country(b)}
 
 

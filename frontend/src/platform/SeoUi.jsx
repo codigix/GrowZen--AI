@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import ReportFilterBar from './ReportFilterBar';
 import { StepBar } from './JourneyBar';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -298,11 +299,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
         <div className="h-full px-6 flex items-center justify-between gap-4">
           <div className="min-w-0" />
           <div className="flex items-center gap-2.5">
-            <div className="h-9 px-3 rounded bg-topbar-field border border-dashed border-white/10 flex items-center gap-2 text-12 font-medium text-topbar-item hover:text-white cursor-pointer transition-colors">
-              <Calendar size={13} />
-              <span>Last 30 Days</span>
-              <ChevronDown size={13} />
-            </div>
+            <ReportFilterBar business={business} />
             <NotificationBell />
             {actions}
             {!hideSwitcher && business && list?.length > 0 && (

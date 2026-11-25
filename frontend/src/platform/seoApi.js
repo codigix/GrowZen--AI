@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  */
 // VITE_API_URL wins. Without it: the local backend in dev, and the same origin in a production build
 // (the backend serves the built frontend, so /api/v1 is on the same host).
+import { withFilter, useFilterVersion } from './reportFilter';
 export const SEO_API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1')).replace(/\/$/, '');
 
 export class SeoApiError extends Error {
@@ -41,6 +42,7 @@ const answers = new Map();
 const FRESH_MS = 30000;
 /** Forget every cached answer: called on sign-out / account switch so the next user never sees the previous one's projects or data. */
 export const clearApiCache = () => { answers.clear(); inflight.clear(); };
+if (typeof window !== 'undefined') window.addEventListener('report-filter', clearApiCache); // a new period, country or location means every kept answer is out of date
 export const cached = (path) => { const a = answers.get(path); return a && Date.now() - a.at < FRESH_MS ? a.data : undefined; };
 
 export function api(path, opts = {}) {
@@ -76,7 +78,7 @@ async function request(path, { method = 'GET', body, raw = false, repeat = false
     const limit = timeout || (method === 'GET' || method === 'HEAD' ? (CRAWLER_PATH.test(path) ? CRAWLER_READ_TIMEOUT_MS : READ_TIMEOUT_MS) : WRITE_TIMEOUT_MS);
     const timer = setTimeout(() => ctl.abort(), limit);
     try {
-      r = await fetch(`${SEO_API}${path}`, {
+      r = await fetch(`${SEO_API}${withFilter(path)}`, { // the report filter (period, country, location) rides on every project request
         method,
         credentials: 'include',
         cache: 'no-store', // never reuse a cached API answer: a copy cached for another origin carries that origin's CORS header and is refused
@@ -113,6 +115,7 @@ async function request(path, { method = 'GET', body, raw = false, repeat = false
 
 /** Load `path` (null = don't load). Returns { data, error, loading, reload, setData }. */
 export function useApi(path) {
+  const filterVersion = useFilterVersion();
   const [state, setState] = useState(() => { const hit = path ? cached(path) : undefined; return { data: hit ?? null, error: null, loading: Boolean(path) && hit === undefined }; });
   const seq = useRef(0);
   const load = useCallback(async (quiet = false) => {
@@ -130,7 +133,7 @@ export function useApi(path) {
   useEffect(() => {
     const hit = path ? cached(path) : undefined;
     if (hit !== undefined) { setState(s => (s.data === hit ? s : { data: hit, error: null, loading: false })); load(true); } else load();
-  }, [load, path]);
+  }, [load, path, filterVersion]);
   const setData = useCallback((fn) => setState(s => ({ ...s, data: typeof fn === 'function' ? fn(s.data) : fn })), []);
   return { ...state, reload: load, setData };
 }
