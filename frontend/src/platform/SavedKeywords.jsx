@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUp, BarChart3, Download, Loader2, MoreHorizontal, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, BarChart3, Crosshair, Download, Loader2, MoreHorizontal, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { SeoShell, Button, ErrorNote, Modal, useAction, useToast } from './SeoUi';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { api, useApi } from './seoApi';
@@ -45,6 +45,16 @@ function Body({ b }) {
   const [checking, setChecking] = useState(false);
   const [checkNote, setCheckNote] = useState('');
   const auto = useRef(false);
+  const [tracking, setTracking] = useState(() => new Set());
+  // Track one keyword: read its position on Google now (Search Console) and keep it in position tracking
+  const track = async (x) => {
+    setTracking(s => new Set(s).add(x.id)); setMenu(null);
+    try {
+      await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: [x.keyword] }, timeout: 120000 });
+      await r.reload(true);
+      toast(`Position of “${x.keyword}” read from Search Console`);
+    } catch (e) { toast(e.message || 'The position could not be read.'); } finally { setTracking(s => { const n = new Set(s); n.delete(x.id); return n; }); }
+  };
   const lastChecked = all.map(x => x.checked).filter(Boolean).sort().pop();
   // Positions come from Google Search Console: read them for every saved keyword, on arrival when none was read yet and on request
   const check = async () => {
@@ -124,10 +134,13 @@ function Body({ b }) {
                   <td className="px-3 py-3 text-right tabular-nums">{x.rank ? <span className="inline-flex items-center gap-1 font-medium">#{x.rank}{x.prev_rank && x.prev_rank !== x.rank && (x.rank < x.prev_rank ? <ArrowUp size={12} className="text-emerald-600" /> : <ArrowDown size={12} className="text-rose-600" />)}</span> : x.checked ? <span className="text-slate-400 text-12" title="Search Console shows no impressions for it in the last 28 days: it is not ranking yet">Not ranking</span> : <span className="text-slate-300" title="Not checked yet">{checking ? <Loader2 size={12} className="animate-spin inline" /> : '—'}</span>}</td>
                   <td className="px-3 py-3 whitespace-nowrap text-slate-600">{x.added ? new Date(x.added).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
                   <td className="px-3 py-3 text-right relative whitespace-nowrap">
+                    <button type="button" onClick={() => track(x)} disabled={tracking.has(x.id)} aria-label={`Track position of ${x.keyword}`} title={x.checked ? `Track position again (last read ${x.checked})` : 'Track position: read where this keyword ranks on Google'} className="inline-flex p-1.5 text-slate-500 hover:text-indigo-700 cursor-pointer disabled:opacity-60">{tracking.has(x.id) ? <Loader2 size={16} className="animate-spin" /> : <Crosshair size={16} />}</button>
                     <Link to={`/keyword-management/magic?q=${encodeURIComponent(x.keyword)}`} aria-label={`View trend of ${x.keyword}`} title="View keyword trend" className="inline-flex p-1.5 text-slate-500 hover:text-indigo-700"><BarChart3 size={16} /></Link>
                     <button type="button" aria-label={`More actions for ${x.keyword}`} aria-expanded={menu === x.id} onClick={() => setMenu(menu === x.id ? null : x.id)} className="inline-flex p-1.5 text-slate-500 hover:text-slate-900 cursor-pointer"><MoreHorizontal size={16} /></button>
                     {menu === x.id && (
                       <div role="menu" className="absolute right-3 top-full z-20 mt-0.5 w-52 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1 text-left">
+                        <button role="menuitem" type="button" onClick={() => track(x)} className="block w-full text-left px-3 py-2 text-13 hover:bg-slate-50 cursor-pointer">Track position now</button>
+                        <Link role="menuitem" to="/rank-tracking/landscape" className="block px-3 py-2 text-13 hover:bg-slate-50">Open Position Tracking</Link>
                         <Link role="menuitem" to={`/keyword-management/prepare?k=${encodeURIComponent(x.keyword)}`} className="block px-3 py-2 text-13 hover:bg-slate-50">Prepare variations</Link>
                         <Link role="menuitem" to="/keyword-management/mapping" className="block px-3 py-2 text-13 hover:bg-slate-50">Map to a page</Link>
                         <Link role="menuitem" to="/keyword-management/status" className="block px-3 py-2 text-13 hover:bg-slate-50">Status and next step</Link>
