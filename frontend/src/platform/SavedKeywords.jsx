@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUp, BarChart3, Download, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, BarChart3, Download, Loader2, MoreHorizontal, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { SeoShell, Button, ErrorNote, Modal, useAction, useToast } from './SeoUi';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { api, useApi } from './seoApi';
@@ -42,6 +42,17 @@ function Body({ b }) {
   const [toast, toastNode] = useToast();
 
   const all = r.data?.rows || [];
+  const [checking, setChecking] = useState(false);
+  const [checkNote, setCheckNote] = useState('');
+  const auto = useRef(false);
+  const lastChecked = all.map(x => x.checked).filter(Boolean).sort().pop();
+  // Positions come from Google Search Console: read them for every saved keyword, on arrival when none was read yet and on request
+  const check = async () => {
+    setChecking(true); setCheckNote('');
+    try { await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: all.slice(0, 25).map(x => x.keyword) }, timeout: 120000 }); r.reload(true); }
+    catch (e) { setCheckNote(e.message || 'Positions could not be read.'); } finally { setChecking(false); }
+  };
+  useEffect(() => { if (!auto.current && all.length && all.some(x => !x.checked)) { auto.current = true; check(); } }, [all.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const lists = r.data?.lists || {};
   const cutoff = days ? new Date(Date.now() - DAYS[days] * 864e5).toISOString().slice(0, 10) : '';
   const rows = useMemo(() => {
@@ -79,9 +90,11 @@ function Body({ b }) {
         <Sel label="Intent" value={intent} onChange={setIntent}><option value="">Any intent</option>{Object.entries(INTENT).map(([k, m]) => <option key={k} value={k}>{m[3]}</option>)}</Sel>
         <Sel label="Volume" value={vol} onChange={setVol}><option value="">Any volume</option><option value="10">10+</option><option value="100">100+</option><option value="1000">1K+</option><option value="10000">10K+</option></Sel>
         <Sel label="Added" value={days} onChange={setDays}><option value="">Any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 3 months</option><option value="365">Last 12 months</option></Sel>
+        <button type="button" onClick={check} disabled={checking || !all.length} title="Read each keyword's average position on Google from Search Console (last 28 days)" className="ml-auto inline-flex items-center gap-1.5 h-10 px-3 rounded-lg ring-1 ring-inset ring-slate-300 bg-white text-13 text-slate-700 cursor-pointer hover:bg-slate-50 disabled:opacity-60"><RefreshCw size={14} className={checking ? 'animate-spin' : ''} />Check positions{lastChecked ? <span className="text-slate-400">· {lastChecked}</span> : null}</button>
         {clear && <button type="button" onClick={() => { setQ(''); setKd(''); setIntent(''); setVol(''); setDays(''); }} className="text-13 text-indigo-600 hover:underline cursor-pointer">Clear</button>}
       </div>
 
+      {checkNote && <ErrorNote>{checkNote}</ErrorNote>}
       {r.error && <ErrorNote>{r.error.message}</ErrorNote>}
       <div className="rounded-xl bg-white ring-1 ring-slate-200">
         <div className="overflow-x-auto">
@@ -108,7 +121,7 @@ function Body({ b }) {
                   <td className="px-3 py-3 text-center">{INTENT[x.intent] ? <span title={INTENT[x.intent][3]} className="inline-flex items-center justify-center w-6 h-6 rounded text-12 font-bold" style={{ color: INTENT[x.intent][1], background: INTENT[x.intent][2] }}>{INTENT[x.intent][0]}</span> : <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{x.cpc != null ? `₹${Number(x.cpc).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—'}</td>
                   <td className="px-3 py-3"><Spark v={x.trend} /></td>
-                  <td className="px-3 py-3 text-right tabular-nums">{x.rank ? <span className="inline-flex items-center gap-1 font-medium">#{x.rank}{x.prev_rank && x.prev_rank !== x.rank && (x.rank < x.prev_rank ? <ArrowUp size={12} className="text-emerald-600" /> : <ArrowDown size={12} className="text-rose-600" />)}</span> : <span className="text-slate-300" title="Not on Google yet, or not checked">—</span>}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{x.rank ? <span className="inline-flex items-center gap-1 font-medium">#{x.rank}{x.prev_rank && x.prev_rank !== x.rank && (x.rank < x.prev_rank ? <ArrowUp size={12} className="text-emerald-600" /> : <ArrowDown size={12} className="text-rose-600" />)}</span> : x.checked ? <span className="text-slate-400 text-12" title="Search Console shows no impressions for it in the last 28 days: it is not ranking yet">Not ranking</span> : <span className="text-slate-300" title="Not checked yet">{checking ? <Loader2 size={12} className="animate-spin inline" /> : '—'}</span>}</td>
                   <td className="px-3 py-3 whitespace-nowrap text-slate-600">{x.added ? new Date(x.added).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
                   <td className="px-3 py-3 text-right relative whitespace-nowrap">
                     <Link to={`/keyword-management/magic?q=${encodeURIComponent(x.keyword)}`} aria-label={`View trend of ${x.keyword}`} title="View keyword trend" className="inline-flex p-1.5 text-slate-500 hover:text-indigo-700"><BarChart3 size={16} /></Link>

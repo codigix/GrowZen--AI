@@ -132,5 +132,5 @@ def saved(db: Session, b: Business) -> dict[str, Any]:
         text = " ".join(str(src.get(x) or "") for x in ("kind", "label", "from")).lower()
         listing = "Competitors" if ("competitor" in text or src.get("competitors")) else "Blog Ideas" if is_blog(k.keyword, k.intent) else "My List"
         out.append({"id": k.id, "keyword": k.keyword, "list": listing, "volume": k.volume, "kd": kds.get(merge_key(k.keyword), k.difficulty), "intent": k.intent, "cpc": k.cpc, "trend": trends.get(k.keyword), "added": (k.created_at.date().isoformat() if k.created_at else None),
-                    "role": k.role, "priority": k.priority, "topic": k.cluster, "rank": k.rank, "prev_rank": k.prev_rank, "page": k.target_url})
+                    "role": k.role, "priority": k.priority, "topic": k.cluster, "rank": k.rank, "prev_rank": k.prev_rank, "checked": k.rank_checked_at.isoformat() if k.rank_checked_at else None, "page": k.target_url})
     return {"rows": out, "country": cc, "lists": {n: sum(1 for r in out if r["list"] == n) for n in ("My List", "Blog Ideas", "Competitors")}}
