@@ -28,7 +28,7 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 | E | 4 | Auto-analyze settings (keywords, backlinks, retry, periodic refresh) | TODO | none |
 | F | 4/16 | Quota handling, caching, retry logic, background queue for bulk | PARTIAL | none |
 | G | 16 | API usage view in the UI | TODO | none |
-| H | 5 | Competitor keywords: multi-select competitors, filters, detail drawer | PARTIAL | none |
+| H | 5 | Competitor keywords: pick several competitors, position/volume/KD ranges, ranking-page filter, ticked + all-filtered Add to My Keywords, detail drawer, Last updated, CPC | DONE | built, not clicked through in a browser yet. SERP features column shows Not available (no source). Drawer has no SERP overview (not kept) |
 | I | 5/13 | Save to My Keywords without duplicates: existing keywords are named in the answer and get the new source | DONE | bulk send and filtered-send already existed; per-row Add button still TODO |
 | J | 12/13 | One keyword keeps every source (Competitor Keywords / Competitor Gap / Keyword Research / Manual Entry) | DONE | stored as a list inside keyword.source, not a separate table |
 | K | 6 | Keyword Gap: Missing / Weak / Strong / Shared, opportunity score with formula | PARTIAL | none |
