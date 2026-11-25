@@ -29,7 +29,7 @@ function Card({ children, className = '' }) { return <div className={`rounded-xl
 const Label = ({ children }) => <div className="text-13 text-slate-500">{children}</div>;
 const Big = ({ children }) => <div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{children}</div>;
 
-function Overview({ b, keyword, country, data, kd, kdMap, askKd, send, busy }) {
+function Overview({ b, keyword, country, data, kd, kdMap, askKd, send, busy, hub = '' }) {
   const [tab, setTab] = useState('keywords');
   const [topic, setTopic] = useState('');
   const [q, setQ] = useState('');
@@ -157,7 +157,7 @@ function Overview({ b, keyword, country, data, kd, kdMap, askKd, send, busy }) {
                 {pager.rows.map(r => (
                   <tr key={r.keyword} className={sel.has(r.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50/60'}>
                     <td className="px-4 py-2"><input type="checkbox" aria-label={`Select ${r.keyword}`} checked={sel.has(r.keyword)} onChange={() => toggle(r.keyword)} className="accent-indigo-600" /></td>
-                    <td className="px-3 py-2 font-medium text-slate-900"><Link to={`/keyword-management/magic2?q=${encodeURIComponent(r.keyword)}${country ? `&c=${country}` : ''}`} className="hover:text-indigo-700 hover:underline">{r.keyword}</Link></td>
+                    <td className="px-3 py-2 font-medium text-slate-900"><Link to={`${hub ? '/keyword-management/magic?tab=topics' : '/keyword-management/magic2?'}${hub ? '&' : ''}q=${encodeURIComponent(r.keyword)}${country ? `&c=${country}` : ''}`} className="hover:text-indigo-700 hover:underline">{r.keyword}</Link></td>
                     <td className="px-3 py-2 text-right tabular-nums">{kfmt(r.volume)}</td>
                     <td className="px-3 py-2 text-center"><IntentTag v={r.intent} /></td>
                     <td className="px-3 py-2 text-right">{kdMap[r.keyword] === undefined ? <button type="button" onClick={() => askKd(r.keyword)} className="text-12 text-indigo-600 hover:underline cursor-pointer">Check</button> : <KdCell v={kdMap[r.keyword]} />}</td>
@@ -212,12 +212,12 @@ function Bulk({ b, country }) {
   );
 }
 
-function Body({ b }) {
+function Body({ b, hub = '' }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const keyword = (params.get('q') || '').trim();
   const country = params.get('c') || '';
-  const tab = params.get('tab') === 'bulk' ? 'bulk' : 'overview';
+  const tab = hub ? (hub === 'bulk' ? 'bulk' : 'overview') : params.get('tab') === 'bulk' ? 'bulk' : 'overview';
   const countries = useApi('/discover/countries');
   const [typed, setTyped] = useState(keyword);
   const [data, setData] = useState(null);
@@ -248,7 +248,7 @@ function Body({ b }) {
     const r = await api(`/businesses/${b.id}/keyword-workspace/add`, { method: 'POST', body: { ideas: list.slice(0, 500).map(i => ({ keyword: i.keyword, volume: i.volume, detail: `Keyword Magic Tool 2.0: ${keyword}` })), label: 'Keyword Magic Tool 2.0' } });
     toast(r.added ? `${r.added} keyword${r.added === 1 ? '' : 's'} saved to the Keyword Workspace` : 'Already in the Keyword Workspace');
   });
-  const url = (over) => { const p = new URLSearchParams({ ...(keyword && { q: keyword }), ...(country && { c: country }), ...over }); return `/keyword-management/magic2?${p}`; };
+  const url = (over) => { const p = new URLSearchParams({ ...(keyword && { q: keyword }), ...(country && { c: country }), ...(hub && { tab: hub }), ...over }); return `${hub ? '/keyword-management/magic' : '/keyword-management/magic2'}?${p}`; };
   const submit = (e) => { e.preventDefault(); const t = typed.trim(); if (t.length > 1) navigate(url({ q: t })); };
   const countryName = (countries.data || []).find(c => c.code === (data?.country || country))?.name;
 
@@ -260,15 +260,15 @@ function Body({ b }) {
           <select value={data?.country || country || ''} onChange={e => navigate(url({ c: e.target.value }))} aria-label="Database (country)" className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13 text-slate-800">{!(data?.country || country) && <option value="">Your country</option>}{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select>
         </label>
       </form>
-      <div className="flex gap-6 border-b border-slate-200" role="tablist">
+      {!hub && <div className="flex gap-6 border-b border-slate-200" role="tablist">
         {[['overview', 'Overview and Research'], ['bulk', 'Bulk Analysis']].map(([id, l]) => <Link key={id} role="tab" aria-selected={tab === id} to={url({ tab: id === 'bulk' ? 'bulk' : '' })} className={`-mb-px pb-2.5 text-14 font-medium border-b-2 ${tab === id ? 'border-indigo-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{l}</Link>)}
-      </div>
+      </div>}
       {tab === 'bulk' ? <Bulk b={b} country={country} />
         : keyword.length < 2 ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-10 text-center text-slate-500">Enter a keyword to see its volume, difficulty, global volume, intent, the first results on Google and every related keyword grouped into topics.</div>
           : data?.state === 'loading' || !data ? <div className="flex items-center justify-center gap-2 py-16 text-13 text-slate-500"><Loader2 className="animate-spin" size={16} /> Reading Google Keyword Planner for “{keyword}”… {countryName || ''}</div>
             : data.state === 'error' ? <ErrorNote>{data.message}</ErrorNote>
               : !data.found && !(data.groups?.similar?.total || data.groups?.related?.total) ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-10 text-center text-slate-500">Google has no searches for “{keyword}” in this database.</div>
-                : <Overview b={b} keyword={keyword} country={country} data={data} kd={kd} kdMap={kdMap} askKd={askKd} send={send} busy={busy} />}
+                : <Overview hub={hub} b={b} keyword={keyword} country={country} data={data} kd={kd} kdMap={kdMap} askKd={askKd} send={send} busy={busy} />}
       {toastNode}
     </div>
   );
@@ -277,3 +277,4 @@ function Body({ b }) {
 export function KeywordMagicTool2Page() {
   return <SeoShell title="Keyword Magic Tool 2.0" subtitle="One keyword: volume, difficulty, global volume, intent and the first results on Google, then every related keyword grouped into topics">{(b) => <Body key={b.id} b={b} />}</SeoShell>;
 }
+export { Body as KeywordMagic2Body };
