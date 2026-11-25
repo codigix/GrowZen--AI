@@ -31,7 +31,7 @@ function Pill({ label, value, onChange, options }) {
   const on = value !== '';
   const cur = options.find(o => o[0] === value);
   return (
-    <label className={`relative inline-flex items-center h-8 rounded-full text-12.5 font-medium cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-indigo-400 ${on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>
+    <label className={`relative inline-flex items-center h-9 rounded-full text-12.5 font-medium cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-indigo-400 ${on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>
       <span className="pl-3 pointer-events-none">{label}{on ? ':' : ''}</span>
       <span className="pl-1 pr-7 pointer-events-none font-semibold">{on ? (cur?.[2] || cur?.[1]) : ''}</span>
       <ChevronDown size={13} className="absolute right-2.5 pointer-events-none opacity-70" />
@@ -343,46 +343,46 @@ export default function KeywordWorkspace({ b, onUse }) {
 
           <Card pad={false}>
             <div className="border-b border-slate-100">
-              {/* find: search the list, search the Keyword Planner for new ones, pick the best */}
-              <div className="px-4 pt-3 pb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                <label className="relative flex-1 min-w-[220px] max-w-sm"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Search your keywords" aria-label="Search keywords" className="h-9 w-full pl-9 pr-8 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                  {q && <button type="button" onClick={() => setQ('')} aria-label="Clear the search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><X size={13} /></button>}</label>
-                <div className="flex h-9 rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
-                  <input value={plannerQ} onChange={e => setPlannerQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchPlanner(); }} placeholder="Find new keywords in Google Keyword Planner" aria-label="Search the Keyword Planner" className="w-64 xl:w-80 px-3 text-13 outline-none bg-white" />
-                  <button type="button" disabled={plannerQ.trim().length < 2 || busy === 'planner'} onClick={searchPlanner} className="px-3 inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
-                    {busy === 'planner' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}Find</button>
+              {/* row 1: find. Search the list, search the Keyword Planner for new ones, pick the best */}
+              <div className="px-4 pt-4 pb-3 flex flex-wrap items-center gap-3">
+                <label className="relative flex-1 min-w-[240px] max-w-md">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Search your keywords" aria-label="Search keywords" className="h-10 w-full pl-9 pr-8 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-400" />
+                  {q && <button type="button" onClick={() => setQ('')} aria-label="Clear the search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><X size={13} /></button>}
+                </label>
+                <div className="flex items-stretch h-10 flex-1 min-w-[300px] max-w-xl rounded-lg bg-white ring-1 ring-inset ring-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                  <Sparkles size={15} className="self-center ml-3 text-indigo-500 shrink-0" />
+                  <input value={plannerQ} onChange={e => setPlannerQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchPlanner(); }} placeholder="Find new keywords in Google Keyword Planner" aria-label="Search the Keyword Planner" className="flex-1 min-w-0 px-2.5 text-13 outline-none bg-transparent placeholder:text-slate-400" />
+                  <button type="button" disabled={plannerQ.trim().length < 2 || busy === 'planner'} onClick={searchPlanner} className="px-4 inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer transition-colors">
+                    {busy === 'planner' ? <Loader2 size={14} className="animate-spin" /> : null}Find</button>
                 </div>
-                {view === 'open' || view === 'suggested' ? (
-                  suggestedAll.length > 0 && <Button size="sm" className="ml-auto" icon={Star} busy={busy === 'pick'} onClick={() => pick(suggestedAll.map(i => i.id))} title="The best-looking keywords: searches, ease, gaps and how many places agree">Pick {suggestedAll.length} suggested</Button>
-                ) : null}
+                {(view === 'open' || view === 'suggested') && suggestedAll.length > 0 && (
+                  <Button className="ml-auto h-10" icon={Star} busy={busy === 'pick'} onClick={() => pick(suggestedAll.map(i => i.id))} title="The best-looking keywords: searches, ease, gaps and how many places agree">Pick {suggestedAll.length} suggested</Button>
+                )}
               </div>
-              {/* the figures are for this place and this time */}
-              <div className="px-4 pb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                <label className="relative inline-flex items-center"><MapPin size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-                  <Select value={place} onChange={e => setPlace(e.target.value)} aria-label="Location" className="h-8 appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-8 pr-7 text-12.5 font-medium text-slate-800 cursor-pointer hover:bg-slate-50">
+              {/* row 2: the figures are for this place and this time, then the filters */}
+              <div className="px-4 pb-4 flex flex-wrap items-center gap-x-3 gap-y-2.5">
+                <label className="relative inline-flex items-center"><MapPin size={14} className="absolute left-3 text-slate-400 pointer-events-none z-10" />
+                  <Select value={place} onChange={e => setPlace(e.target.value)} aria-label="Location" className="h-9 w-[210px] appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-9 pr-8 text-13 font-medium text-slate-800 cursor-pointer hover:bg-slate-50 text-left">
                     {places.map((x, n) => <option key={x.name} value={n === 0 ? '' : x.name}>{x.name}{x.kind === 'Country' ? '' : ` (${x.kind.toLowerCase()})`}</option>)}</Select>
-                  <ChevronDown size={13} className="absolute right-2.5 text-slate-400 pointer-events-none" /></label>
-                <label className="relative inline-flex items-center"><CalendarDays size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-                  <Select value={period} onChange={e => setPeriod(e.target.value)} aria-label="Time" className="h-8 appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-8 pr-7 text-12.5 font-medium text-slate-800 cursor-pointer hover:bg-slate-50">
+                </label>
+                <label className="relative inline-flex items-center"><CalendarDays size={14} className="absolute left-3 text-slate-400 pointer-events-none z-10" />
+                  <Select value={period} onChange={e => setPeriod(e.target.value)} aria-label="Time" className="h-9 w-[170px] appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-9 pr-8 text-13 font-medium text-slate-800 cursor-pointer hover:bg-slate-50 text-left">
                     <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</Select>
-                  <ChevronDown size={13} className="absolute right-2.5 text-slate-400 pointer-events-none" /></label>
-                {figBusy && <span className="text-12 text-slate-500 inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Asking Google Ads…</span>}
-                {!figBusy && figError && <span className="text-12 text-amber-700" title={figError}>{String(figError).slice(0, 80)}</span>}
-              </div>
-              {/* filters: each is a pill, indigo once it is on */}
-              <div className="px-4 pb-3 flex flex-wrap items-center gap-2">
-                <span className="text-11.5 font-semibold uppercase tracking-wide text-slate-400 mr-1">Filters</span>
+                </label>
+                <span className="hidden lg:block h-6 w-px bg-slate-200" aria-hidden="true" />
+                <span className="text-11.5 font-semibold uppercase tracking-wide text-slate-400">Filters</span>
                 <Pill label="Searches" value={fMin} onChange={setFMin} options={[['100', '100+ a month', '100+'], ['500', '500+ a month', '500+'], ['1000', '1,000+ a month', '1,000+'], ['5000', '5,000+ a month', '5,000+']]} />
                 <Pill label="Difficulty" value={fKd} onChange={setFKd} options={[['easy', 'Easy (under 30)', 'Easy'], ['medium', 'Medium (30 to 49)', 'Medium'], ['hard', 'Challenging (50 to 69)', 'Challenging'], ['very', 'Very hard (70+)', 'Very hard']]} />
                 <Pill label="Trend" value={fTrend} onChange={setFTrend} options={[['up', 'Rising', 'Rising'], ['steady', 'Steady', 'Steady'], ['down', 'Falling', 'Falling']]} />
                 <Pill label="Intent" value={fIntent} onChange={setFIntent} options={[['informational', 'Informational'], ['commercial', 'Commercial'], ['transactional', 'Transactional'], ['local', 'Local'], ['navigational', 'Navigational']]} />
                 <Pill label="Search Console" value={fIndex} onChange={setFIndex} options={[['data', 'Has data', 'Has data'], ['none', 'No data', 'No data']]} />
-                {(fMin || fKd || fTrend || fIntent || fIndex) && (
-                  <>
-                    <button type="button" onClick={() => { setFMin(''); setFKd(''); setFTrend(''); setFIntent(''); setFIndex(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear filters</button>
-                    <span className="text-12 text-slate-500 ml-auto tabular-nums">Showing {rows.length} of {d.items.length}</span>
-                  </>
-                )}
+                {(fMin || fKd || fTrend || fIntent || fIndex) && <button type="button" onClick={() => { setFMin(''); setFKd(''); setFTrend(''); setFIntent(''); setFIndex(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear filters</button>}
+                <span className="ml-auto text-12.5 text-slate-500 tabular-nums inline-flex items-center gap-2">
+                  {figBusy && <span className="inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Asking Google Ads…</span>}
+                  {!figBusy && figError && <span className="text-amber-700" title={figError}>{String(figError).slice(0, 60)}</span>}
+                  <span>Showing <b className="text-slate-800">{rows.length}</b> of {d.items.length}</span>
+                </span>
               </div>
             </div>
 
