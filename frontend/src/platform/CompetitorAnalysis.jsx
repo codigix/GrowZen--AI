@@ -181,11 +181,19 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const cols = [
     { id: 'sel', header: <input type="checkbox" aria-label="Select every row shown" checked={allOn} onChange={e => setSel(s => { const n = new Set(s); view.forEach(c => (e.target.checked ? n.add(c.key) : n.delete(c.key))); return n; })} className="accent-indigo-600" />, csv: false,
       cell: c => <input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.key)} onChange={() => toggle(c.key)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
-    { id: 'name', header: 'Competitor', first: 'asc', value: c => c.name, className: 'px-3 py-2.5 min-w-[210px]',
-      cell: c => <button type="button" onClick={() => onDetail(c)} className="flex items-center gap-2.5 text-left cursor-pointer group max-w-[280px]"><Logo host={c.host} name={c.name} /><span className="min-w-0"><span className="block font-semibold text-slate-900 group-hover:text-indigo-700 truncate">{c.name}</span>{c.chosen && <span className="text-11 font-semibold text-emerald-700">Selected</span>}</span></button> },
-    { id: 'domain', header: 'Domain', value: c => c.host, cell: c => (c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline inline-flex items-center gap-1">{c.host}<ExternalLink size={11} /></a> : <span className="text-slate-300">no website</span>) },
-    { id: 'location', header: 'Location', value: c => city(c), className: 'px-3 py-2.5 max-w-[200px]', tip: { what: 'Where the business is, from its Google Maps address.' }, cell: c => <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-slate-400 shrink-0" /><span className="truncate" title={c.maps?.address || ''}>{city(c) || '—'}</span></span> },
-    { id: 'dist', header: 'Distance', right: true, value: c => c.maps?.distance_m ?? null, tip: { what: 'How far its Google Maps pin is from the place you are searching.' }, cell: c => (c.maps?.distance_m == null ? <span className="text-slate-300">—</span> : c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`) },
+    { id: 'name', header: 'Competitor', first: 'asc', value: c => c.name, className: 'px-3 py-2.5 min-w-[280px] max-w-[360px]', tip: { what: 'The competitor, its website and where it is. The distance is from the place you are searching.' },
+      cell: c => (
+        <div className="flex items-center gap-2.5">
+          <Logo host={c.host} name={c.name} />
+          <div className="min-w-0">
+            <button type="button" onClick={() => onDetail(c)} className="block max-w-full text-left font-semibold text-slate-900 hover:text-indigo-700 truncate cursor-pointer" title={c.name}>{c.name}{c.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</button>
+            {c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" className="text-12.5 text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.host}</span><ExternalLink size={10} className="shrink-0" /></a> : <span className="block text-12 text-slate-400">no website</span>}
+            <span className="flex items-center gap-1 text-12 text-slate-500 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" /><span className="truncate" title={c.maps?.address || ''}>{city(c) || 'location not known'}</span>{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span>
+          </div>
+        </div>) },
+    { id: 'domain', header: 'Domain', value: c => c.host, hide: true },
+    { id: 'location', header: 'Location', value: c => city(c), hide: true },
+    { id: 'dist', header: 'Distance (m)', right: true, value: c => c.maps?.distance_m ?? null, hide: true },
     { id: 'da', header: 'DA', value: c => c.m.da ?? null, first: 'desc', tip: { what: 'Domain Authority, 0 to 100 (Moz).' }, className: 'px-3 py-2.5 text-center', thClass: 'px-3 py-3', cell: c => <span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(c.m.da)}`}>{c.m.da ?? '—'}</span> },
     { id: 'kw', header: 'Ranking keywords', right: true, first: 'desc', value: c => c.m.keywords ?? null, tip: { what: 'How many keywords it ranks for in a ranked-keywords read, for the market below.' } },
     { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: c => c.m.top3 ?? null, tip: { what: 'Keywords where it holds one of the first three positions.' } },
@@ -237,7 +245,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           {addError && <div className="w-full"><ErrorNote>{addError}</ErrorNote></div>}
         </form>
       )}
-      <DataTable columns={cols} rows={data} rowKey={c => c.key} filters={filters} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1250} label="competitors"
+      <DataTable columns={cols} rows={data} rowKey={c => c.key} filters={filters} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1100} label="competitors"
         exportName="competitors" searchPlaceholder="Search competitor by name or domain" onState={s => { viewRef.current = s.rows; }}
         rowClass={c => (sel.has(c.key) ? 'bg-indigo-50/50' : c.chosen ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-slate-50')}
         empty={rows.length ? 'No competitor matches these filters.' : scope === 'near' ? `No competitor found within ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} of ${placeName || 'this place'}. Try Everywhere, a larger distance or Find more.` : 'No competitors yet. Find them on Google Maps or add one by its website.'} />
