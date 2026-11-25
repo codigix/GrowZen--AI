@@ -95,24 +95,31 @@ export function AutoBar({ auto }) {
   const [open, setOpen] = useState(false);
   const failed = Object.entries(prog.failed || {});
   return (
-    <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-      {prog.running ? (
-        <div className="flex items-center gap-3 flex-1 min-w-[260px]">
+    <div className="rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm p-4 sm:p-5 space-y-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="min-w-0 flex-1 basis-[300px]">
+          <div className="text-14 font-semibold text-slate-900">Automatic analysis</div>
+          <p className="mt-0.5 text-12.5 text-slate-500">{on ? 'Competitors that were not analyzed yet are read by themselves: their Domain Authority and the keywords they rank for. Their websites are not audited.' : 'Switched off. Use Analyze on a row to read a competitor.'}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 ml-auto">
+          <label className="inline-flex items-center gap-2.5 text-13 font-medium text-slate-800 cursor-pointer select-none" title="Each competitor read costs about $0.04 at Apify">
+            <button type="button" role="switch" aria-checked={on} onClick={() => toggle(!on)} className={`relative w-10 h-6 rounded-full transition-colors cursor-pointer ${on ? 'bg-indigo-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></button>
+            {on ? 'On' : 'Off'}
+          </label>
+          <Button size="sm" icon={Settings} onClick={() => setOpen(true)} title="What is read by itself, retries, refresh, the daily limit, and the calls made so far">Settings and usage</Button>
+        </div>
+      </div>
+      {prog.running && (
+        <div className="flex items-center gap-3 rounded-xl bg-indigo-50/60 ring-1 ring-indigo-100 px-3.5 py-3">
           <Loader2 size={16} className="animate-spin text-indigo-600 shrink-0" />
           <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Analyzing competitors <span className="font-normal text-slate-500">{prog.done} of {prog.total}{prog.current ? ` · now ${prog.current}` : ''}</span></div>
-            <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.max(4, (prog.done / Math.max(1, prog.total)) * 100)}%` }} /></div></div>
+            <div className="mt-1.5 h-1.5 rounded-full bg-white overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.max(4, (prog.done / Math.max(1, prog.total)) * 100)}%` }} /></div></div>
           <Button size="sm" onClick={stop}>Stop</Button>
         </div>
-      ) : (
-        <div className="flex-1 min-w-[260px] text-12.5 text-slate-600">{prog.limit_reached && <span className="block text-amber-700 mb-0.5">Today's automatic limit is used up. The rest waits until tomorrow, or raise the limit in Settings and usage.</span>}{on ? 'Competitors that were not analyzed are analyzed automatically: their Domain Authority and the keywords they rank for. Nothing about their websites is audited.' : 'Automatic analysis is off. Use “Analyze selected” on the rows you want.'}
-          {failed.length > 0 && <span className="block text-amber-700 mt-0.5" title={failed.map(([d, m]) => `${d}: ${m}`).join('\n')}>{failed.length} could not be fully read: {failed[0][0]}: {failed[0][1]}{failed.length > 1 ? ` (+${failed.length - 1})` : ''}</span>}</div>
       )}
-      <Button size="sm" icon={Settings} onClick={() => setOpen(true)} title="What is read by itself, retries, refresh, the daily limit, and the calls made so far">Settings and usage</Button>
+      {!prog.running && prog.limit_reached && <div role="status" className="rounded-xl bg-amber-50 ring-1 ring-amber-200 px-3.5 py-2.5 text-13 text-amber-900"><b>Today's automatic limit is reached.</b> The rest waits until tomorrow, or raise the limit in Settings and usage.</div>}
+      {!prog.running && failed.length > 0 && <div role="status" className="rounded-xl bg-amber-50 ring-1 ring-amber-200 px-3.5 py-2.5 text-13 text-amber-900" title={failed.map(([d, m]) => `${d}: ${m}`).join('\n')}><b>{failed.length} competitor{failed.length === 1 ? '' : 's'} could not be fully read.</b> {failed[0][0]}: {failed[0][1]}{failed.length > 1 ? ` (and ${failed.length - 1} more)` : ''}</div>}
       {open && <AutoSettings auto={auto} onClose={() => setOpen(false)} />}
-      <label className="inline-flex items-center gap-2 text-12.5 text-slate-700 cursor-pointer select-none" title="Each competitor read costs about $0.04 at Apify">
-        <button type="button" role="switch" aria-checked={on} onClick={() => toggle(!on)} className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${on ? 'bg-indigo-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></button>
-        Auto-analyze
-      </label>
     </div>
   );
 }
@@ -130,7 +137,7 @@ function MatchDrawer({ c, rating, onClose, onProfile }) {
   return (
     <Modal open onClose={onClose} width="max-w-xl" title={`Match score: ${c.name}`} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={onProfile}>Open full profile</Button></>}>
       <div className="flex items-center gap-4">
-        <span className="text-28 font-bold tabular-nums text-slate-900">{r.score}<span className="text-14 font-medium text-slate-400"> / 100</span></span>
+        <span className="text-26 font-bold tabular-nums text-slate-900">{r.score}<span className="text-14 font-medium text-slate-400"> / 100</span></span>
         <div><Badge tone={r.label === 'direct' ? 'green' : r.label === 'related' ? 'amber' : 'gray'}>{r.label_text}</Badge>
           <div className="text-12 text-slate-500 mt-0.5">Direct from {rating?.direct_at ?? 65}, related from {rating?.related_at ?? 40}. This is how closely it competes with your business. It is not Domain Authority.</div></div>
       </div>
@@ -209,9 +216,13 @@ function Logo({ host, name }) {
 
 function Stat({ icon: Icon, label, value, sub, tone, help }) {
   return (
-    <div className={`rounded-xl ring-1 px-4 py-3.5 flex items-center gap-3.5 ${tone}`}>
-      <span className="w-11 h-11 rounded-xl bg-white/80 inline-flex items-center justify-center shrink-0"><Icon size={22} className="opacity-80" /></span>
-      <div className="min-w-0"><div className="text-13 text-slate-600 flex items-center gap-1">{label}{help && <Tip text={help} align="left"><span tabIndex={0} aria-label={help} className="cursor-help text-slate-400 text-11 font-bold rounded-full ring-1 ring-slate-300 w-4 h-4 inline-flex items-center justify-center">?</span></Tip>}</div><div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{value}</div>{sub && <div className="text-11.5 text-slate-500 truncate">{sub}</div>}</div>
+    <div className="rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm px-4 py-4 flex items-center gap-4 min-w-0">
+      <span className={`w-12 h-12 rounded-xl inline-flex items-center justify-center shrink-0 ${tone}`}><Icon size={23} /></span>
+      <div className="min-w-0">
+        <div className="text-26 font-bold text-slate-900 tabular-nums leading-none">{value}</div>
+        <div className="mt-1.5 text-13 font-medium text-slate-700 flex items-center gap-1">{label}{help && <Tip text={help} align="left"><span tabIndex={0} aria-label={help} className="cursor-help text-slate-400 text-11 font-bold rounded-full ring-1 ring-slate-300 w-4 h-4 inline-flex items-center justify-center">?</span></Tip>}</div>
+        {sub && <div className="text-12 text-slate-500 truncate" title={sub}>{sub}</div>}
+      </div>
     </div>
   );
 }
@@ -224,11 +235,11 @@ export function AnalysisStats({ rows, status, isChosen, metrics }) {
   const selected = uniq(rows.filter(isChosen));
   const analyzed = uniq(rows.filter(c => status(c) === 'analyzed'));
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
-      <Stat icon={Users} label="Discovered competitors" value={discovered} sub="unique domains found" help="Unique competitor websites found on Google Maps or added by hand. A business seen twice counts once. Found does not mean selected." tone="bg-indigo-50/60 ring-indigo-100" />
-      <Stat icon={CheckCircle2} label="Selected competitors" value={selected} sub="confirmed by you" help="Competitors you confirmed. Only these are watched and compared in the other tabs." tone="bg-emerald-50/60 ring-emerald-100" />
-      <Stat icon={BarChart3} label="Analyzed competitors" value={analyzed} sub={`${discovered - analyzed} not fully read`} help="Competitors whose Domain Authority and ranked keywords were both read. Reading only one of them is Partly read and does not count here." tone="bg-sky-50/60 ring-sky-100" />
-      <Stat icon={Layers} label="Avg. Domain Authority" value={das.length ? Math.round(das.reduce((x, v) => x + v, 0) / das.length) : '—'} sub={das.length ? `from ${das.length} of ${discovered} site${discovered === 1 ? '' : 's'}` : 'analyze a competitor to read it'} help="Average of the Domain Authority figures that were read. Sites without a figure are left out, not counted as zero." tone="bg-violet-50/60 ring-violet-100" />
+    <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+      <Stat icon={Users} label="Discovered competitors" value={discovered} sub="unique domains found" help="Unique competitor websites found on Google Maps or added by hand. A business seen twice counts once. Found does not mean selected." tone="bg-indigo-50 text-indigo-600" />
+      <Stat icon={CheckCircle2} label="Selected competitors" value={selected} sub="confirmed by you" help="Competitors you confirmed. Only these are watched and compared in the other tabs." tone="bg-emerald-50 text-emerald-600" />
+      <Stat icon={BarChart3} label="Analyzed competitors" value={analyzed} sub={`${discovered - analyzed} not fully read`} help="Competitors whose Domain Authority and ranked keywords were both read. Reading only one of them is Partly read and does not count here." tone="bg-sky-50 text-sky-600" />
+      <Stat icon={Layers} label="Avg. Domain Authority" value={das.length ? Math.round(das.reduce((x, v) => x + v, 0) / das.length) : '—'} sub={das.length ? `from ${das.length} of ${discovered} site${discovered === 1 ? '' : 's'}` : 'analyze a competitor to read it'} help="Average of the Domain Authority figures that were read. Sites without a figure are left out, not counted as zero." tone="bg-violet-50 text-violet-600" />
     </div>
   );
 }

@@ -159,8 +159,11 @@ def test_due_reasons_new_retry_refresh_and_daily_limit(client, monkeypatch):
         assert ca.due_reason(db, b, "failed-old.example", cfg) == "retry"
         assert ca.due_reason(db, b, "giveup.example", cfg) is None  # tried max_retries times in a row
         assert ca.due_reason(db, b, "new.example", cfg | {"auto_analyze": False}) is None
-        # daily limit: nothing starts when the day's automatic reads are used up
+        # daily limit: only reads that got data count; refused attempts (the retry / failed rows above) cost nothing
         ca.set_config(db, b, {"daily_limit": 3})
+        assert ca.runs_today(db, b, "auto") == 1  # fresh.example only: the four refused attempts today are not counted
+        run("a.example", "analyzed", 0.2)
+        run("b.example", "partial", 0.3)
         out = ca.start_auto(db, b, ["new.example", "failed-old.example"])
         assert out["running"] is False and out.get("limit_reached") is True
     finally:

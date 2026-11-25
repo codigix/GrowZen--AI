@@ -134,7 +134,8 @@ def runs_today(db: Session, b: Business, trigger: str | None = None) -> int:
     start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     q = select(func.count()).select_from(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.started_at >= start)
     if trigger:
-        q = q.where(CompetitorAnalysisRun.trigger == trigger)
+        # the daily limit guards spending: only reads that got data (analyzed or partly analyzed) count. An attempt the provider refused (limit reached, no key) cost nothing and does not use the day up.
+        q = q.where(CompetitorAnalysisRun.trigger == trigger, CompetitorAnalysisRun.status.in_(("analyzed", "partial")))
     return int(db.scalar(q) or 0)
 
 
