@@ -10,6 +10,7 @@ import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
+import PlacePicker from './PlacePicker';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
@@ -152,7 +153,7 @@ function SetupForm({ b, defaults, onStart, busy, error, setupInfo, hasRun }) {
         </div>
       </Field>
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
-        <Field label="Search from" hint="City Google searches from"><input className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Pune, India" /></Field>
+        <Field label="Search from" hint="Competitors are found for this place: search any place or click the map"><PlacePicker b={b} value={location} onChange={(v) => setLocation(v)} width={300} canSave={false} places={[{ name: defaults.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} /></Field>
         <Button variant="primary" icon={Play} busy={busy} disabled={!keywords.length || !setupInfo.google_results} onClick={() => onStart(keywords, location)}>{hasRun ? 'Run research again' : 'Research competitors'}</Button>
       </div>
       <p className="text-11.5 text-slate-500">About a minute. Makes {keywords.length} Google Places request{keywords.length === 1 ? '' : 's'}. Competitors found on Google Maps are also registered for site audits.</p>
@@ -840,6 +841,7 @@ function Research({ b }) {
   const [params] = useSearchParams();
   const [tab, setTab] = useState(() => (['overview', 'competitors', 'rankings', 'gap', 'keywords', 'maps'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
   const [settings, setSettings] = useState(false);
+  const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
   const [detail, setDetail] = useState(null);
   const [serp, setSerp] = useState(null);
   const [ideas, setIdeas] = useState(false);
@@ -908,7 +910,7 @@ function Research({ b }) {
   // Google Maps finder: registers the competitors that have a website. Nothing about their sites is audited.
   const findOnMaps = () => runMaps('maps', async () => {
     const type = b.primaryCategory || (state?.defaults?.keywords?.[0] || '').split(' in ')[0] || 'business';
-    const where = [b.area, b.city].filter(Boolean).join(', ') || state?.defaults?.location || '';
+    const where = place || [b.area, b.city].filter(Boolean).join(', ') || state?.defaults?.location || '';
     const r = await api('/competitors', { method: 'POST', body: { business_type: type, location: where, business_id: b.id, top_n: 10 } });
     const list = await loadRegistered();
     toast(`${r.registered?.length || 0} competitors with a website found on Google Maps.`);
@@ -1010,7 +1012,7 @@ function Research({ b }) {
   };
 
   const start = (keywords, location) => run('start', async () => {
-    const r = await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords, location } });
+    const r = await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords, location: place || location } });
     setState(s => ({ ...s, run: r }));
     setSettings(false);
     if (!registered.length) findOnMaps().catch(() => { }); // the first run also registers the Maps competitors for audits
@@ -1102,6 +1104,14 @@ function Research({ b }) {
       {toastNode}
 
 
+      {/* where to find competitors */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="inline-flex items-center gap-1.5 text-13 font-semibold text-slate-800"><MapPin size={15} className="text-indigo-500" />Find competitors in</span>
+        <PlacePicker b={b} value={place} onChange={(v) => setPlace(v)} width={300} canSave={false} places={[{ name: state?.defaults?.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} />
+        <Button icon={MapPin} busy={mapsBusy === 'maps'} onClick={findOnMaps} title="Looks up the businesses Google Maps shows for your type of business around this place">Find on Google Maps</Button>
+        {state.setup?.google_results && <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} onClick={() => start(defaults.keywords, place || defaults.location)} title="Reads Google's results for your keywords from this place">{result ? 'Run research again' : 'Research this place'}</Button>}
+        <span className="text-12 text-slate-500 min-w-[200px] flex-1">Google Maps and Google results are read for this place. Choose another place to find the competitors there.</span>
+      </div>
       {/* One compact bar: status, settings, run */}
       <div className={`ai-glass-card rounded px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 ${result || isRunning(current) ? '' : 'hidden'}`}>
         <div className="min-w-0 flex-1">
