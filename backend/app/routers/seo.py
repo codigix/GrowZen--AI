@@ -272,7 +272,7 @@ def device_positions(b: Business = Depends(get_business), db: Session = Depends(
     if not base["rank_ready"]:
         return {**base, "state": "needs_google"}
     try:
-        return {**base, "state": "ok", **_google_rank.device_positions(db, b, tracked)}
+        return {**base, "state": "ok", **google_rank.device_positions(db, b, tracked)}
     except google_rank.RankCheckError as exc:
         return {**base, "state": "error", "message": str(exc)}
 
