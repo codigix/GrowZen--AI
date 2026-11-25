@@ -319,16 +319,17 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const cols = [
     { id: 'sel', header: <input type="checkbox" aria-label="Select every row shown" checked={allOn} onChange={e => setSel(s => { const n = new Set(s); view.forEach(c => (e.target.checked ? n.add(c.key) : n.delete(c.key))); return n; })} className="accent-indigo-600" />, csv: false,
       cell: c => <input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.key)} onChange={() => toggle(c.key)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
-    { id: 'name', header: 'Competitor', first: 'asc', value: c => c.name, className: 'px-3 py-2.5 min-w-[220px] max-w-[300px]', tip: { what: 'The competitor business. Press the name for its full profile.' },
+    { id: 'name', header: 'Competitor', first: 'asc', value: c => [c.name, c.host, city(c), c.maps?.distance_m != null ? `${(c.maps.distance_m / 1000).toFixed(1)} km` : ''].filter(Boolean).join(' · '), className: 'px-3 py-2.5 min-w-[300px] max-w-[400px]',
+      tip: { what: 'The competitor, its website and where it is. The distance is from the place you are searching. Press the name for its full profile.', from: 'Google Places' },
       cell: c => (
         <div className="flex items-center gap-2.5">
           <Logo host={c.host} name={c.name} />
-          <button type="button" onClick={() => onDetail(c)} className="block min-w-0 text-left font-semibold text-slate-900 hover:text-indigo-700 hover:underline truncate cursor-pointer" title={`Open the full profile of ${c.name}: rankings, strategy, Google Maps listing, site and links`}>{c.name}{c.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</button>
+          <div className="min-w-0">
+            <button type="button" onClick={() => onDetail(c)} className="block max-w-full text-left font-semibold text-slate-900 hover:text-indigo-700 hover:underline truncate cursor-pointer" title={`Open the full profile of ${c.name}: rankings, strategy, Google Maps listing, site and links`}>{c.name}{c.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</button>
+            {c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" title={`Open ${c.host} in a new tab`} className="text-12.5 text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.host}</span><ExternalLink size={10} className="shrink-0" /></a> : <span className="block text-12 text-slate-400">no website</span>}
+            <span className="flex items-center gap-1 text-12 text-slate-500 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" />{c.maps?.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.name} ${c.maps.address}`)}`} target="_blank" rel="noreferrer" title={`${c.maps.address}. Open it on Google Maps in a new tab`} className="truncate hover:text-indigo-700 hover:underline">{city(c)}</a> : <span className="truncate text-slate-400">location not available</span>}{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span>
+          </div>
         </div>) },
-    { id: 'domain', header: 'Website domain', first: 'asc', value: c => c.host || '', className: 'px-3 py-2.5 min-w-[150px]', tip: { what: 'The website domain, cleaned (no www or path). One row per domain.' },
-      cell: c => (c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" title={`Open ${c.host} in a new tab`} className="text-13 text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.host}</span><ExternalLink size={10} className="shrink-0" /></a> : <span className="text-12 text-slate-400">no website</span>) },
-    { id: 'loc', header: 'Location / distance', first: 'asc', value: c => [city(c), c.maps?.distance_m != null ? `${(c.maps.distance_m / 1000).toFixed(1)} km` : ''].filter(Boolean).join(' · '), className: 'px-3 py-2.5 min-w-[170px]', tip: { what: 'Where its Google Maps listing is, and how far that is from the place you are searching.', from: 'Google Places' },
-      cell: c => <span className="flex items-center gap-1 text-12.5 text-slate-600 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" />{c.maps?.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.name} ${c.maps.address}`)}`} target="_blank" rel="noreferrer" title={`${c.maps.address}. Open it on Google Maps in a new tab`} className="truncate hover:text-indigo-700 hover:underline">{city(c)}</a> : <span className="truncate text-slate-400">Not available</span>}{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span> },
     { id: 'source', header: 'Found by', value: c => (c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', '), className: 'px-3 py-2.5 text-12.5 text-slate-600', hide: true,
       tip: { what: 'How it was found. A business found on Google Maps is a local competitor; it is not automatically a competitor for organic search.', from: 'Google Places, organic search or added by hand' },
       cell: c => <span>{(c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', ') || <span className="text-slate-300">Not available</span>}</span> },
@@ -365,13 +366,6 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           {c.reg && <Icon label="Remove this competitor" onClick={() => { setSel(new Set([c.key])); setConfirm(true); }} tone="text-slate-400 hover:text-rose-600"><Trash2 size={16} /></Icon>}
         </span>) },
   ];
-  const locations = [...new Set(data.map(c => city(c)).filter(Boolean))].sort();
-  const filters = [
-    { id: 'status', label: 'Analysis status', options: Object.entries(STATUS).map(([k, v]) => [k, v[0]]), test: (c, v) => c.status === v },
-    { id: 'location', label: 'Location', options: locations.map(l => [l, l]), test: (c, v) => city(c) === v },
-    { id: 'da', label: 'Domain Authority', options: [['strong', 'Strong (60+)'], ['mid', 'Medium (30 to 59)'], ['weak', 'Weak (under 30)'], ['unread', 'Not read']], test: (c, v) => (v === 'unread' ? c.m.da == null : c.m.da != null && (v === 'strong' ? c.m.da >= 60 : v === 'mid' ? c.m.da >= 30 && c.m.da < 60 : c.m.da < 30)) },
-    { id: 'sel', label: 'Selection', options: [['yes', 'Selected'], ['no', 'Not selected']], test: (c, v) => (v === 'yes' ? c.chosen : !c.chosen) },
-  ];
   const toolbar = (
     <>
       <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden" role="group" aria-label="Where">
@@ -393,7 +387,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           {addError && <div className="w-full"><ErrorNote>{addError}</ErrorNote></div>}
         </form>
       )}
-      <DataTable columns={cols} rows={data} rowKey={c => c.key} toolbar={toolbar} filters={filters} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1500} label="competitors"
+      <DataTable columns={cols} rows={data} rowKey={c => c.key} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1500} label="competitors"
         exportName="competitors" searchPlaceholder="Search competitor by name or domain" onState={s => { viewRef.current = s.rows; }}
         rowClass={c => (sel.has(c.key) ? 'bg-indigo-50/50' : c.chosen ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-slate-50')}
         empty={rows.length ? 'No competitor matches these filters.' : scope === 'near' ? `No competitor found within ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} of ${placeName || 'this place'}. Try Everywhere, a larger distance or Find more.` : 'No competitors yet. Find them on Google Maps or add one by its website.'} />
