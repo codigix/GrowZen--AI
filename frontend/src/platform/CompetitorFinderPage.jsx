@@ -16,6 +16,7 @@ import PlacePicker from './PlacePicker';
 import Select from '../components/Select';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
 import ResearchTab from './CompetitorResearch';
+import CompetitorMaps from './CompetitorMaps';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 
@@ -1187,7 +1188,7 @@ function Research({ b }) {
               { id: 'traffic', label: 'Traffic comparison' },
               { id: 'pages', label: 'Top pages' },
               { id: 'backlinks', label: 'Backlink comparison' },
-              ...(result ? [{ id: 'maps', label: 'Google Maps', count: result.local_competitors.length }] : []),
+              { id: 'maps', label: 'Google Maps', count: tableRows.filter(c => c.maps).length },
               { id: 'research', label: 'Research' }
             ]} />
             {tab === 'competitors' && <>
@@ -1201,7 +1202,7 @@ function Research({ b }) {
             {tab === 'traffic' && <TrafficTab key={focus.host} b={b} rows={poolRows} analysis={analysis} focus={focus.host} />}
             {tab === 'pages' && <TopPagesTab key={focus.host} b={b} rows={poolRows} focus={focus.host} />}
             {tab === 'backlinks' && <BacklinkTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
-            {tab === 'maps' && result && <MapsTab r={result} kit={null} />}
+            {tab === 'maps' && <CompetitorMaps key={b.id} b={b} rows={tableRows} legacy={result ? <MapsTab r={result} kit={null} /> : null} />}
             {tab === 'research' && <ResearchTab key={b.id} b={b} legacy={result ? (
               <div className="space-y-3">
                   <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden bg-white" role="group" aria-label="Research">{[['overview', 'Overview'], ['rankings', 'Rankings on your keywords']].map(([k, l]) => <button key={k} type="button" aria-pressed={researchView === k} onClick={() => setResearchView(k)} className={`h-9 px-3.5 text-13 font-medium cursor-pointer ${researchView === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>

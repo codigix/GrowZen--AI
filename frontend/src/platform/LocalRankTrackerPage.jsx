@@ -320,7 +320,7 @@ function Tracker({ b }) {
 }
 
 /** Where the business shows on Google Maps: by area and keyword (the default), or as a street-by-street grid around the pin. */
-function MapsRanking({ b }) {
+export function MapsRanking({ b }) {
   const [view, setView] = useState('areas');
   return (
     <div className="space-y-3">
