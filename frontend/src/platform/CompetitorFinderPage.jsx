@@ -11,6 +11,7 @@ import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
 import PlacePicker from './PlacePicker';
+import Select from '../components/Select';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
@@ -224,24 +225,35 @@ function AddCompetitorForm({ onAdd, busy, error }) {
   );
 }
 
-export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose }) {
+export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose, placeName }) {
   const isChosen = (c) => Boolean(c.reg) && c.reg.selected !== false;
   const chosenCount = rows.filter(isChosen).length;
   const [view, setView] = useState('all'); // all | chosen | others
+  const [scope, setScope] = useState('near'); // near: only the businesses around the place searched | all: also the ones found further away or only online
+  const [open, setOpen] = useState(() => new Set());
+  const radius = r.radius_m || 5000;
+  const isNear = (c) => isChosen(c) || (c.maps ? (c.maps.distance_m == null || c.maps.distance_m <= radius) : false);
   const [adding, setAdding] = useState(false);
-  const ordered = [...rows].sort((x, y) => Number(isChosen(y)) - Number(isChosen(x))); // chosen competitors on top (the order inside each group is kept)
+  const near = rows.filter(isNear);
+  const pool = scope === 'near' ? near : rows;
+  const ordered = [...pool].sort((x, y) => Number(isChosen(y)) - Number(isChosen(x))); // chosen competitors on top (the order inside each group is kept)
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const shown = (view === 'chosen' ? ordered.filter(isChosen) : view === 'others' ? ordered.filter(c => !isChosen(c)) : ordered).filter(c => !needle || `${c.name} ${c.host}`.toLowerCase().includes(needle));
-  const compVal = (c, k) => (k === 'choose' ? Number(isChosen(c)) : k === 'name' ? c.name : k === 'match' ? c.maps?.relevance?.score : k === 'vis' ? (c.profile ? c.profile.visibility : c.maps?.visibility) : k === 'p1' ? (c.profile ? Object.keys(c.profile.positions).length : c.maps?.appearances) : k === 'best' ? (c.profile?.local ? c.profile.local.best : c.maps?.best) : k === 'audit' ? (!c.reg ? 'Not audited' : (AUDIT_LABEL[auditMap[c.reg.id]?.status] || auditMap[c.reg.id]?.status || 'Not audited')) : undefined);
+  const compVal = (c, k) => (k === 'choose' ? Number(isChosen(c)) : k === 'name' ? c.name : k === 'dist' ? (c.maps?.distance_m ?? null) : k === 'match' ? c.maps?.relevance?.score : k === 'vis' ? (c.profile ? c.profile.visibility : c.maps?.visibility) : k === 'p1' ? (c.profile ? Object.keys(c.profile.positions).length : c.maps?.appearances) : k === 'best' ? (c.profile?.local ? c.profile.local.best : c.maps?.best) : k === 'audit' ? (!c.reg ? 'Not audited' : (AUDIT_LABEL[auditMap[c.reg.id]?.status] || auditMap[c.reg.id]?.status || 'Not audited')) : undefined);
   const { sorted, sort, onSort } = useSorted(shown, compVal);
   const pager = usePager(sorted, { size: 25, resetKey: `${view}|${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <Card pad={false}>
       <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <div className="text-13 font-semibold text-slate-900 whitespace-nowrap">{rows.length} found <span className="font-normal text-slate-500">· {chosenCount} chosen</span></div>
+        <div className="text-13 font-semibold text-slate-900 whitespace-nowrap">{pool.length} {scope === 'near' ? 'near ' + (placeName || 'this place') : 'found'} <span className="font-normal text-slate-500">· {chosenCount} chosen</span></div>
+        <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Where">
+          {[['near', `Within ${radius >= 1000 ? `${Math.round(radius / 100) / 10} km` : `${radius} m`} (${near.length})`], ['all', `Everywhere (${rows.length})`]].map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={scope === id} onClick={() => setScope(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${scope === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>{label}</button>
+          ))}
+        </div>
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Show">
-          {[['all', `All ${rows.length}`], ['chosen', `Chosen ${chosenCount}`], ['others', `Not chosen ${rows.length - chosenCount}`]].map(([id, label]) => (
+          {[['all', `All ${pool.length}`], ['chosen', `Chosen ${chosenCount}`], ['others', `Not chosen ${pool.length - chosenCount}`]].map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
           ))}
         </div>
@@ -256,13 +268,14 @@ export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindM
         <Th id="choose" sort={sort} onSort={onSort} first="desc" c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
         <Th id="name" sort={sort} onSort={onSort}><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
         <Th id="match" sort={sort} onSort={onSort} first="desc"><Head what="How well it matches your business on similar services, area, keywords, Google presence, intent and authority." from="the competitor research (Google Maps data and AI).">Match</Head></Th>
+        <Th id="dist" sort={sort} onSort={onSort} c="text-right"><Head right what="How far its Google Maps pin is from the place you are searching." from="Google Maps (Places).">Distance</Head></Th>
         <Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="The share of Google clicks it could expect for your keywords, based on where it ranks." from="the competitor research (Google results). Your own figure comes from Search Console.">Google visibility</Head></Th>
         <Th id="p1" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="How many of your researched keywords it shows on page 1 of Google for." from="the competitor research.">Page-1 keywords</Head></Th>
         <Th id="best" sort={sort} onSort={onSort} c="text-center"><Head what="Its best position in the Google Maps results and its rating." from="Google Maps (Places).">Maps</Head></Th>
 <Th c="text-right"><Head right what="Open the keywords this competitor ranks for, and where you stand against it." from="the competitor keywords and the keyword gap.">Keywords</Head></Th></>}>
         {pager.rows.map(c => {
           return (
-            <tr key={c.host} className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
+            <React.Fragment key={c.host}><tr className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
               <td className="px-3 py-2.5 text-center"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
               <td className="px-3 py-2.5 min-w-[200px]">
                 <button type="button" onClick={() => onDetail(c)} className="text-left cursor-pointer group max-w-[280px]">
@@ -270,7 +283,8 @@ export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindM
                   <span className="block text-12 text-slate-500 truncate">{c.host}</span>
                 </button>
               </td>
-              <td className="px-3 py-2.5">{c.maps?.relevance ? <MatchCell rel={c.maps.relevance} /> : <span className="text-slate-400 text-12" title="Added by hand, or found before the match rating existed">—</span>}</td>
+              <td className="px-3 py-2.5">{c.maps?.relevance ? <button type="button" aria-expanded={open.has(c.host)} onClick={() => setOpen(s => { const n = new Set(s); n.has(c.host) ? n.delete(c.host) : n.add(c.host); return n; })} title="Show how the match is made" className="text-left cursor-pointer"><MatchCell rel={c.maps.relevance} /></button> : <span className="text-slate-400 text-12" title="Added by hand, or found before the match rating existed">—</span>}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">{c.maps?.distance_m == null ? <span className="text-slate-300">—</span> : c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</td>
               <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{c.profile ? `${c.profile.visibility}%` : c.maps ? `${c.maps.visibility}%` : '—'}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{c.profile ? `${Object.keys(c.profile.positions).length}/${r.keywords.length}` : c.maps ? `${c.maps.appearances}/${r.keywords.length} Maps` : '—'}</td>
               <td className="px-3 py-2.5 text-center">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : c.maps ? <span className="inline-flex items-center gap-1.5"><Pos value={c.maps.best} maps /><Stars rating={c.maps.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
@@ -281,9 +295,11 @@ export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindM
                 </div>
               </td>
             </tr>
+            {open.has(c.host) && c.maps?.relevance && <tr className="bg-slate-50/80"><td /><td colSpan={8} className="px-4 py-3"><div className="text-12.5 text-slate-700 mb-2"><b>{c.maps.relevance.label_text}</b> · score {c.maps.relevance.score}{c.maps.relevance.reason ? ` · ${c.maps.relevance.reason}` : ''}</div><FactorBars rel={c.maps.relevance} /></td></tr>}
+            </React.Fragment>
           );
         })}
-        {!shown.length && <tr><td colSpan={8} className="px-5 py-10 text-center text-13 text-slate-500">{rows.length ? (view === 'chosen' ? 'None chosen yet: tick the competitors that really compete with you.' : 'Nothing here.') : 'No competitors yet.'}</td></tr>}
+        {!shown.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-13 text-slate-500">{rows.length ? (view === 'chosen' ? 'None chosen yet: tick the competitors that really compete with you.' : 'Nothing here.') : 'No competitors yet.'}</td></tr>}
       </Table>
     </Card>
   );
@@ -323,12 +339,15 @@ function KeywordsTab({ r, onKeyword, onIdeas }) {
 }
 
 const CRITERIA = [
-  ['services', 'Similar services', 'Very high', 'Do they sell what you sell (a clothes rental is not a clothes shop)'],
-  ['area', 'Target area', 'Very high', 'The same customers: distance from your pin'],
-  ['keywords', 'Keyword overlap', 'Very high', 'Do they appear for the same searches'],
-  ['serp', 'Google presence', 'Very high', 'How high they rank on Google Maps for those searches'],
-  ['intent', 'Search intent', 'High', 'Would a customer be happy with either (rent versus buy)'],
-  ['authority', 'Domain authority', 'Medium', 'Strength of their website: never decides relevance alone']
+  ['services', 'Product relevance', 'Very high', 'Do they sell what you sell (a clothes rental is not a clothes shop)'],
+  ['area', 'Location relevance', 'Very high', 'The same customers: how near they are to the place searched'],
+  ['keywords', 'Keyword overlap', 'High', 'The share of your searches they show up for'],
+  ['serp', 'SERP overlap', 'High', 'How high they rank on the same results pages (Google Maps)'],
+  ['category', 'Category relevance', 'High', 'Their Google category against your categories'],
+  ['intent', 'Search intent match', 'High', 'Would a customer be happy with either (rent versus buy)'],
+  ['page', 'Top-page relevance', 'Medium', 'What their home page says against your services and searches'],
+  ['opportunity', 'Missing keyword opportunity', 'Medium', 'Searches they rank for that you do not (needs their keywords read)'],
+  ['traffic', 'Organic traffic strength', 'Medium', 'Estimated organic visits from their keywords, else the strength of their site']
 ];
 const MATCH_TONE = { direct: 'green', related: 'amber', unrelated: 'gray' };
 
@@ -351,6 +370,22 @@ function HowChosen({ r }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The nine factors of a match, each as a bar; a factor that could not be measured says so. */
+function FactorBars({ rel }) {
+  const f = rel?.factors || {};
+  return (
+    <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
+      {CRITERIA.map(([k, label, level, hint]) => (
+        <div key={k} title={hint}>
+          <div className="flex items-center justify-between text-12"><span className="text-slate-700">{label}</span><span className="tabular-nums font-semibold text-slate-900">{f[k] != null ? f[k] : <span className="font-normal text-slate-400">not measured</span>}</span></div>
+          <div className="mt-0.5 h-1.5 rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full rounded-full ${f[k] == null ? '' : f[k] >= 65 ? 'bg-emerald-500' : f[k] >= 40 ? 'bg-amber-400' : 'bg-slate-400'}`} style={{ width: `${f[k] ?? 0}%` }} /></div>
+        </div>
+      ))}
+      {rel?.traffic_from && <div className="sm:col-span-2 xl:col-span-3 text-11.5 text-slate-500">Organic traffic strength is from {rel.traffic_from === 'keywords' ? "this competitor's kept keyword read" : "the strength of its website (read its keywords for a better figure)"}.</div>}
     </div>
   );
 }
@@ -842,6 +877,7 @@ function Research({ b }) {
   const [tab, setTab] = useState(() => (['overview', 'competitors', 'rankings', 'gap', 'keywords', 'maps'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
   const [settings, setSettings] = useState(false);
   const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
+  const [radiusKm, setRadiusKm] = useState('5'); // how far around the place a competitor may be
   const [detail, setDetail] = useState(null);
   const [serp, setSerp] = useState(null);
   const [ideas, setIdeas] = useState(false);
@@ -1012,7 +1048,7 @@ function Research({ b }) {
   };
 
   const start = (keywords, location) => run('start', async () => {
-    const r = await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords, location: place || location } });
+    const r = await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords, location: place || location, radius_km: Number(radiusKm) } });
     setState(s => ({ ...s, run: r }));
     setSettings(false);
     if (!registered.length) findOnMaps().catch(() => { }); // the first run also registers the Maps competitors for audits
@@ -1109,6 +1145,8 @@ function Research({ b }) {
         <div className="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="inline-flex items-center gap-1.5 text-13 font-semibold text-slate-800"><MapPin size={15} className="text-indigo-500" />Find competitors in</span>
           <PlacePicker b={b} value={place} onChange={(v) => setPlace(v)} width={300} canSave={false} places={[{ name: state?.defaults?.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} />
+          <label className="inline-flex items-center gap-1.5 text-12.5 text-slate-600">within
+            <Select value={radiusKm} onChange={e => setRadiusKm(e.target.value)} aria-label="Distance around the place" className="h-9 w-24 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left">{['2', '5', '10', '20', '30'].map(k => <option key={k} value={k}>{k} km</option>)}</Select></label>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button icon={MapPin} busy={mapsBusy === 'maps'} disabled={isRunning(current)} onClick={findOnMaps} title="Looks up the businesses Google Maps shows for your type of business around this place">Find on Google Maps</Button>
             <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup?.google_results} onClick={() => start(defaults.keywords, place || defaults.location)} title="Reads Google's results for your keywords, searched from this place">{result ? 'Run research again' : 'Research this place'}</Button>
@@ -1163,7 +1201,7 @@ function Research({ b }) {
             ]} />
             {tab === 'overview' && <Overview r={result} goto={(id) => setTab(id === 'keywords' ? 'rankings' : id)} />}
             {tab === 'competitors' && <>
-              <CompetitorsTable rows={rows} r={result} onDetail={setDetail} onKeywords={() => setTab('keywords')} onGap={() => setTab('gap')} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
+              <CompetitorsTable rows={rows} r={result} placeName={(result.location || place || '').split(',')[0]} onDetail={setDetail} onKeywords={() => setTab('keywords')} onGap={() => setTab('gap')} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
                 onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} onChoose={chooseCompetitor} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}

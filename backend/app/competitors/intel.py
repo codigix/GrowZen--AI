@@ -422,7 +422,7 @@ def _local_rollup(serps: list[dict[str, Any]], n_keywords: int) -> list[dict[str
 
 
 def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Callable[[dict[str, Any]], None] = lambda e: None, own_positions: dict[str, dict[str, Any]] | None = None,
-            authority: dict[str, int] | None = None) -> dict[str, Any]:
+            authority: dict[str, int] | None = None, center: tuple[float, float] | None = None, radius_m: float | None = None, extra: dict[str, dict[str, int]] | None = None) -> dict[str, Any]:
     region_gl = countries.gl(market.serp_country(b))
     if not places_enabled():
         raise IntelError("Competitor research uses the Google Places API: set GOOGLE_PLACES_API_KEY on the SEO backend.")
@@ -458,10 +458,11 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     # Google gives no API for other websites' organic rankings, so rivals are the Maps businesses; the site's own organic position is Google's own figure for it.
     serps: list[dict[str, Any]] = []
     # A local business competes with the businesses around it: when it has a pin, only places within LOCAL_RADIUS_M of it count. Other projects search wherever their market is.
-    area_m = LOCAL_RADIUS_M if market.scope(b) == "local" and getattr(b, "lat", None) is not None and getattr(b, "lng", None) is not None else None
+    pin_lat, pin_lng = center if center else (getattr(b, "lat", None), getattr(b, "lng", None))  # the chosen place is the centre of the search; without one, the business's own pin
+    area_m = (radius_m or LOCAL_RADIUS_M) if (center or (market.scope(b) == "local" and pin_lat is not None and pin_lng is not None)) and pin_lat is not None else None
     for kw in keywords:
         progress(f"Google Maps results for \"{kw}\"", live() if serps else None)
-        plc = google_places(kw, location, region_gl, getattr(b, "lat", None), getattr(b, "lng", None), area_m)
+        plc = google_places(kw, location, region_gl, pin_lat, pin_lng, area_m)
         local = []
         for p in plc.get("places", [])[:10]:
             local.append({"position": p.get("position"), "name": p.get("title", ""), "rating": p.get("rating"), "reviews": p.get("ratingCount") or 0, "distance_m": p.get("distance_m"),
@@ -483,7 +484,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
     from ..services import business_understanding as _bu, categories as _categories
     progress("Checking which businesses are real competitors", live())
     own_rental = bool(_categories.rental_seeds(getattr(b, "name", None), getattr(b, "primary_category", None), [s.get("name") for s in (getattr(b, "services", None) or [])], getattr(b, "description", None)))
-    rated = relevance.rate(b, local_competitors, keywords, authority, lambda u: scan_site(u, max_pages=0, timeout=6), own_rental)
+    rated = relevance.rate(b, local_competitors, keywords, authority, lambda u: scan_site(u, max_pages=0, timeout=6), own_rental, extra)
     unrated = local_competitors[20:]
     for e in unrated:
         e["relevance"] = {"score": 0, "label": "unrelated", "label_text": relevance.LABEL["unrelated"], "factors": {}, "kind": None, "reason": "Too far down the results to be rated.", "judged_by": "none"}
@@ -592,6 +593,7 @@ def analyse(b: Any, keywords: list[str], location: str | None, on_progress: Call
         "other_places": other_places[:12],
         "basis": _bu.basis(b),
         "relevance": rated | {"other": len(other_places)},
+        "center": {"lat": pin_lat, "lng": pin_lng, "chosen": bool(center)} if pin_lat is not None else None, "radius_m": area_m,
         "profiles": competitor_profiles,
         "you": {"positions": my_positions, "local": my_local, "site": my_profile, "link_sources": my_sources, "backlinks": backlinks.get(my_host) if my_host else None},
         "gaps": {"keywords": keyword_gaps, "listings": listing_gaps},

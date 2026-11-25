@@ -25,7 +25,8 @@ Keyword = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, 
 
 class ResearchIn(BaseModel):
     keywords: list[Keyword] = Field(min_length=1, max_length=10)
-    location: str | None = Field(default=None, max_length=120)
+    location: str | None = Field(default=None, max_length=160)
+    radius_km: float | None = Field(default=None, ge=1, le=30)  # how far around the place a competitor may be
 
 
 def _target(business_id: int) -> str:
@@ -77,7 +78,41 @@ def save_found(db: Session, b: Any, result: dict) -> int:
         return 0
 
 
-def _run(db: Session, audit_id: int, business_id: int, keywords: list[str], location: str | None) -> None:
+def _centre(b: Business, location: str | None) -> tuple[float, float] | None:
+    """The map point of the chosen place, so competitors are found around it. The business's own area keeps the business's own pin; any other place is looked up on the map."""
+    if not location:
+        return None
+    low = location.lower()
+    own = [x.lower() for x in (b.city, (b.area or "").split(",")[0]) if x]
+    if any(x and x in low for x in own) and getattr(b, "lat", None) is not None:
+        return None
+    try:
+        from ..services import keyword_locations, market  # noqa: PLC0415
+        pin = keyword_locations.place_pin(location, market.serp_country(b))
+    except Exception:  # noqa: BLE001 -- without a point the search still reads the place by name
+        return None
+    return (pin["lat"], pin["lng"]) if pin else None
+
+
+def _context(db: Session, b: Business, own: dict) -> dict[str, dict[str, int]]:
+    """From the kept keyword reads of the competitors: how many searches each ranks for that this business does not (opportunity) and its estimated organic traffic. Only what was read counts."""
+    import math  # noqa: PLC0415
+
+    from ..models import CompetitorKeyword, Keyword  # noqa: PLC0415
+    ranked = {k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id)) if k.rank} | set(own)
+    by: dict[str, list[Any]] = {}
+    for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id)):
+        by.setdefault(r.domain.replace("www.", ""), []).append(r)
+    out: dict[str, dict[str, int]] = {"opportunity": {}, "traffic": {}}
+    for dom, rows in by.items():
+        if len(rows) >= 5:
+            gap = sum(1 for r in rows if r.keyword not in ranked and r.position and r.position <= 50)
+            out["opportunity"][dom] = min(100, round(100 * gap / len(rows)))
+        out["traffic"][dom] = min(100, round(25 * math.log10(1 + sum(r.traffic or 0 for r in rows))))
+    return out
+
+
+def _run(db: Session, audit_id: int, business_id: int, keywords: list[str], location: str | None, radius_km: float | None = None) -> None:
     audit = db.get(Audit, audit_id)
     b = db.get(Business, business_id)
     if not audit or not b:
@@ -102,7 +137,11 @@ def _run(db: Session, audit_id: int, business_id: int, keywords: list[str], loca
             authority = {m.domain.lower(): m.da for m in db.scalars(select(BiDomainMetric)).all() if m.da is not None}
         except Exception:  # noqa: BLE001 - authority is a small factor: the rating stands without it
             authority = {}
-        result = intel.analyse(b, keywords, location, progress, own, authority)
+        try:
+            extra = _context(db, b, own)
+        except Exception:  # noqa: BLE001 -- these two factors are left out when they cannot be worked out
+            extra = {}
+        result = intel.analyse(b, keywords, location, progress, own, authority, _centre(b, location), (radius_km * 1000) if radius_km else None, extra)
         audit.result, audit.status, audit.score = result, "done", round(result["summary"]["visibility"])
         db.commit()
         save_found(db, b, result)  # every competitor found is saved, tracked and sent to the backlink crawler
@@ -141,7 +180,7 @@ def start(body: ResearchIn, tasks: BackgroundTasks, b: Business = Depends(get_bu
     a = Audit(kind="intel", target=_target(b.id), status="queued", result={"keywords": keywords})
     db.add(a)
     db.commit()
-    tasks.add_task(durable(_run, a.id, b.id, keywords, (body.location or "").strip() or None, refs=[f"audit:{a.id}"]))
+    tasks.add_task(durable(_run, a.id, b.id, keywords, (body.location or "").strip() or None, body.radius_km, refs=[f"audit:{a.id}"]))
     return row(a)
 
 

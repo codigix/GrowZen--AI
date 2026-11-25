@@ -28,10 +28,10 @@ def test_the_ai_judgement_is_used_and_authority_only_counts_when_known(monkeypat
     c = {"name": "Rental Co", "category": "Clothing rental service", "distance_m": 1000, "appearances": 2, "best": 1, "avg_position": 1.5, "domain": "rentalco.in"}
     rel.rate(RENTAL, [c], ["a", "b"], {"rentalco.in": 40}, None, True)
     r = c["relevance"]
-    assert r["judged_by"] == "ai" and r["kind"] == "clothing rental" and r["factors"]["authority"] == 40 and r["authority_known"] and r["label"] == "direct"
+    assert r["judged_by"] == "ai" and r["kind"] == "clothing rental" and r["factors"]["traffic"] == 40 and r["authority_known"] and r["label"] == "direct"
     d = {"name": "Rental Co", "category": "Clothing rental service", "distance_m": 1000, "appearances": 2, "best": 1, "avg_position": 1.5}
     rel.rate(RENTAL, [d], ["a", "b"], {}, None, True)
-    assert "authority" not in d["relevance"]["factors"] and not d["relevance"]["authority_known"]
+    assert "traffic" not in d["relevance"]["factors"] and not d["relevance"]["authority_known"]
 
 
 def test_near_and_visible_does_not_make_a_different_business_a_competitor(monkeypatch):
@@ -47,3 +47,21 @@ def test_an_ai_failure_never_stops_the_rating(monkeypatch):
     monkeypatch.setattr(rel, "_ai_fit", boom)
     c = {"name": "Any Rental", "category": "Rental", "appearances": 1, "best": 3}
     assert rel.rate(RENTAL, [c], ["a"], {}, None, True)["ai"] is False and "relevance" in c
+
+
+def test_category_and_top_page_relevance_are_measured_only_when_there_is_something_to_compare():
+    assert rel.category_score(["Clothing rental service"], "Clothing rental service") == 100
+    assert rel.category_score(["Clothing rental service"], "Wedding dress rental") > rel.category_score(["Clothing rental service"], "Dental clinic")
+    assert rel.category_score([], "Dental clinic") is None and rel.category_score(["x"], None) is None
+    own = {"rental", "clothes", "wedding"}
+    assert rel.page_score(own, {"site_title": "Wedding clothes rental in Pune"}) > rel.page_score(own, {"site_title": "Dental implants"})
+    assert rel.page_score(own, {}) is None
+
+
+def test_their_kept_keywords_feed_the_opportunity_and_traffic_factors(monkeypatch):
+    monkeypatch.setattr(rel, "_ai_fit", lambda b, c, k: {})
+    c = {"name": "Rental Co", "category": "Clothing rental service", "distance_m": 1000, "appearances": 2, "best": 1, "avg_position": 1.5, "domain": "www.rentalco.in"}
+    rel.rate(RENTAL, [c], ["a", "b"], {"rentalco.in": 10}, None, True, {"opportunity": {"rentalco.in": 70}, "traffic": {"rentalco.in": 55}})
+    f = c["relevance"]["factors"]
+    assert f["opportunity"] == 70 and f["traffic"] == 55 and c["relevance"]["traffic_from"] == "keywords"
+    assert set(f) <= set(rel.WEIGHTS) and "category" in f
