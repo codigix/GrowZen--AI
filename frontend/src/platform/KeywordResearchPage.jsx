@@ -681,7 +681,8 @@ function Tracked({ b, kw }) {
   const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [useIds, setUseIds] = useState(null); // the keywords the "Where to use" window is open for
   const NO_FILTER = { role: '', page: '', google: '', kd: '', intent: '', status: '', topic: '' };
-  const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('kw-hidden-cols') || '[]')); } catch { return new Set(); } });
+  // Saved Keywords holds the keyword's own figures; the mapped page belongs to Keyword Mapping and the verdict to Keyword Status, so those two columns start hidden (the Columns menu brings them back)
+  const [hidden, setHidden] = useState(() => { try { const v = localStorage.getItem('kw-hidden-cols'); return new Set(v === null ? ['page', 'status'] : JSON.parse(v)); } catch { return new Set(['page', 'status']); } });
   const show = (c) => !hidden.has(c);
   const toggleCol = (c) => setHidden(h => { const x = new Set(h); x.has(c) ? x.delete(c) : x.add(c); try { localStorage.setItem('kw-hidden-cols', JSON.stringify([...x])); } catch { /* not remembered */ } return x; });
   const [f, setF] = useState(NO_FILTER); // the filters of the table: one box for each column worth filtering
