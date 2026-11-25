@@ -828,6 +828,10 @@ function Research({ b }) {
   const [settings, setSettings] = useState(false);
   const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
   const [radiusKm, setRadiusKm] = useState('5'); // how far around the place a competitor may be
+  const optKey = `discovery.${b.id}`;
+  const [opts, setOptsState] = useState(() => { try { return { category: '', services: '', seeds: '', country: '', language: 'en', ...(JSON.parse(localStorage.getItem(optKey)) || {}) }; } catch { return { category: '', services: '', seeds: '', country: '', language: 'en' }; } }); // what to look for: business type, services, seed keywords, country, language
+  const setOpts = (patch) => setOptsState(o => { const n = { ...o, ...patch }; try { localStorage.setItem(optKey, JSON.stringify(n)); } catch { /* not remembered */ } return n; });
+  const listOf = (t) => [...new Set(String(t || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean))];
   const [scope, setScope] = useState('near'); // near: the businesses around the place | all: also the ones further away or only online
   const [researchView, setResearchView] = useState('overview');
   const [detail, setDetail] = useState(null);
@@ -897,11 +901,11 @@ function Research({ b }) {
 
   // Google Maps finder: registers the competitors that have a website. Nothing about their sites is audited.
   const findOnMaps = () => runMaps('maps', async () => {
-    const type = b.primaryCategory || (state?.defaults?.keywords?.[0] || '').split(' in ')[0] || 'business';
+    const type = opts.category.trim() || b.primaryCategory || (state?.defaults?.keywords?.[0] || '').split(' in ')[0] || 'business';
     const where = place || [b.area, b.city].filter(Boolean).join(', ') || state?.defaults?.location || '';
-    const r = await api('/competitors', { method: 'POST', body: { business_type: type, location: where, business_id: b.id, top_n: 10 } });
+    const r = await api('/competitors', { method: 'POST', body: { business_type: type, location: where, business_id: b.id, top_n: 15, services: listOf(opts.services).slice(0, 3), country: opts.country || undefined, language: opts.language || undefined, radius_km: Number(radiusKm) || undefined } });
     const list = await loadRegistered();
-    toast(`${r.registered?.length || 0} competitors with a website found on Google Maps.`);
+    toast(`${r.registered?.length || 0} competitor${r.registered?.length === 1 ? '' : 's'} with a website found or updated on Google Maps (${r.requests} Google request${r.requests === 1 ? '' : 's'}).`);
     return r;
   });
 
@@ -1117,10 +1121,23 @@ function Research({ b }) {
           <label className="inline-flex items-center gap-1.5 text-12.5 text-slate-600">within
             <Select value={radiusKm} onChange={e => setRadiusKm(e.target.value)} aria-label="Distance around the place" className="h-9 w-24 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left">{['2', '5', '10', '20', '30'].map(k => <option key={k} value={k}>{k} km</option>)}</Select></label>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button icon={MapPin} busy={mapsBusy === 'maps'} disabled={isRunning(current)} onClick={findOnMaps} title="Looks up the businesses Google Maps shows for your type of business around this place">Find on Google Maps</Button>
-            <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup?.google_results} onClick={() => start(defaults.keywords, place || defaults.location)} title="Reads Google's results for your keywords, searched from this place">{result ? 'Run research again' : 'Research this place'}</Button>
+            <Button icon={MapPin} busy={mapsBusy === 'maps'} disabled={isRunning(current)} onClick={findOnMaps} title="Looks up the businesses Google Maps shows for your type of business around this place">Find or refresh on Google Maps</Button>
+            <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup?.google_results} onClick={() => start(listOf(opts.seeds).length ? listOf(opts.seeds) : defaults.keywords, place || defaults.location)} title="Reads Google's results for your keywords, searched from this place">{result ? 'Run research again' : 'Research this place'}</Button>
           </div>
         </div>
+        <details className="border-t border-slate-100 px-4 py-2 text-13 group">
+          <summary className="cursor-pointer text-slate-700 font-semibold select-none">Discovery options <span className="font-normal text-slate-500">{[opts.category && `category: ${opts.category}`, listOf(opts.services).length && `${listOf(opts.services).length} service${listOf(opts.services).length === 1 ? '' : 's'}`, listOf(opts.seeds).length && `${listOf(opts.seeds).length} seed keyword${listOf(opts.seeds).length === 1 ? '' : 's'}`, opts.country && `country ${opts.country}`, opts.language !== 'en' && `language ${opts.language}`].filter(Boolean).join(' · ') || 'business type, services, seed keywords, country, language'}</span></summary>
+          <div className="mt-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+            <label className="block text-12.5 text-slate-600">Business category<input value={opts.category} onChange={e => setOpts({ category: e.target.value })} placeholder={b.primaryCategory || 'e.g. clothing rental'} className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">What Google Maps is asked for. Empty = the project's category.</span></label>
+            <label className="block text-12.5 text-slate-600">Primary services (up to 3, comma separated)<input value={opts.services} onChange={e => setOpts({ services: e.target.value })} placeholder="e.g. saree rental, lehenga rental" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">Each one is searched too: one extra Google request each.</span></label>
+            <label className="block text-12.5 text-slate-600">Seed keywords for the research run<input value={opts.seeds} onChange={e => setOpts({ seeds: e.target.value })} placeholder={(defaults.keywords || []).slice(0, 2).join(', ') || 'comma separated'} className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">Empty = the project's keywords.</span></label>
+            <label className="block text-12.5 text-slate-600">Country
+              <Select value={opts.country} onChange={e => setOpts({ country: e.target.value })} aria-label="Country" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left"><option value="">Project's country</option>{Object.entries({ IN: 'India', US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia', AE: 'United Arab Emirates', DE: 'Germany', FR: 'France', SG: 'Singapore' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></label>
+            <label className="block text-12.5 text-slate-600">Language of the Google results
+              <Select value={opts.language} onChange={e => setOpts({ language: e.target.value })} aria-label="Language" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left">{Object.entries({ en: 'English', hi: 'Hindi', mr: 'Marathi', gu: 'Gujarati', ta: 'Tamil', te: 'Telugu', bn: 'Bengali', es: 'Spanish', fr: 'French', de: 'German', ar: 'Arabic' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></label>
+          </div>
+          <p className="mt-2 text-11.5 text-slate-500">Distance (above) limits the Maps search to that circle. Maps discovery finds local businesses; whether one is a competitor for organic search is for you to judge: mark it Direct or Indirect in the table. Saved on this device for this project.</p>
+        </details>
         <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 rounded-b-xl flex flex-wrap items-center gap-x-5 gap-y-2">
           <div className="min-w-0 flex-1">
             {isRunning(current) ? (

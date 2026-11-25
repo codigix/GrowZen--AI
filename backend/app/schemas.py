@@ -435,6 +435,10 @@ class CompetitorRegisterIn(BaseModel):
     own_firm_name: str = Field(default="", max_length=255)
     top_n: int = Field(default=10, ge=1, le=20)
     business_id: int | None = Field(default=None, description="When set, found competitors are saved against this business (deduped by website)")
+    services: list[str] = Field(default_factory=list, max_length=3, description="Primary services: each is searched too, so competitors that sell one of them are found")
+    country: str | None = Field(default=None, max_length=2, description="Country code to search in (default: the project's market)")
+    language: str | None = Field(default=None, max_length=5, description="Language of the Google results (default en)")
+    radius_km: float | None = Field(default=None, ge=0.5, le=50, description="Only businesses within this distance of the place")
 
 
 class CompetitorManualIn(BaseModel):

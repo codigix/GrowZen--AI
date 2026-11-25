@@ -32,7 +32,7 @@ def _add_source(c: Competitor, source: str) -> None:
 
 def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor]:
     owner = db.get(Business, business_id)
-    existing = {c.website: c for c in db.scalars(select(Competitor).where(Competitor.business_id == business_id)) if c.website}
+    existing = {_host(c.website): c for c in db.scalars(select(Competitor).where(Competitor.business_id == business_id)) if c.website}  # one competitor per domain, however the address is spelled
     saved = []
     for item in found:
         website = (item.get("website") or "").strip()
@@ -40,16 +40,20 @@ def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor
             continue  # nothing to audit or compare without a website; keep it in the raw results only
         if hygiene.skip_reason(owner, website):
             continue  # the business itself, or a social / directory page: not a competitor's website
-        c = existing.get(website)
+        c = existing.get(_host(website))
         if not c:
             c = Competitor(business_id=business_id, website=website, source="google_places", selected=False)  # found, not yet chosen
             db.add(c)
+            existing[_host(website)] = c
         c.name = item.get("name") or c.name or website
         c.address = item.get("address") or c.address
         c.phone = item.get("phone") or c.phone
         c.rating = item.get("rating") if isinstance(item.get("rating"), (int, float)) else c.rating
         c.reviews = item.get("reviews") or c.reviews
         c.maps_link = item.get("maps_link") or c.maps_link
+        _add_source(c, "google_places")
+        if item.get("place_id") and not c.place_id:
+            c.place_id = item["place_id"]
         saved.append(c)
     db.commit()
     for c in saved:
@@ -84,16 +88,51 @@ def upsert_without_website(db: Session, business_id: int, found: list[dict]) -> 
 def find(body: CompetitorRegisterIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Top competitors on Google Maps for a type of business near a location. Pass `business_id`
     to also register the ones with a website against that business."""
+    owner = owned_business(db, user, body.business_id) if body.business_id is not None else None
     try:
-        results = service.find_competitors(body.business_type.strip(), body.location.strip(), body.own_firm_name.strip(), body.top_n)
+        results, requests = discover(owner, body)
     except service.CompetitorSearchError as exc:
         raise HTTPException(400, str(exc)) from exc
-    out = {"business_type": body.business_type, "location": body.location, "count": len(results), "competitors": results}
+    out = {"business_type": body.business_type, "location": body.location, "count": len(results), "competitors": results, "requests": requests,
+           "queries": [body.business_type.strip(), *[x.strip() for x in body.services if x.strip()][:3]]}
     if body.business_id is not None:
-        owned_business(db, user, body.business_id)
         saved = _upsert(db, body.business_id, results)
         out["registered"] = rows(saved)
     return out
+
+
+def discover(b: Business | None, body: CompetitorRegisterIn) -> tuple[list[dict], int]:
+    """Businesses on Google Maps for the business type and for each primary service, in the chosen country and language, optionally only within a distance of the place.
+    Results are merged by Google place (one business once), in the order found. Returns them and how many Google requests were made (each is billed)."""
+    from ..services import countries, market  # noqa: PLC0415
+    place = body.location.strip()
+    region = (body.country or (countries.gl(market.serp_country(b)) if b is not None else "") or "IN").upper()[:2]
+    lang = (body.language or "en").lower()
+    queries = list(dict.fromkeys([body.business_type.strip(), *[x.strip() for x in body.services if x.strip()][:3]]))
+    centre = None
+    if body.radius_km and b is not None:
+        from . import intel_router  # noqa: PLC0415
+        centre = intel_router._centre(b, place) or ((b.lat, b.lng) if getattr(b, "lat", None) is not None and getattr(b, "lng", None) is not None else None)
+    results: list[dict] = []
+    seen: set[str] = set()
+    own = body.own_firm_name.strip().lower()
+    n = 0
+    for q in queries:
+        n += 1
+        if centre:
+            items = [{"name": x["title"], "rating": x.get("rating") or "", "reviews": x.get("ratingCount") or 0, "address": x.get("address", ""), "phone": x.get("phoneNumber", ""),
+                      "website": x.get("website", ""), "maps_link": x.get("maps_link", ""), "place_id": x.get("cid", ""), "category": x.get("category", ""), "distance_m": x.get("distance_m")}
+                     for x in service.places_search(q, region=region, lat=centre[0], lng=centre[1], radius_m=body.radius_km * 1000, language=lang, restrict=True)]
+        else:
+            items = service.find_competitors(q, place, body.own_firm_name.strip(), body.top_n, region=region, language=lang)
+        for it in items:
+            key = it.get("place_id") or f"{it['name']}|{it.get('address', '')}".lower()
+            if key in seen or (own and own in it["name"].lower()):
+                continue
+            seen.add(key)
+            it["found_by"] = q
+            results.append(it)
+    return results[: body.top_n], n
 
 
 def _host(url: str | None) -> str:

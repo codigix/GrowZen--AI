@@ -23,7 +23,7 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 |---|-------|------|--------|-------|
 | A | 2 | Summary cards/table: Referring domains, Not Available/Not Connected states per metric | PARTIAL | none |
 | B | 2/3 | Click Match score opens factor drawer | PARTIAL | profile page has it; add a quick drawer |
-| C | 3 | Discovery inputs (services, seed keywords, radius, country, language) and refresh discovery | PARTIAL | none |
+| C | 3 | Discovery inputs: business category, up to 3 primary services, seed keywords, country, language, radius; refresh from Maps; duplicates merged by domain, source kept | DONE | Maps discovery only. Organic search discovery is D. Business name as an input is not added (the project's own name is already excluded). Built, not clicked through in a browser |
 | D | 3 | Organic search discovery (competitor domains from SERP) | TODO | provider decision |
 | E | 4 | Auto-analyze settings: new competitors, Domain Authority, keywords, retry failed (tries in a row), refresh period, cache hours, daily limit | DONE | per project, saved at once; scheduler runs retries and refresh |
 | F | 4/16 | Caching (no repeat reads within cache hours), daily limit, provider pause after quota/429, one in-run retry on temporary errors, 30-minute wait between retries, scheduler hook | DONE | queue is still one competitor at a time per project, in memory (lost on restart; the scheduler picks up what is due) |
