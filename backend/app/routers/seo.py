@@ -6,7 +6,7 @@ from typing import Literal
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -153,6 +153,26 @@ def _bucket(row: dict) -> str:
     if not o["found"]:
         return "not_found"
     return "page1" if o["page"] == 1 else "page2" if o["page"] == 2 else "page3plus"
+
+
+@router.get("/keyword-position")
+def keyword_position(keyword: str = Query(min_length=2, max_length=255), days: int = 365, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """One tracked keyword: position history, summary, visibility and estimated traffic (from the stored Search Console checks)."""
+    return organic.one(db, b, keyword, days)
+
+
+@router.get("/keyword-position/serp")
+def keyword_position_serp(keyword: str = Query(min_length=2, max_length=255), b: Business = Depends(get_business)):
+    """What Google shows for the keyword right now (competitors, features, our result). Read live, not kept."""
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    from ..services import market as _market  # noqa: PLC0415
+    try:
+        r = kd.serp(" ".join(keyword.lower().split()), _market.serp_country(b), None)
+    except Exception as exc:  # noqa: BLE001
+        return {"state": "error", "message": str(exc)[:200]}
+    mine = kd.site_of(b.website or "") if b.website else ""
+    org = [{**o, "mine": bool(mine) and (o.get("site") or "").replace("www.", "") == mine.replace("www.", "")} for o in r.get("organic", [])]
+    return {"state": "ok", "organic": org, "features": r.get("features") or {}, "ads": len(r.get("ads") or []), "questions": len(r.get("questions") or []), "ai_overview": bool(r.get("ai_overview"))}
 
 
 @router.get("/current-positions")

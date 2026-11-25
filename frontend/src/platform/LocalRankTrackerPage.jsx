@@ -2,6 +2,7 @@ import { useCrumb } from './crumbs';
 import AreaRanks from './AreaRanks';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Link, useParams, useSearchParams } from 'react-router-dom';
+import KeywordPosition from './KeywordPosition';
 import L from 'leaflet';
 import ProcessTasks from './ProcessTasks';
 import 'leaflet/dist/leaflet.css';
@@ -385,7 +386,7 @@ export default function LocalRankTrackerPage() {
   if (!routeTab && !params.get('tab')) return <Navigate to="/rank-tracking/landscape" replace />;
   return (
     <SeoShell title="Position Tracking" subtitle="Visibility, estimated traffic and positions of your tracked keywords on Google, and how you rank in the Maps pack">
-      {(b) => <Page key={b.id} b={b} />}
+      {(b) => (params.get('kw') ? <KeywordPosition key={`${b.id}|${params.get('kw')}`} b={b} keyword={params.get('kw').trim().toLowerCase()} /> : <Page key={b.id} b={b} />)}
     </SeoShell>
   );
 }

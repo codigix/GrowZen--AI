@@ -46,7 +46,7 @@ function Body({ b }) {
   const [checkNote, setCheckNote] = useState('');
   const auto = useRef(false);
   // Track one keyword: read its position on Google now (Search Console) and keep it in position tracking
-  const track = (x) => { setMenu(null); navigate(`/rank-tracking/landscape?kw=${encodeURIComponent(x.keyword)}&track=1`); };
+  const track = (x) => { setMenu(null); navigate(`/rank-tracking/landscape?kw=${encodeURIComponent(x.keyword)}`); };
   const lastChecked = all.map(x => x.checked).filter(Boolean).sort().pop();
   // Positions come from Google Search Console: read them for every saved keyword, on arrival when none was read yet and on request
   const check = async () => {
