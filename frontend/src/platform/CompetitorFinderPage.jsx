@@ -10,6 +10,7 @@ import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
+import { AnalysisStats, BacklinkTab, CompetitorsPanel, TopPagesTab, TrafficTab, useAnalysis } from './CompetitorAnalysis';
 import PlacePicker from './PlacePicker';
 import Select from '../components/Select';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
@@ -874,10 +875,12 @@ function Research({ b }) {
   const [state, setState] = useState(null); // { run, defaults, setup }
   const [loadError, setLoadError] = useState('');
   const [params] = useSearchParams();
-  const [tab, setTab] = useState(() => (['overview', 'competitors', 'rankings', 'gap', 'keywords', 'maps'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
+  const [tab, setTab] = useState(() => (['competitors', 'gap', 'keywords', 'traffic', 'pages', 'backlinks', 'maps', 'research'].includes(params.get('tab')) ? params.get('tab') : ['overview', 'rankings'].includes(params.get('tab')) ? 'research' : 'competitors'));
   const [settings, setSettings] = useState(false);
   const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
   const [radiusKm, setRadiusKm] = useState('5'); // how far around the place a competitor may be
+  const [scope, setScope] = useState('near'); // near: the businesses around the place | all: also the ones further away or only online
+  const [researchView, setResearchView] = useState('overview');
   const [detail, setDetail] = useState(null);
   const [serp, setSerp] = useState(null);
   const [ideas, setIdeas] = useState(false);
@@ -1131,6 +1134,15 @@ function Research({ b }) {
     return [...byHost.values()].sort((x, y) => rank(y) - rank(x));
   }, [result, registered]);
 
+  const tableRows = useMemo(() => rows.map(c => ({ ...c, key: c.host, host: /^maps:/.test(c.host) ? '' : c.host })), [rows]);
+  const isChosenRow = (c) => Boolean(c.reg) && c.reg.selected !== false;
+  const radius = result?.radius_m || Number(radiusKm) * 1000 || 5000;
+  const isNearRow = (c) => isChosenRow(c) || (c.maps ? (c.maps.distance_m == null || c.maps.distance_m <= radius) : false);
+  const nearRows = useMemo(() => tableRows.filter(isNearRow), [tableRows, radius]); // eslint-disable-line react-hooks/exhaustive-deps
+  const poolRows = scope === 'near' ? nearRows : tableRows;
+  const analysis = useAnalysis(b, tableRows.map(c => c.host).filter(Boolean));
+  const statusOf = (c) => analysis.metrics[c.host]?.status || 'pending';
+
   if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="space-y-4"><SkCard title="Competitor research" subtitle="Who ranks for your keywords on Google and Maps"><Sk h="h-9" w="w-2/3" /></SkCard><SkCard title="Competitors found" pad={false}><SkTable headers={["Competitor", "Type", "Keywords", "Best position"]} rows={6} bare /></SkCard></div>;
   const p = current?.result?.progress;
   const s = result?.summary;
@@ -1188,27 +1200,37 @@ function Research({ b }) {
       <div className="min-w-0 space-y-3">
       {!result && !isRunning(current) && <Card title="Research your competitors" subtitle="Add the searches your customers type, then run it. The Maps competitors are registered for site audits at the same time."><SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start'} error={error} setupInfo={state.setup} hasRun={false} /></Card>}
 
-      {result && (
+      <AnalysisStats rows={poolRows} status={statusOf} isChosen={isChosenRow} metrics={analysis.metrics} />
+      {(result || registered.length > 0) && (
         <div className={isRunning(current) ? 'space-y-3 opacity-60 pointer-events-none select-none' : 'space-y-3'} aria-busy={isRunning(current)}>
           <div>
             <Tabs value={tab} onChange={setTab} tabs={[
-              { id: 'overview', label: 'Overview' },
-              { id: 'competitors', label: 'All competitors', count: rows.length },
-              { id: 'keywords', label: 'Competitor keywords' },
+              { id: 'competitors', label: 'Competitors', count: poolRows.length },
               { id: 'gap', label: 'Keyword gap' },
-              { id: 'rankings', label: 'Rankings on your keywords', count: result.keywords.length },
-              { id: 'maps', label: 'Google Maps', count: result.local_competitors.length }
+              { id: 'keywords', label: 'Competitor keywords' },
+              { id: 'traffic', label: 'Traffic comparison' },
+              { id: 'pages', label: 'Top pages' },
+              { id: 'backlinks', label: 'Backlink comparison' },
+              ...(result ? [{ id: 'maps', label: 'Google Maps', count: result.local_competitors.length }, { id: 'research', label: 'Research' }] : [])
             ]} />
-            {tab === 'overview' && <Overview r={result} goto={(id) => setTab(id === 'keywords' ? 'rankings' : id)} />}
             {tab === 'competitors' && <>
-              <CompetitorsTable rows={rows} r={result} placeName={(result.location || place || '').split(',')[0]} onDetail={setDetail} onKeywords={() => setTab('keywords')} onGap={() => setTab('gap')} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
-                onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} onChoose={chooseCompetitor} />
+              <CompetitorsPanel b={b} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
+                isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onKeywords={() => setTab('keywords')}
+                addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
-            {tab === 'keywords' && <CompetitorKeywordsTab b={b} />}
             {tab === 'gap' && <KeywordGapTab b={b} />}
-            {tab === 'rankings' && <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
-            {tab === 'maps' && <MapsTab r={result} kit={null} />}
+            {tab === 'keywords' && <CompetitorKeywordsTab b={b} />}
+            {tab === 'traffic' && <TrafficTab rows={poolRows} analysis={analysis} />}
+            {tab === 'pages' && <TopPagesTab b={b} rows={poolRows} />}
+            {tab === 'backlinks' && <BacklinkTab rows={poolRows} analysis={analysis} />}
+            {tab === 'maps' && result && <MapsTab r={result} kit={null} />}
+            {tab === 'research' && result && (
+              <div className="space-y-3">
+                <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden bg-white" role="group" aria-label="Research">{[['overview', 'Overview'], ['rankings', 'Rankings on your keywords']].map(([k, l]) => <button key={k} type="button" aria-pressed={researchView === k} onClick={() => setResearchView(k)} className={`h-9 px-3.5 text-13 font-medium cursor-pointer ${researchView === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>
+                {researchView === 'overview' ? <Overview r={result} goto={(id) => (id === 'keywords' ? setResearchView('rankings') : setTab(id === 'competitors' ? 'competitors' : id))} /> : <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
+              </div>
+            )}
           </div>
         </div>
       )}

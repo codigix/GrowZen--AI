@@ -266,3 +266,32 @@ def competitor_gap(b: Business = Depends(get_business), db: Session = Depends(ge
     """The keyword gap: what the competitors rank for and where you stand, from their kept rankings and Google's top 10 on your tracked searches. Nothing of their websites is audited."""
     from ..services import competitor_keyword_report as ck  # noqa: PLC0415
     return ck.gap(db, b)
+
+
+class AnalysisIn(BaseModel):
+    domains: list[str] = Field(default_factory=list, max_length=60)
+
+
+class AnalyzeIn(BaseModel):
+    domain: str = Field(min_length=3, max_length=120)
+    limit: int = Field(default=100, ge=10, le=300)
+
+
+@router.post("/competitor-analysis")
+def competitor_analysis(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """What was last read for each competitor domain (and for your own site): Domain Authority, referring domains, keywords, organic traffic, status. Nothing is read from Google or Apify here."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"metrics": ca.metrics(db, b, body.domains), "own": ca.own(db, b)}
+
+
+@router.post("/competitor-analysis/analyze")
+def competitor_analyze(body: AnalyzeIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Read one competitor now: its Domain Authority and the keywords it ranks for (paid per keyword at Apify). No website audit."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.analyze_one(db, b, body.domain, body.limit)
+
+
+@router.post("/competitor-analysis/pages")
+def competitor_pages(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"pages": ca.pages(db, b, body.domains)}
