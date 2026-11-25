@@ -1173,45 +1173,6 @@ function Research({ b }) {
   );
 }
 
-/** What the research starts from: the business understanding (kind of business, area, the words customers search with). Without it the page asks for the summary to be built first. */
-function Basis({ b }) {
-  const r = useApi(`/businesses/${b.id}/business-brief`);
-  const [open, setOpen] = useState(false);
-  const br = r.data?.brief;
-  if (r.error || !r.data) return null;
-  if (!br) {
-    return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 flex flex-wrap items-center gap-3 text-12.5 text-amber-900">
-        <span className="flex-1 min-w-[220px]"><b>Build the business summary first:</b> competitors and keywords are found from what the business is and how customers search.</span>
-        <Link to="/website-audit" className="font-semibold underline">Open the website audit</Link>
-      </div>
-    );
-  }
-  const terms = br.customer_search_terms || [];
-  return (
-    <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-1.5">
-      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 text-left cursor-pointer">
-        <span className="text-12.5 font-bold text-indigo-900">Based on your business understanding</span>
-        {(br.business_type || br.business_model) && <span className="px-2 py-0.5 rounded bg-white ring-1 ring-indigo-200 text-12 font-bold text-slate-900 capitalize">{br.business_type || br.business_model}</span>}
-        <span className="text-12 text-indigo-800 truncate max-w-[60%]">{terms.slice(0, 3).join(' · ')}{terms.length > 3 ? ` +${terms.length - 3} more` : ''}</span>
-        <span className="ml-auto text-12 font-semibold text-indigo-700">{open ? 'Hide' : 'Details'}</span>
-      </button>
-      {open && (
-        <div className="mt-2 space-y-2 pb-1">
-          <div className="flex flex-wrap items-center gap-1.5">{terms.map(x => <span key={x} className="px-2.5 py-1 rounded-full bg-indigo-600 text-white text-12 font-semibold">{x}</span>)}</div>
-          {(br.competitors_are || br.competitors_are_not) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-12.5">
-              {br.competitors_are && <div className="rounded-lg bg-emerald-50 ring-1 ring-emerald-200 px-3 py-2 text-slate-800"><b className="text-emerald-800">Counts: </b>{br.competitors_are}</div>}
-              {br.competitors_are_not && <div className="rounded-lg bg-rose-50 ring-1 ring-rose-200 px-3 py-2 text-slate-800"><b className="text-rose-800">Does not count: </b>{br.competitors_are_not}</div>}
-            </div>
-          )}
-          <Link to="/website-audit" className="inline-block text-12.5 font-semibold text-indigo-700 hover:underline">Correct or refresh the business understanding</Link>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function CompetitorFinderPage() {
   return (
     <SeoShell step="competitors" title="Competitors" subtitle="Who outranks you on Google and Maps, side by side with you, the keywords you are missing, and what to do about it: one research, one place">
