@@ -17,6 +17,7 @@ import Select from '../components/Select';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
 import ResearchTab from './CompetitorResearch';
 import CompetitorMaps from './CompetitorMaps';
+import { Stepper, FindStep, STEPS } from './CompetitorSteps';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 
@@ -826,7 +827,9 @@ function Research({ b }) {
   const [params] = useSearchParams();
   const [tab, setTab] = useState(() => (['competitors', 'gap', 'keywords', 'traffic', 'pages', 'backlinks', 'maps', 'research'].includes(params.get('tab')) ? params.get('tab') : ['overview', 'rankings'].includes(params.get('tab')) ? 'research' : 'competitors'));
   const [focus, setFocus] = useState({ host: '', band: '' }); // the competitor (and ranking band) a table cell sent you to
-  const goTo = (t, host = '', band = '') => { setFocus({ host, band }); setTab(t); };
+  const [stepRaw, setStepRaw] = useState(() => (STEPS.some(x => x.id === params.get('step')) ? params.get('step') : params.get('tab') ? (params.get('tab') === 'competitors' ? 'shortlist' : 'opportunities') : null));
+  const [findNote, setFindNote] = useState('');
+  const goTo = (t, host = '', band = '') => { setFocus({ host, band }); setTab(t); setStepRaw(t === 'competitors' ? 'shortlist' : 'opportunities'); };
   const [settings, setSettings] = useState(false);
   const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
   const [radiusKm, setRadiusKm] = useState('5'); // how far around the place a competitor may be
@@ -908,6 +911,7 @@ function Research({ b }) {
     const r = await api('/competitors', { method: 'POST', body: { business_type: type, location: where, business_id: b.id, top_n: 15, services: listOf(opts.services).slice(0, 3), country: opts.country || undefined, language: opts.language || undefined, radius_km: Number(radiusKm) || undefined } });
     const list = await loadRegistered();
     toast(`${r.registered?.length || 0} competitor${r.registered?.length === 1 ? '' : 's'} with a website found or updated on Google Maps (${r.requests} Google request${r.requests === 1 ? '' : 's'}).`);
+    setFindNote(`${r.registered?.length || 0} competitor${r.registered?.length === 1 ? '' : 's'} with a website found or updated (${r.requests} Google request${r.requests === 1 ? '' : 's'}).`);
     return r;
   });
 
@@ -1109,79 +1113,54 @@ function Research({ b }) {
   if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="space-y-4"><SkCard title="Competitor research" subtitle="Who ranks for your keywords on Google and Maps"><Sk h="h-9" w="w-2/3" /></SkCard><SkCard title="Competitors found" pad={false}><SkTable headers={["Competitor", "Type", "Keywords", "Best position"]} rows={6} bare /></SkCard></div>;
   const p = current?.result?.progress;
   const s = result?.summary;
+  const cur = stepRaw || (registered.length ? 'shortlist' : 'find');
+  const analyzedCount = poolRows.filter(c => statusOf(c) === 'analyzed').length;
+  const stepNotes = { find: registered.length ? `${registered.length} found` : '', shortlist: registered.length ? `${chosenTotal} chosen` : '', analyze: chosenTotal ? `${analyzedCount} of ${poolRows.length} analyzed` : '' };
+  const stepDone = { find: registered.length > 0, shortlist: chosenTotal > 0, analyze: poolRows.length > 0 && analyzedCount >= Math.min(poolRows.length, Math.max(1, chosenTotal)), opportunities: false };
+  const t = cur === 'opportunities' ? (tab === 'competitors' ? 'gap' : tab) : 'competitors'; // the screen shown in steps 2 to 4 until each is rebuilt
 
   return (
     <div className="space-y-3">
       {toastNode}
 
 
-      {/* one section: where to look, what to run, and what the last run found */}
-      <div className="rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="inline-flex items-center gap-1.5 text-13 font-semibold text-slate-800"><MapPin size={15} className="text-indigo-500" />Find competitors in</span>
-          <PlacePicker b={b} value={place} onChange={(v) => setPlace(v)} width={300} canSave={false} places={[{ name: state?.defaults?.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} />
-          <label className="inline-flex items-center gap-1.5 text-12.5 text-slate-600">within
-            <Select value={radiusKm} onChange={e => setRadiusKm(e.target.value)} aria-label="Distance around the place" className="h-9 w-24 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left">{['2', '5', '10', '20', '30'].map(k => <option key={k} value={k}>{k} km</option>)}</Select></label>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button icon={MapPin} busy={mapsBusy === 'maps'} disabled={isRunning(current)} onClick={findOnMaps} title="Looks up the businesses Google Maps shows for your type of business around this place">Find or refresh on Google Maps</Button>
-            <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup?.google_results} onClick={() => start(listOf(opts.seeds).length ? listOf(opts.seeds) : defaults.keywords, place || defaults.location)} title="Reads Google's results for your keywords, searched from this place">{result ? 'Run research again' : 'Research this place'}</Button>
-          </div>
-        </div>
-        <details className="border-t border-slate-100 px-4 py-2 text-13 group">
-          <summary className="cursor-pointer text-slate-700 font-semibold select-none">Discovery options <span className="font-normal text-slate-500">{[opts.category && `category: ${opts.category}`, listOf(opts.services).length && `${listOf(opts.services).length} service${listOf(opts.services).length === 1 ? '' : 's'}`, listOf(opts.seeds).length && `${listOf(opts.seeds).length} seed keyword${listOf(opts.seeds).length === 1 ? '' : 's'}`, opts.country && `country ${opts.country}`, opts.language !== 'en' && `language ${opts.language}`].filter(Boolean).join(' · ') || 'business type, services, seed keywords, country, language'}</span></summary>
-          <div className="mt-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-            <label className="block text-12.5 text-slate-600">Business category<input value={opts.category} onChange={e => setOpts({ category: e.target.value })} placeholder={b.primaryCategory || 'e.g. clothing rental'} className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">What Google Maps is asked for. Empty = the project's category.</span></label>
-            <label className="block text-12.5 text-slate-600">Primary services (up to 3, comma separated)<input value={opts.services} onChange={e => setOpts({ services: e.target.value })} placeholder="e.g. saree rental, lehenga rental" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">Each one is searched too: one extra Google request each.</span></label>
-            <label className="block text-12.5 text-slate-600">Seed keywords for the research run<input value={opts.seeds} onChange={e => setOpts({ seeds: e.target.value })} placeholder={(defaults.keywords || []).slice(0, 2).join(', ') || 'comma separated'} className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">Empty = the project's keywords.</span></label>
-            <label className="block text-12.5 text-slate-600">Country
-              <Select value={opts.country} onChange={e => setOpts({ country: e.target.value })} aria-label="Country" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left"><option value="">Project's country</option>{Object.entries({ IN: 'India', US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia', AE: 'United Arab Emirates', DE: 'Germany', FR: 'France', SG: 'Singapore' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></label>
-            <label className="block text-12.5 text-slate-600">Language of the Google results
-              <Select value={opts.language} onChange={e => setOpts({ language: e.target.value })} aria-label="Language" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left">{Object.entries({ en: 'English', hi: 'Hindi', mr: 'Marathi', gu: 'Gujarati', ta: 'Tamil', te: 'Telugu', bn: 'Bengali', es: 'Spanish', fr: 'French', de: 'German', ar: 'Arabic' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></label>
-          </div>
-          <p className="mt-2 text-11.5 text-slate-500">Distance (above) limits the Maps search to that circle. Maps discovery finds local businesses; whether one is a competitor for organic search is for you to judge: mark it Direct or Indirect in the table. Saved on this device for this project.</p>
-        </details>
-        <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 rounded-b-xl flex flex-wrap items-center gap-x-5 gap-y-2">
-          <div className="min-w-0 flex-1">
-            {isRunning(current) ? (
-              <div className="flex items-center gap-3">
-                <Loader2 size={16} className="animate-spin text-indigo-600 shrink-0" />
-                <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Researching competitors… <span className="font-normal text-slate-500 truncate">{p?.step || 'Starting'}</span></div>
-                  <div className="mt-1.5 h-1.5 rounded-full bg-slate-200 overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${p ? Math.round((p.done / p.total) * 100) : 4}%` }} /></div></div>
-              </div>
-            ) : result ? (
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
-                <div className="text-12.5 text-slate-600" title={`${result.keywords.length} keywords · ${result.ideas?.competitor_keywords?.length || 0} competitor keywords · ${result.gaps?.keywords?.length || 0} gaps`}><b className="text-slate-900">Researched {fmtDateTime(result.analysed_at)}</b><br />{result.location || 'India'} · {result.keywords.length} keyword{result.keywords.length === 1 ? '' : 's'}</div>
-                {[
-                  ['Google visibility', s.keywords_ranked ? `${s.visibility}%` : '—', s.keywords_ranked ? `${s.keywords_ranked} of ${s.keywords_total} keywords shown` : 'link Search Console to see it', s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'],
-                  ['Maps visibility', `${s.local_visibility}%`, `in Maps for ${s.local_ranked} of ${s.keywords_total}`, 'text-slate-900'],
-                  ['Competitors', s.competitors, s.local_leader ? `leader ${s.local_leader.name}` : 'found', 'text-slate-900'],
-                ].map(([l, v, sub, cls]) => <div key={l} className="min-w-[110px]"><div className="text-11.5 text-slate-500">{l}</div><div className={`text-18 font-bold tabular-nums leading-tight ${cls}`}>{v}</div><div className="text-11.5 text-slate-500 max-w-[200px] truncate" title={sub}>{sub}</div></div>)}
-              </div>
-            ) : <div className="text-13 text-slate-600">Research who outranks you on Google and Maps for this place, then see their keywords and the gap.</div>}
-            {!isRunning(current) && result && place && result.location && !String(result.location).toLowerCase().includes(String(place).split(',')[0].toLowerCase()) && (
-              <div className="mt-1.5 text-12 text-amber-700">The results above are for {result.location}. Press “Run research again” to read {place.split(',')[0]}.</div>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button>
-            {result && <Button size="sm" icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>}
-            {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-${slugOf(b.name)}-${today()}.md`, researchMd(result), 'text/markdown')}>Download</Button>}
-          </div>
-        </div>
-      </div>
+      <Stepper step={cur} onStep={setStepRaw} notes={stepNotes} done={stepDone} />
       {current?.status === 'failed' && <ErrorNote>{current.error || 'The research failed.'}</ErrorNote>}
       {isRunning(current) && <LiveResults progress={p} />}
 
       <div className="grid gap-5 items-start">
       <div className="min-w-0 space-y-3">
-      {!result && !isRunning(current) && <Card title="Research your competitors" subtitle="Add the searches your customers type, then run it. The Maps competitors are registered for site audits at the same time."><SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start'} error={error} setupInfo={state.setup} hasRun={false} /></Card>}
 
+      {cur === 'find' && <FindStep b={b} found={registered.length} chosen={chosenTotal} onNext={() => setStepRaw('shortlist')} placesReady={Boolean(state.setup?.google_results)}
+        placeNode={<PlacePicker b={b} value={place} onChange={(v) => setPlace(v)} width={300} canSave={false} places={[{ name: state?.defaults?.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} />}
+        radiusKm={radiusKm} setRadiusKm={setRadiusKm} opts={opts} setOpts={setOpts} onFind={findOnMaps} finding={mapsBusy === 'maps'} findNote={findNote} mapsError={mapsError}
+        onAdd={addManual} adding={addBusy === 'add'} addError={addError}
+        deep={<details className="rounded-xl bg-white ring-1 ring-slate-200 px-5 py-3 text-13">
+          <summary className="cursor-pointer font-semibold text-slate-800 select-none">Deeper research <span className="font-normal text-slate-500">optional: also read which Google searches you share with them</span></summary>
+          <div className="mt-3 space-y-3">
+            <p className="text-12.5 text-slate-600">This reads Google's results for your keywords from this place (about a minute) and shows who ranks next to you for each one. It is not needed to find or analyze competitors.</p>
+            <label className="block text-12.5 text-slate-600">Searches to read (separate with commas)<input value={opts.seeds} onChange={e => setOpts({ seeds: e.target.value })} placeholder={(defaults.keywords || []).slice(0, 2).join(', ') || 'comma separated'} className="mt-1 h-10 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-3 text-13" /><span className="text-11.5 text-slate-400">Empty = the project's keywords.</span></label>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup?.google_results} onClick={() => start(listOf(opts.seeds).length ? listOf(opts.seeds) : defaults.keywords, place || defaults.location)}>{result ? 'Run research again' : 'Research this place'}</Button>
+              {result && <Button icon={Download} onClick={() => downloadFile(`competitor-research-${slugOf(b.name)}-${today()}.md`, researchMd(result), 'text/markdown')}>Download the report</Button>}
+              {result && <Button icon={Settings2} onClick={() => setSettings(true)}>Keywords and settings</Button>}
+            </div>
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        </details>} />}
+
+      {cur !== 'find' && <div className="flex flex-wrap items-center gap-2 text-13 text-slate-600">
+        <span><b className="text-slate-900">{poolRows.length}</b> competitor{poolRows.length === 1 ? '' : 's'} · <b className="text-slate-900">{chosenTotal}</b> chosen</span>
+        <button type="button" onClick={() => setStepRaw('find')} className="ml-1 text-indigo-700 font-semibold hover:underline cursor-pointer">Find or add more</button>
+        <Button size="sm" icon={Users} className="ml-auto" onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors</Button>
+      </div>}
+      {cur !== 'find' && <>
       <AnalysisStats rows={poolRows} status={statusOf} isChosen={isChosenRow} metrics={analysis.metrics} />
       <AutoBar auto={auto} />
       {(result || registered.length > 0) && (
         <div className={isRunning(current) ? 'space-y-3 opacity-60 pointer-events-none select-none' : 'space-y-3'} aria-busy={isRunning(current)}>
           <div>
-            <Tabs value={tab} onChange={(t) => goTo(t)} tabs={[
+            {cur === 'opportunities' && <Tabs value={t} onChange={(t) => goTo(t)} tabs={[
               { id: 'competitors', label: 'Competitors', count: poolRows.length },
               { id: 'gap', label: 'Keyword gap' },
               { id: 'keywords', label: 'Competitor keywords' },
@@ -1190,20 +1169,20 @@ function Research({ b }) {
               { id: 'backlinks', label: 'Backlink comparison' },
               { id: 'maps', label: 'Google Maps', count: tableRows.filter(c => c.maps).length },
               { id: 'research', label: 'Research' }
-            ]} />
-            {tab === 'competitors' && <>
+            ].filter(x => x.id !== 'competitors')} />}
+            {t === 'competitors' && <>
               <CompetitorsPanel b={b} auto={auto} rating={rating} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
                 isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onGo={goTo}
                 addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
-            {tab === 'gap' && <KeywordGapTab key={focus.host} b={b} focus={focus.host} />}
-            {tab === 'keywords' && <CompetitorKeywordsTab key={`${focus.host}|${focus.band}`} b={b} focus={focus.host} band={focus.band} />}
-            {tab === 'traffic' && <TrafficTab key={focus.host} b={b} rows={poolRows} analysis={analysis} focus={focus.host} />}
-            {tab === 'pages' && <TopPagesTab key={focus.host} b={b} rows={poolRows} focus={focus.host} />}
-            {tab === 'backlinks' && <BacklinkTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
-            {tab === 'maps' && <CompetitorMaps key={b.id} b={b} rows={tableRows} legacy={result ? <MapsTab r={result} kit={null} /> : null} />}
-            {tab === 'research' && <ResearchTab key={b.id} b={b} legacy={result ? (
+            {t === 'gap' && <KeywordGapTab key={focus.host} b={b} focus={focus.host} />}
+            {t === 'keywords' && <CompetitorKeywordsTab key={`${focus.host}|${focus.band}`} b={b} focus={focus.host} band={focus.band} />}
+            {t === 'traffic' && <TrafficTab key={focus.host} b={b} rows={poolRows} analysis={analysis} focus={focus.host} />}
+            {t === 'pages' && <TopPagesTab key={focus.host} b={b} rows={poolRows} focus={focus.host} />}
+            {t === 'backlinks' && <BacklinkTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
+            {t === 'maps' && <CompetitorMaps key={b.id} b={b} rows={tableRows} legacy={result ? <MapsTab r={result} kit={null} /> : null} />}
+            {t === 'research' && <ResearchTab key={b.id} b={b} legacy={result ? (
               <div className="space-y-3">
                   <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden bg-white" role="group" aria-label="Research">{[['overview', 'Overview'], ['rankings', 'Rankings on your keywords']].map(([k, l]) => <button key={k} type="button" aria-pressed={researchView === k} onClick={() => setResearchView(k)} className={`h-9 px-3.5 text-13 font-medium cursor-pointer ${researchView === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>
                   {researchView === 'overview' ? <Overview r={result} goto={(id) => (id === 'keywords' ? setResearchView('rankings') : setTab(id === 'competitors' ? 'competitors' : id))} /> : <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
@@ -1212,6 +1191,7 @@ function Research({ b }) {
           </div>
         </div>
       )}
+      </>}
       </div>
       <Drawer open={panel} onClose={() => setPanel(false)} width="max-w-md" title="My competitors" subtitle="Choose 3 to 5 that really compete with you. Only the chosen ones are watched.">
         <MyCompetitors list={registered} auditMap={{}} onAdd={addManual} onFind={findOnMaps} onAudit={() => {}} onRemove={removeCompetitor} onChoose={chooseCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} findError={mapsError} running={isRunning(current)} />

@@ -52,3 +52,10 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 - Full backend suite (with the two HTTPS variables in .env blanked, see below): 1208 passed, 9 failed. All 9 fail identically on the commit before this branch: test_auth::test_login_flow, 2 in test_keyword_paragraphs, 5 in test_backlink_scores and 1 in test_site_authority (the last 6 only fail when run after other tests).
 - Environment note: backend/.env has HTTPS PUBLIC_BASE_URL and FRONTEND_URL, which make test logins fail (secure cookies over http). Run the suite with `PUBLIC_BASE_URL= FRONTEND_URL= python -m pytest`.
 - The frontend's .env points API calls at http://localhost:8000. A browser test must start Vite with `VITE_API_URL=/api/v1` and `BACKEND_URL=<test backend>` or it talks to the real backend.
+
+## Redesign: 4-step guided flow (agreed with the owner)
+Decisions: 4 steps (Find, Shortlist, Analyze, Opportunities); simple 6-column competitor table; Competitor keywords + Keyword gap + Research opportunities merged into one Keywords page; one step at a time, each checked in a browser and approved before the next.
+- Step bar + Step 1 Find: DONE (8 browser checks). Steps 2 to 4 still show the earlier screens under the step bar.
+- Step 2 Shortlist (choose competitors, 3 columns): TODO
+- Step 3 Analyze (simple 6-column table with Domain Authority, keywords, traffic, status; side panel per competitor): TODO
+- Step 4 Opportunities (one merged Keywords page; Insights for traffic, pages, backlinks, maps): TODO
