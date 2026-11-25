@@ -37,6 +37,7 @@ export const SIDEBAR_GROUPS = [
     items: [
       { to: '/keyword-overview', label: 'Keyword Overview', icon: Search },
       { to: '/keyword-management/magic', label: 'Keyword Magic Tool', icon: Wand2 },
+      { to: '/keyword-management/magic2', label: 'Keyword Magic Tool 2.0', icon: Wand2, badge: 'New' },
       { to: '/keyword-management/workspace', label: 'Keyword Workspace', icon: Search },
       { to: '/keyword-management/prepare', label: 'Prepare Keywords', icon: Wand2 },
       { to: '/keyword-management/topics', label: 'Keyword Strategy Builder', icon: Layers },
@@ -111,7 +112,7 @@ export const SIDEBAR_SECTIONS = [
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { title: '1 · Website audit ', items: [page('/website-audit', { label: 'Website audit' }), link('/page-indexing', 'Page Indexing')] },
       { title: '2 · Competitor Research', items: [page('/competitor-finder'), go('/competitor-watch', 'Competitor Watch', 'traffic'), link('/competitor-keywords', 'Competitor Keywords'), link('/organic-rankings/page', 'Organic Rankings')] },
-      { title: '3 · Find Keywords', items: [{ to: '/keyword-management/workspace', label: 'Keyword Workspace', also: ['/keyword-management/ai', '/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }, link('/keyword-management/magic', 'Keyword Magic Tool'), page('/keyword-overview', { label: 'Check One Keyword' })] },
+      { title: '3 · Find Keywords', items: [{ to: '/keyword-management/workspace', label: 'Keyword Workspace', also: ['/keyword-management/ai', '/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }, link('/keyword-management/magic', 'Keyword Magic Tool'), { to: '/keyword-management/magic2', label: 'Keyword Magic Tool 2.0', badge: 'New' }, page('/keyword-overview', { label: 'Check One Keyword' })] },
       { title: '4 · Prepare & Choose', items: [link('/keyword-management/prepare', 'Prepare Keywords'), page('/keyword-management/tracked', { label: 'My Keywords', also: ['/keyword-management/topics'] })] },
       { title: '5 · Map to Pages', items: [{ to: '/keyword-management/mapping', label: 'Keyword Mapping', also: ['/keyword-management/use'] }] },
       { title: '6 · Write & Update', items: [go('/ai-content-generation/blog', 'Write content (Blogs)', 'Blogs'), link('/fix-plan', 'Fix Plan')] },

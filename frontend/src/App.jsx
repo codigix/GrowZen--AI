@@ -84,6 +84,7 @@ const DomainOverviewPage = toolkit('DomainOverviewPage');
 const KeywordOverviewPage = toolkit('KeywordOverviewPage');
 const PrepareKeywordsPage = lazy(() => import('./platform/PrepareKeywords').then(m => ({ default: m.PrepareKeywordsPage })));
 const CompetitorKeywordsPage = lazy(() => import('./platform/CompetitorKeywords').then(m => ({ default: m.CompetitorKeywordsPage })));
+const KeywordMagicTool2Page = lazy(() => import('./platform/KeywordMagicTool2').then(m => ({ default: m.KeywordMagicTool2Page })));
 const KeywordMagicToolPage = lazy(() => import('./platform/KeywordMagicTool').then(m => ({ default: m.KeywordMagicToolPage })));
 const PageRankingsPage = lazy(() => import('./platform/PageRankings').then(m => ({ default: m.PageRankingsPage })));
 
@@ -189,6 +190,7 @@ export default function App() {
         <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="keyword-management/magic" element={<KeywordMagicToolPage />} />
+        <Route path="keyword-management/magic2" element={<KeywordMagicTool2Page />} />
         <Route path="keyword-management/prepare" element={<PrepareKeywordsPage />} />
         <Route path="competitor-keywords" element={<CompetitorKeywordsPage />} />
         <Route path="keyword-overview/ideas" element={<KeywordMagicToolPage />} />

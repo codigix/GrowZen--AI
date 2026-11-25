@@ -199,3 +199,16 @@ def competitor_rankings(body: RankedIn, b: Business = Depends(get_business), db:
     """The keywords one competitor really ranks for (paid per keyword at Apify; the cost is returned)."""
     from ..services import competitor_keyword_report as ck  # noqa: PLC0415
     return ck.ranked(db, b, body.domain, body.limit)
+
+
+class BulkIn(BaseModel):
+    keywords: list[str] = Field(min_length=1, max_length=100)
+    country: str | None = Field(default=None, max_length=2)
+
+
+@router.post("/bulk-metrics")
+def bulk_metrics(body: BulkIn, b: Business = Depends(get_business)):
+    """Real monthly searches and top-of-page bid from Keyword Planner for a pasted list, for one country."""
+    from ..services import keyword_metrics, market  # noqa: PLC0415
+    found, note = keyword_metrics.lookup(body.keywords, body.country or market.serp_country(b))
+    return {"rows": [{"keyword": k, "volume": (found.get(k) or {}).get("volume"), "cpc": (found.get(k) or {}).get("cpc"), "competition": (found.get(k) or {}).get("competition")} for k in dict.fromkeys(" ".join(x.lower().split()) for x in body.keywords if x.strip())], "note": note}
