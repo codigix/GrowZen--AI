@@ -147,10 +147,19 @@ def for_keyword(b: Business, keyword: str, extra: list[str] | None = None) -> di
 def place_pin(label: str, country: str) -> dict[str, Any] | None:
     """The map position of a place named as Google Maps or OpenStreetMap names it, inside the country: {label, lat, lng}, or None when it is not found."""
     from . import suggest  # noqa: PLC0415
-    suggest._require_osm()
     label = " ".join((label or "").split())[:160]
     if len(label) < 2:
         return None
+    from . import discovery  # noqa: PLC0415
+    if discovery.places_enabled():  # the place as Google Maps knows it
+        try:
+            got = discovery._places_post(label, 1, country)
+            loc = (got[0].get("location") or {}) if got else {}
+            if loc.get("latitude") is not None:
+                return {"label": label, "lat": float(loc["latitude"]), "lng": float(loc["longitude"]), "source": "Google Maps"}
+        except Exception:  # noqa: BLE001 -- OpenStreetMap answers when Google does not
+            pass
+    suggest._require_osm()
     items = suggest._nominatim("search", {"q": label, "format": "jsonv2", "limit": 1, "countrycodes": countries.code(country).lower(), "accept-language": "en"})
     if not items:
         return None
@@ -160,9 +169,27 @@ def place_pin(label: str, country: str) -> dict[str, Any] | None:
 def place_at(lat: float, lng: float, country: str) -> dict[str, Any] | None:
     """The area, city and state at a map point, written like the place search writes them: {label, area, lat, lng}. None when the point is outside the country or has no name."""
     from . import suggest  # noqa: PLC0415
-    suggest._require_osm()
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
         return None
+    from . import discovery  # noqa: PLC0415
+    if discovery.places_enabled():  # the area Google Maps names at that point
+        try:
+            r = suggest._google_client.get("https://maps.googleapis.com/maps/api/geocode/json", params={"latlng": f"{lat},{lng}", "key": discovery.places_key(), "language": "en", "result_type": "sublocality|locality|administrative_area_level_2"})
+            data = r.json() if r.status_code == 200 else {}
+            if data.get("status") == "OK" and data.get("results"):
+                comp = {c["types"][0]: c["long_name"] for c in data["results"][0].get("address_components", []) if c.get("types")}
+                short = {c["types"][0]: c.get("short_name") for c in data["results"][0].get("address_components", []) if c.get("types")}
+                if str(short.get("country") or "").upper() != countries.code(country).upper():
+                    return None
+                name = comp.get("sublocality_level_1") or comp.get("sublocality") or comp.get("locality") or comp.get("administrative_area_level_2")
+                if name:
+                    city = comp.get("locality") if comp.get("locality") and comp.get("locality") != name else None
+                    state = comp.get("administrative_area_level_1")
+                    label = ", ".join(x for x in (name, city, state if not city else None) if x)
+                    return {"label": label, "area": name, "lat": lat, "lng": lng, "source": "Google Maps"}
+        except Exception:  # noqa: BLE001 -- OpenStreetMap answers when Google does not
+            pass
+    suggest._require_osm()
     item = suggest._nominatim("reverse", {"lat": round(lat, 6), "lon": round(lng, 6), "format": "jsonv2", "addressdetails": 1, "zoom": 12, "accept-language": "en"})
     if not item or item.get("error"):
         return None

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -14,7 +14,7 @@ const pin = (n, primary) => L.divIcon({
 });
 const CENTER = { IN: [22.5, 79, 4], US: [39.5, -98.5, 4], GB: [54, -2.5, 5], AE: [24.3, 54.3, 6], CA: [56, -96, 3], AU: [-25.5, 134, 4] };
 
-export default function LocationsMap({ places, country = 'IN', onClick, height = 190 }) {
+function LeafletMap({ places, country = 'IN', onClick, height = 190 }) {
   const el = useRef(null);
   const map = useRef(null);
   const layer = useRef(null);
@@ -45,4 +45,78 @@ export default function LocationsMap({ places, country = 'IN', onClick, height =
   }, [places, country]);
 
   return <div ref={el} role="application" aria-label="Map of the chosen locations. Click it to add a place." style={{ height }} className="w-full rounded-lg ring-1 ring-slate-200 overflow-hidden z-0" />;
+}
+
+// ---------------------------------------------------------------------------------------------------- Google Maps
+// A browser key (VITE_GOOGLE_MAPS_API_KEY, Maps JavaScript API enabled, restricted to this site's address) shows the real Google map. Without it, or if Google refuses it, the OpenStreetMap map above is used.
+const GOOGLE_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+let googleLoading = null;
+function loadGoogle() {
+  if (window.google?.maps?.Map) return Promise.resolve(window.google.maps);
+  if (googleLoading) return googleLoading;
+  googleLoading = new Promise((resolve, reject) => {
+    window.__googleMapsReady = () => resolve(window.google.maps);
+    window.gm_authFailure = () => reject(new Error('Google refused the Maps key'));
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_KEY)}&callback=__googleMapsReady&v=weekly`;
+    s.async = true;
+    s.onerror = () => reject(new Error('Google Maps could not be loaded'));
+    document.head.appendChild(s);
+  }).catch((e) => { googleLoading = null; throw e; });
+  return googleLoading;
+}
+
+function GoogleMap({ places, country = 'IN', onClick, height = 190, onFail }) {
+  const el = useRef(null);
+  const state = useRef({ map: null, markers: [] });
+  const clickRef = useRef(onClick);
+  clickRef.current = onClick;
+
+  useEffect(() => {
+    let dead = false;
+    loadGoogle().then((maps) => {
+      if (dead || !el.current) return;
+      const c = CENTER[country] || CENTER.IN;
+      const map = new maps.Map(el.current, { center: { lat: c[0], lng: c[1] }, zoom: c[2], mapTypeControl: false, streetViewControl: false, fullscreenControl: false, gestureHandling: 'cooperative', clickableIcons: false });
+      map.addListener('click', (e) => clickRef.current?.(e.latLng.lat(), e.latLng.lng()));
+      state.current.map = map;
+      state.current.ready?.();
+    }).catch(() => onFail?.());
+    return () => { dead = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const draw = () => {
+      const { map } = state.current;
+      const maps = window.google?.maps;
+      if (!map || !maps) return;
+      state.current.markers.forEach(m => m.setMap(null));
+      state.current.markers = [];
+      const pts = (places || []).filter(p => p.lat != null && p.lng != null);
+      pts.forEach((p, i) => state.current.markers.push(new maps.Marker({
+        map, position: { lat: p.lat, lng: p.lng }, title: p.label,
+        label: { text: String(i + 1), color: '#fff', fontWeight: '700', fontSize: '12px' },
+        icon: { path: maps.SymbolPath.CIRCLE, scale: 13, fillColor: i === 0 ? '#4f46e5' : '#0ea5e9', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+      })));
+      if (pts.length === 1) { map.setCenter({ lat: pts[0].lat, lng: pts[0].lng }); map.setZoom(10); }
+      else if (pts.length > 1) { const b = new maps.LatLngBounds(); pts.forEach(p => b.extend({ lat: p.lat, lng: p.lng })); map.fitBounds(b, 28); }
+      else { const c = CENTER[country] || CENTER.IN; map.setCenter({ lat: c[0], lng: c[1] }); map.setZoom(c[2]); }
+    };
+    state.current.ready = draw;
+    draw();
+  }, [places, country]);
+
+  return <div ref={el} role="application" aria-label="Google map of the chosen locations. Click it to add a place." style={{ height }} className="w-full rounded-lg ring-1 ring-slate-200 overflow-hidden z-0 bg-slate-100" />;
+}
+
+/** The map of the chosen places: Google Maps when a browser key is set, else OpenStreetMap. */
+export default function LocationsMap(props) {
+  const [failed, setFailed] = useState(false);
+  const google = Boolean(GOOGLE_KEY) && !failed;
+  return (
+    <div>
+      {google ? <GoogleMap {...props} onFail={() => setFailed(true)} /> : <LeafletMap {...props} />}
+      <div className="mt-1 text-11 text-slate-400">{google ? 'Google Maps' : GOOGLE_KEY ? 'Google Maps could not load: showing OpenStreetMap' : 'OpenStreetMap. Set VITE_GOOGLE_MAPS_API_KEY in frontend/.env to show Google Maps.'}</div>
+    </div>
+  );
 }
