@@ -10,6 +10,7 @@ import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
+import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 
@@ -222,7 +223,7 @@ function AddCompetitorForm({ onAdd, busy, error }) {
   );
 }
 
-export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, onAuditOur, hasSite, onDetail, onAudit, onCompare, comparing, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose }) {
+export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose }) {
   const isChosen = (c) => Boolean(c.reg) && c.reg.selected !== false;
   const chosenCount = rows.filter(isChosen).length;
   const [view, setView] = useState('all'); // all | chosen | others
@@ -244,32 +245,21 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
           ))}
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5">
-          <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" title="Which PageSpeed test is used for the site audits">
-            {[['mobile', Smartphone], ['desktop', Monitor]].map(([s, I]) => (
-              <button key={s} type="button" onClick={() => setStrategy(s)} className={`h-7 px-2.5 flex items-center gap-1 text-11.5 font-semibold rounded-md cursor-pointer transition-colors ${strategy === s ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500'}`}><I size={12} />{s}</button>
-            ))}
-          </div>
-          <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 pl-2.5 pr-0.5 py-0.5" title="Your own site's audit, used for every website comparison">
-            <span className="text-12 text-slate-600 inline-flex items-center gap-1.5 whitespace-nowrap">{ourAudit && running(ourAudit.status) && <Loader2 size={12} className="animate-spin" />}Your site <b className={ourAudit?.status === 'done' ? 'text-emerald-700' : 'text-slate-500'}>{ourAudit ? AUDIT_LABEL[ourAudit.status] || '—' : 'not audited'}</b></span>
-            <Button size="sm" variant="ghost" icon={RotateCcw} disabled={!hasSite || running(ourAudit?.status)} onClick={onAuditOur} title="Audit your own website again">{ourAudit ? 'Re-audit' : 'Audit'}</Button>
-          </span>
           <Button size="sm" variant="secondary" icon={MapPin} busy={findBusy} onClick={onFindMaps} title="Find more competitors on Google Maps">Find more</Button>
           <Button size="sm" variant="secondary" icon={Plus} onClick={() => setAdding(v => !v)} aria-expanded={adding} title="Add a competitor by its website">{adding ? 'Hide form' : 'Add'}</Button>
         </div>
       </div>
       {adding && <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />}
       <Table pager={pager} exportCsv={() => downloadCsv(`competitors-${slugOf(r.business?.name)}`, ['Chosen', 'Competitor', 'Website', 'Match score', 'Match', 'Google visibility (%)', 'Keywords on page 1 or Maps result lists', 'Best Maps position', 'Rating', 'Reviews', 'Site audit'],
-        sorted.map(c => { const a = auditMap[c.reg?.id]; const loc = c.profile?.local || c.maps; return [isChosen(c) ? 'yes' : 'no', c.name, c.website || c.host || '', c.maps?.relevance?.score ?? '', c.maps?.relevance?.label_text || '', c.profile ? c.profile.visibility : (c.maps?.visibility ?? ''), c.profile ? Object.keys(c.profile.positions).length : (c.maps?.appearances ?? ''), loc?.best ?? '', loc?.rating ?? c.reg?.rating ?? '', loc?.reviews ?? c.reg?.reviews ?? '', !c.reg ? 'Not audited' : a ? `${AUDIT_LABEL[a.status] || a.status}${a.listing && a.score != null ? ` (${a.score}/100)` : ''}` : 'Not audited']; }))} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search competitors" /> : null} head={<>
+        sorted.map(c => { const loc = c.profile?.local || c.maps; return [isChosen(c) ? 'yes' : 'no', c.name, c.website || c.host || '', c.maps?.relevance?.score ?? '', c.maps?.relevance?.label_text || '', c.profile ? c.profile.visibility : (c.maps?.visibility ?? ''), c.profile ? Object.keys(c.profile.positions).length : (c.maps?.appearances ?? ''), loc?.best ?? '', loc?.rating ?? c.reg?.rating ?? '', loc?.reviews ?? c.reg?.reviews ?? '', !c.reg ? 'Not audited' : a ? `${AUDIT_LABEL[a.status] || a.status}${a.listing && a.score != null ? ` (${a.score}/100)` : ''}` : 'Not audited']; }))} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search competitors" /> : null} head={<>
         <Th id="choose" sort={sort} onSort={onSort} first="desc" c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
         <Th id="name" sort={sort} onSort={onSort}><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
         <Th id="match" sort={sort} onSort={onSort} first="desc"><Head what="How well it matches your business on similar services, area, keywords, Google presence, intent and authority." from="the competitor research (Google Maps data and AI).">Match</Head></Th>
         <Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="The share of Google clicks it could expect for your keywords, based on where it ranks." from="the competitor research (Google results). Your own figure comes from Search Console.">Google visibility</Head></Th>
         <Th id="p1" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="How many of your researched keywords it shows on page 1 of Google for." from="the competitor research.">Page-1 keywords</Head></Th>
         <Th id="best" sort={sort} onSort={onSort} c="text-center"><Head what="Its best position in the Google Maps results and its rating." from="Google Maps (Places).">Maps</Head></Th>
-        <Th id="audit" sort={sort} onSort={onSort}><Head what="Whether its website has been audited (speed and a page crawl)." why="Needed before you can compare it with your site." from="the site audit run from this page.">Site audit</Head></Th>
-        <Th c="text-right"><Head right what="Audit runs the site audit on its website. Compare shows it side by side with yours." from="the audits of its site and yours.">Actions</Head></Th></>}>
+<Th c="text-right"><Head right what="Open the keywords this competitor ranks for, and where you stand against it." from="the competitor keywords and the keyword gap.">Keywords</Head></Th></>}>
         {pager.rows.map(c => {
-          const a = auditMap[c.reg?.id];
           return (
             <tr key={c.host} className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
               <td className="px-3 py-2.5 text-center"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
@@ -283,15 +273,10 @@ export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, our
               <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{c.profile ? `${c.profile.visibility}%` : c.maps ? `${c.maps.visibility}%` : '—'}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{c.profile ? `${Object.keys(c.profile.positions).length}/${r.keywords.length}` : c.maps ? `${c.maps.appearances}/${r.keywords.length} Maps` : '—'}</td>
               <td className="px-3 py-2.5 text-center">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : c.maps ? <span className="inline-flex items-center gap-1.5"><Pos value={c.maps.best} maps /><Stars rating={c.maps.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
-              <td className="px-3 py-2.5 whitespace-nowrap text-12.5">
-                {!c.reg ? <span className="text-slate-400" title={c.website ? 'Press Audit: it is saved as a competitor and its site is audited' : 'No website: Audit reads its Google Maps listing instead'}>Not audited{!c.website && c.maps ? ' · no website' : ''}</span>
-                  : a ? <span className={`inline-flex items-center gap-1.5 ${a.status === 'failed' ? 'text-red-600' : a.status === 'done' ? 'text-emerald-700' : 'text-slate-500'}`}>{running(a.status) && <Loader2 size={12} className="animate-spin" />}{AUDIT_LABEL[a.status] || a.status}{a.listing && a.score != null ? ` · ${a.score}/100` : ''}{a.listing && <span className="font-normal text-slate-400" title="No website: read from its Google Maps listing">Google listing</span>}</span>
-                    : <span className="text-slate-400">Not audited</span>}
-              </td>
               <td className="px-3 py-2.5 text-right whitespace-nowrap">
                 <div className="inline-flex gap-1.5">
-                  <Act icon={Gauge} tone="teal" disabled={(!c.website && !c.maps) || running(a?.status)} onClick={() => onAudit(c.reg || c)} tip={c.reg ? `${a ? 'Re-audit' : 'Audit'}: run PageSpeed and a page crawl on their site.` : 'Audit: save it as a competitor first (choose it), then audit its site.'} />
-                  <Act icon={ShieldCheck} tone="indigo" busy={comparing === (c.reg?.id ?? `new:${c.name}`)} onClick={() => onCompare(c.reg || c)} tip={`Compare: ${compareHint(c)}`} />
+                  <Button size="sm" onClick={() => onKeywords(c)} title="Its keywords and where it ranks">Keywords</Button>
+                  <Button size="sm" variant="ghost" onClick={() => onGap(c)} title="The keyword gap between you and it">Gap</Button>
                 </div>
               </td>
             </tr>
@@ -730,8 +715,6 @@ function ProfileModal({ c, r, onClose, onAudit, onCompare, auditMap }) {
       footer={c && <>
         {c.website && <a href={c.website} target="_blank" rel="noreferrer" className="mr-auto inline-flex items-center gap-1 text-12.5 font-semibold text-indigo-700 hover:underline"><ExternalLink size={13} /> Visit site</a>}
         {p && <Button icon={Download} onClick={() => downloadFile(`competitor-profile-${slugOf(c.name)}-${today()}.md`, [`# Competitor profile: ${c.name}`, '', c.website || c.host || '', '', `- Google visibility: ${p.visibility}%`, `- Keywords on page 1: ${Object.keys(p.positions).length} of ${r.keywords.length}`, p.local ? `- Google Maps: best position #${p.local.best}, rating ${p.local.rating ?? 'n/a'} (${p.local.reviews ?? 0} reviews)` : '- Google Maps: not in the results', site.scanned ? `- Words per page: ${site.avg_words}` : '- Its site could not be read', '', '## Their strategy', '', ...p.strategy.map(x => `- ${x}`), '', '## Rankings', '', ...r.keywords.map(k => `- ${k}: ${p.positions[k] ? `#${p.positions[k]}` : 'not in the results'}`), '', '## Service pages', '', ...((site.services || []).length ? site.services.map(x => `- ${x}`) : ['- None found.']), '', '## Listed or linked on', '', ...(p.link_sources.length ? p.link_sources.map(x => `- ${baseSite(x.domain)}: ${x.url}`) : ['- None found.']), ''].join('\n'), 'text/markdown')}>Download profile</Button>}
-        <Button icon={Gauge} disabled={running(a?.status)} onClick={() => onAudit(c.reg || c)}>{a ? 'Re-audit' : 'Audit'}</Button>
-        <Button variant="primary" icon={ShieldCheck} title={compareHint(c)} onClick={() => { onClose(); onCompare(c.reg || c); }}>Compare with my business</Button>
       </>}>
       {c && !p && <p className="text-13 text-slate-600">This business was found on Google Maps but did not appear in the research results, so there is no ranking data yet. Run the research again to include it.</p>}
       {c && p && (
@@ -855,7 +838,7 @@ function Research({ b }) {
   const [state, setState] = useState(null); // { run, defaults, setup }
   const [loadError, setLoadError] = useState('');
   const [params] = useSearchParams();
-  const [tab, setTab] = useState(() => (['overview', 'competitors', 'pages', 'compare', 'gap', 'keywords', 'maps', 'links', 'plan'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
+  const [tab, setTab] = useState(() => (['overview', 'competitors', 'rankings', 'gap', 'keywords', 'maps'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
   const [settings, setSettings] = useState(false);
   const [detail, setDetail] = useState(null);
   const [serp, setSerp] = useState(null);
@@ -922,23 +905,20 @@ function Research({ b }) {
     try { const r = await api('/website-audits', { method: 'POST', body: { url: b.website, business_id: b.id, strategy } }); setOurAudit({ id: r.id, status: 'queued' }); } catch { /* shown when Compare fails */ }
   };
 
-  // Google Maps finder: registers competitors that have a website, then audits our site and each of them.
+  // Google Maps finder: registers the competitors that have a website. Nothing about their sites is audited.
   const findOnMaps = () => runMaps('maps', async () => {
     const type = b.primaryCategory || (state?.defaults?.keywords?.[0] || '').split(' in ')[0] || 'business';
     const where = [b.area, b.city].filter(Boolean).join(', ') || state?.defaults?.location || '';
     const r = await api('/competitors', { method: 'POST', body: { business_type: type, location: where, business_id: b.id, top_n: 10 } });
     const list = await loadRegistered();
-    toast(`${r.registered?.length || 0} competitors with a website registered for audits.`);
-    auditOurSite();
-    (r.registered || list).filter(c => c.website && !running(auditMap[c.id]?.status) && auditMap[c.id]?.status !== 'done').forEach(auditCompetitor);
+    toast(`${r.registered?.length || 0} competitors with a website found on Google Maps.`);
     return r;
   });
 
   const addManual = (url, name) => runAdd('add', async () => {
     const c = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url, name } });
     await loadRegistered();
-    if (!running(auditMap[c.id]?.status)) auditCompetitor(c);
-    toast(`${c.name} added. Auditing its site…`);
+    toast(`${c.name} added as a competitor.`);
     return c;
   });
 
@@ -1141,7 +1121,6 @@ function Research({ b }) {
           ) : <div className="text-13 text-slate-600">Research who outranks you on Google and Maps, then find keywords from it.</div>}
         </div>
         {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-${slugOf(b.name)}-${today()}.md`, researchMd(result), 'text/markdown')}>Download research</Button>}
-        {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-data-${slugOf(b.name)}-${today()}.json`, JSON.stringify(result, null, 2), 'application/json')}>Download data (JSON)</Button>}
         {result && <Button size="sm" icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>}
         {result && <Button size="sm" variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup.google_results} onClick={() => start(defaults.keywords, defaults.location)}>Run again</Button>}
         {result && <Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button>}
@@ -1160,45 +1139,36 @@ function Research({ b }) {
             <Tabs value={tab} onChange={setTab} tabs={[
               { id: 'overview', label: 'Overview' },
               { id: 'competitors', label: 'All competitors', count: rows.length },
-              { id: 'pages', label: 'Traffic and pages' },
+              { id: 'keywords', label: 'Competitor keywords' },
               { id: 'gap', label: 'Keyword gap' },
-              { id: 'keywords', label: 'Keywords', count: result.keywords.length },
-              { id: 'compare', label: 'Side by side' },
-              { id: 'maps', label: 'Google Maps', count: result.local_competitors.length },
-              { id: 'links', label: 'Listings' },
-              { id: 'plan', label: 'Action plan', count: result.actions.length }
+              { id: 'rankings', label: 'Rankings on your keywords', count: result.keywords.length },
+              { id: 'maps', label: 'Google Maps', count: result.local_competitors.length }
             ]} />
-            {tab === 'overview' && <Overview r={result} goto={setTab} />}
+            {tab === 'overview' && <Overview r={result} goto={(id) => setTab(id === 'keywords' ? 'rankings' : id)} />}
             {tab === 'competitors' && <>
-              <MapsAudit r={result} kit={mapsKit} />
-              <CompetitorsTable rows={rows} r={result} strategy={strategy} setStrategy={setStrategy} auditMap={auditMap} ourAudit={ourAudit} onAuditOur={auditOurSite} hasSite={Boolean(b.website)}
-                onDetail={setDetail} onAudit={auditRow} onCompare={doCompare} comparing={comparing} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
+              <CompetitorsTable rows={rows} r={result} onDetail={setDetail} onKeywords={() => setTab('keywords')} onGap={() => setTab('gap')} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
                 onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} onChoose={chooseCompetitor} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
-            {tab === 'pages' && <CompetitorPagesTab b={b} />}
-            {tab === 'compare' && <CompareDomains b={b} result={result} />}
-            {tab === 'gap' && <KeywordGap b={b} result={result} />}
-            {tab === 'keywords' && <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
-            {tab === 'maps' && <MapsTab r={result} kit={mapsKit} />}
-            {tab === 'links' && <ListingsTab r={result} setupInfo={state.setup} />}
-            {tab === 'plan' && <PlanTab r={result} />}
+            {tab === 'keywords' && <CompetitorKeywordsTab b={b} />}
+            {tab === 'gap' && <KeywordGapTab b={b} />}
+            {tab === 'rankings' && <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
+            {tab === 'maps' && <MapsTab r={result} kit={null} />}
           </div>
         </div>
       )}
       </div>
       <Drawer open={panel} onClose={() => setPanel(false)} width="max-w-md" title="My competitors" subtitle="Choose 3 to 5 that really compete with you. Only the chosen ones are watched.">
-        <MyCompetitors list={registered} auditMap={auditMap} onAdd={addManual} onFind={findOnMaps} onAudit={auditCompetitor} onRemove={removeCompetitor} onChoose={chooseCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} findError={mapsError} running={isRunning(current)} />
+        <MyCompetitors list={registered} auditMap={{}} onAdd={addManual} onFind={findOnMaps} onAudit={() => {}} onRemove={removeCompetitor} onChoose={chooseCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} findError={mapsError} running={isRunning(current)} />
       </Drawer>
       </div>
 
       <Modal open={settings} onClose={() => setSettings(false)} width="max-w-2xl" title="Keywords & research settings">
         <SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start' || isRunning(current)} error={error} setupInfo={state.setup} hasRun={Boolean(result)} />
       </Modal>
-      {result && <ProfileModal c={detail} r={result} onClose={() => setDetail(null)} onAudit={auditCompetitor} onCompare={doCompare} auditMap={auditMap} />}
+      {result && <ProfileModal c={detail} r={result} onClose={() => setDetail(null)} onAudit={() => {}} onCompare={() => {}} auditMap={{}} />}
       {result && <KeywordModal s={serp} onClose={() => setSerp(null)} />}
       {result && <IdeasModal open={ideas} r={result} onClose={() => setIdeas(false)} />}
-      <CompareModal state={compare} onClose={() => setCompare(null)} bid={b.id} />
     </div>
   );
 }

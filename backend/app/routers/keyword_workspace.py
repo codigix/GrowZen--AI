@@ -259,3 +259,10 @@ def area_at(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=18
         return {"place": keyword_locations.place_at(lat, lng, country)}
     except Exception as exc:  # noqa: BLE001
         return {"place": None, "reason": str(exc)[:160]}
+
+
+@router.get("/competitor-gap")
+def competitor_gap(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The keyword gap: what the competitors rank for and where you stand, from their kept rankings and Google's top 10 on your tracked searches. Nothing of their websites is audited."""
+    from ..services import competitor_keyword_report as ck  # noqa: PLC0415
+    return ck.gap(db, b)

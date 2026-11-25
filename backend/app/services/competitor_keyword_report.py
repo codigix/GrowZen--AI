@@ -114,6 +114,8 @@ def ranked(db: Session, b: Business, domain: str, limit: int = 100, min_volume: 
         rows.append(_row(ctx, b, domain, kw, volume=x.get("search_volume", x.get("volume")), cpc=x.get("cpc"), competition=x.get("competition"), difficulty=x.get("keyword_difficulty", x.get("kd")),
                          intent=x.get("search_intent", x.get("intent")), position=x.get("position") or x.get("rank_absolute"), url=x.get("ranking_url", x.get("url")),
                          traffic=x.get("traffic_estimate", x.get("etv")), source="ranking"))
+    if rows:
+        store(db, b, domain, rows)
     return {"rows": rows, "cost": cost_note(len(rows)), "note": None if rows else "This competitor has no ranked keywords above the volume filter."}
 
 
@@ -127,3 +129,99 @@ def _merge(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = list(by.values())
     out.sort(key=lambda r: ({"yes": 0, "maybe": 1, "have": 2, "no": 3}[r["fit"]], -len(r["competitors"]), -(r.get("volume") or 0)))
     return out
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- kept rankings and the gap
+def store(db: Session, b: Business, domain: str, rows: list[dict[str, Any]]) -> None:
+    """Keep what a ranked-keywords read found for a competitor (the earlier read of that competitor is replaced)."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    from ..models import CompetitorKeyword  # noqa: PLC0415
+    domain = domain.lower().removeprefix("www.")
+    for old in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain == domain)):
+        db.delete(old)
+    db.flush()
+    now = datetime.now(timezone.utc)
+    seen: set[str] = set()
+    for r in rows:
+        k = _norm(r.get("keyword") or "")[:255]
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        db.add(CompetitorKeyword(business_id=b.id, domain=domain, keyword=k, position=r.get("position"), volume=r.get("volume"), cpc=r.get("cpc"), difficulty=r.get("difficulty"),
+                                 intent=r.get("intent"), url=r.get("url"), traffic=r.get("traffic"), read_at=now))
+    db.commit()
+
+
+def _own_positions(db: Session, b: Business, keywords: list[str]) -> dict[str, int | None]:
+    """Where the project ranks for each keyword: the tracked keyword's checked position, else Search Console's average position for it (when Google showed the site for it)."""
+    from . import google_rank  # noqa: PLC0415
+    tracked = {k.keyword: k.rank for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id))}
+    out: dict[str, int | None] = {k: tracked.get(k) for k in keywords}
+    missing = [k for k in keywords if not out.get(k)]
+    if missing:
+        try:
+            got = google_rank.organic_positions(db, b, missing[:2000], days=90)
+            for k, v in got.items():
+                if v.get("position"):
+                    out[_norm(k)] = max(1, round(v["position"]))
+        except Exception:  # noqa: BLE001 -- Search Console may not be linked: the position is then simply unknown
+            pass
+    return out
+
+
+def gap(db: Session, b: Business) -> dict[str, Any]:
+    """The keyword gap against the competitors: for each keyword a competitor ranks for (from its kept ranked-keywords read, and from Google's top 10 on your tracked searches) where you stand.
+    gap = they rank and you do not; behind = both rank and they are higher; ahead = both rank and you are higher. Each row says whether the keyword is useful for the business."""
+    from ..competitors import hygiene  # noqa: PLC0415
+    from ..models import CompetitorKeyword, KeywordRankLog  # noqa: PLC0415
+    domains = [d.replace("www.", "") for d in hygiene.saved_competitor_domains(db, b, limit=12)]
+    ctx = _context(db, b)
+    by: dict[str, dict[str, Any]] = {}
+    reads: dict[str, dict[str, Any]] = {d: {"domain": d, "keywords": 0, "read_at": None, "from_google": 0} for d in domains}
+
+    def add(kw: str, dom: str, pos: int | None, url: str | None, source: str, volume: int | None = None, **extra: Any) -> None:
+        e = by.setdefault(kw, {"keyword": kw, "volume": volume, "competitors": {}, **{k: v for k, v in extra.items() if v is not None}})
+        if volume and not e.get("volume"):
+            e["volume"] = volume
+        cur = e["competitors"].get(dom)
+        if cur is None or (pos is not None and (cur["position"] is None or pos < cur["position"])):
+            e["competitors"][dom] = {"domain": dom, "position": pos, "url": url, "source": source}
+
+    for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id)):
+        add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc)
+        s = reads.setdefault(r.domain, {"domain": r.domain, "keywords": 0, "read_at": None, "from_google": 0})
+        s["keywords"] += 1
+        s["read_at"] = max(filter(None, [s["read_at"], r.read_at.isoformat() if r.read_at else None]), default=None)
+    tracked = {k.keyword: k for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)))}
+    latest: dict[str, Any] = {}
+    for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id).order_by(KeywordRankLog.day)):
+        if r.serp and r.keyword in tracked:
+            latest[r.keyword] = r
+    for kw, r in latest.items():
+        for row in r.serp:
+            d = str(row.get("d") or "").replace("www.", "")
+            if d in reads and row.get("p"):
+                add(kw, d, int(row["p"]), None, "google", tracked[kw].volume)
+                reads[d]["from_google"] += 1
+    own = _own_positions(db, b, list(by) + [k for k, t in tracked.items() if t.rank])
+    rows = []
+    for kw, e in by.items():
+        comps = sorted(e["competitors"].values(), key=lambda c: (c["position"] is None, c["position"] or 999))
+        best = next((c for c in comps if c["position"]), None)
+        mine = own.get(kw)
+        if best is None:
+            continue
+        status = "gap" if not mine else ("behind" if mine > best["position"] else "ahead")
+        v = _row(ctx, b, best["domain"], kw, volume=e.get("volume"))
+        rows.append({"keyword": kw, "volume": e.get("volume"), "intent": e.get("intent"), "difficulty": e.get("difficulty"), "cpc": e.get("cpc"), "competitors": comps, "best": best, "yours": mine,
+                     "status": status, "difference": (mine - best["position"]) if mine else None, "fit": v["fit"], "why": v["why"]})
+    for kw, t in tracked.items():
+        if t.rank and kw not in by:
+            rows.append({"keyword": kw, "volume": t.volume, "intent": t.intent, "difficulty": t.difficulty, "cpc": t.cpc, "competitors": [], "best": None, "yours": t.rank, "status": "only_you", "difference": None, "fit": "have", "why": "Only you rank for it among the competitors read."})
+    order = {"gap": 0, "behind": 1, "ahead": 2, "only_you": 3}
+    rows.sort(key=lambda r: (order[r["status"]], {"yes": 0, "maybe": 1, "have": 2, "no": 3}[r["fit"]], -(r["volume"] or 0)))
+    counts = {s: sum(1 for r in rows if r["status"] == s) for s in order}
+    counts["useful_gaps"] = sum(1 for r in rows if r["status"] == "gap" and r["fit"] in ("yes", "maybe"))
+    return {"competitors": list(reads.values()), "rows": rows[:2000], "counts": counts, "total": len(rows), "own_read": bool(own and any(own.values()))}

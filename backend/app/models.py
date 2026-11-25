@@ -954,3 +954,22 @@ class SearchSnapshot(TimestampMixin, Base):
     payload: Mapped[dict | None] = mapped_column(JSON)
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)  # why the last refresh failed (the stored payload is kept)
+
+
+class CompetitorKeyword(Base):
+    """A keyword a competitor ranks for on Google, read from a ranked-keywords report: its position, the searches, the page that ranks. One row per competitor and keyword, replaced when that
+    competitor is read again. Only keywords are kept: nothing about the competitor's website is audited."""
+    __tablename__ = "competitor_keywords"
+    __table_args__ = (UniqueConstraint("business_id", "domain", "keyword"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    domain: Mapped[str] = mapped_column(String(255), index=True)
+    keyword: Mapped[str] = mapped_column(String(255))
+    position: Mapped[int | None] = mapped_column(Integer)
+    volume: Mapped[int | None] = mapped_column(Integer)
+    cpc: Mapped[float | None] = mapped_column(Float)
+    difficulty: Mapped[int | None] = mapped_column(Integer)
+    intent: Mapped[str | None] = mapped_column(String(20))
+    url: Mapped[str | None] = mapped_column(String(500))
+    traffic: Mapped[float | None] = mapped_column(Float)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

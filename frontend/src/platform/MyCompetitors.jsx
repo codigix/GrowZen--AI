@@ -43,9 +43,6 @@ export default function MyCompetitors({ list, auditMap, onAdd, onFind, onAudit, 
           {isChosen
             ? <button type="button" onClick={() => onChoose(c, false)} title="Leave it out of Competitor Watch and the later steps" className="h-7 px-2.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 text-12 font-semibold inline-flex items-center gap-1 cursor-pointer hover:bg-emerald-100"><Check size={12} />Chosen</button>
             : <button type="button" onClick={() => onChoose(c, true)} className="h-7 px-2.5 rounded-full bg-white text-indigo-700 ring-1 ring-inset ring-indigo-300 text-12 font-semibold inline-flex items-center gap-1 cursor-pointer hover:bg-indigo-50"><Plus size={12} />Choose</button>}
-          {auditing ? <span className="text-12 text-indigo-700 inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" />Auditing…</span>
-            : a ? <Badge tone={aTone}>{aLabel}</Badge>
-              : <button type="button" onClick={() => onAudit(c)} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Audit its site</button>}
         </div>
       </li>
     );
