@@ -8,6 +8,9 @@ import DataTable, { downloadFile } from './DataTable';
 import PageMetaCard from './PageMetaCard';
 import BriefButtons from './DevBrief';
 import { KeywordsView, PageOverview } from './KeywordPlacement';
+import Select from '../components/Select';
+
+const STATUS = { not_mapped: ['Not mapped', 'gray'], mapped: ['Mapped', 'blue'], optimization: ['Optimization required', 'amber'], new_page: ['New page required', 'red'], completed: ['Completed', 'green'] };
 
 const guessQ = (p) => encodeURIComponent((p.path !== '/' ? p.path.replace(/[-_/]+/g, ' ').trim() : (p.title || p.path).split(/[|\-–:]/)[0].trim()).slice(0, 40));
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
@@ -19,6 +22,80 @@ const brief = (x, type) => [
   type === 'page' ? `Suggested address: ${x.slug}` : `Suggested slug: ${x.slug}`,
   'Put the keyword in the title, the main heading and the first paragraph, and in the meta description.',
 ].join('\n');
+
+/** Where each keyword stands (not mapped, mapped, optimization required, new page required, completed), the risks of pages competing with each other, and mapping keywords in bulk. */
+function StatusView({ b, d, onData, toast }) {
+  const [sel, setSel] = useState(() => new Set());
+  const [page, setPage] = useState('');
+  const [busy, , run] = useAction();
+  const view = useRef([]);
+  const rows = d.statuses || [];
+  const pages = d.pages || [];
+  const send = (payload, done) => run('assign', async () => {
+    try {
+      const out = await api(`/businesses/${b.id}/keyword-mapping/assign`, { method: 'POST', body: { ids: [...sel], ...payload } });
+      onData(out); setSel(new Set()); toast(done(out));
+    } catch (e) { toast(e.message || 'Could not update the keywords.'); }
+  });
+  const one = (id, payload, done) => run('assign', async () => { try { onData(await api(`/businesses/${b.id}/keyword-mapping/assign`, { method: 'POST', body: { ids: [id], ...payload } })); toast(done); } catch (e) { toast(e.message || 'Could not update the keyword.'); } });
+  const cols = [
+    { id: 'sel', header: <input type="checkbox" aria-label="Select every row shown" onChange={e => setSel(x => { const n = new Set(x); view.current.forEach(r => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} className="accent-indigo-600" />, csv: false,
+      cell: r => <input type="checkbox" aria-label={`Select ${r.keyword}`} checked={sel.has(r.id)} onChange={() => setSel(x => { const n = new Set(x); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n; })} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
+    { id: 'keyword', header: 'Keyword', first: 'asc', value: r => r.keyword, cell: r => <span className="font-semibold text-slate-900">{r.keyword}</span>, className: 'px-3 py-2.5 min-w-[200px]' },
+    { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume ?? null, cell: r => n0(r.volume) },
+    { id: 'status', header: 'Mapping status', value: r => STATUS[r.status]?.[0] || r.status, tip: { what: 'Mapped: a page of the site carries it. New page required: no page carries it. Optimization required and Completed are set by you.' },
+      cell: r => <Badge tone={STATUS[r.status]?.[1] || 'gray'}>{STATUS[r.status]?.[0] || r.status}{r.by_hand && <span className="ml-1 opacity-60" title="Set by hand">·</span>}</Badge> },
+    { id: 'page', header: 'Page', value: r => r.page || '', cell: r => r.page || <span className="text-slate-300">No page</span>, className: 'px-3 py-2.5 font-mono text-12.5 text-slate-600' },
+    { id: 'role', header: 'Role', value: r => r.role || '', cell: r => (r.role === 'primary' ? <Badge tone="blue">Main</Badge> : r.role === 'secondary' ? <Badge tone="gray">Supporting</Badge> : <span className="text-slate-300">—</span>) },
+    { id: 'act', header: 'Set', csv: false, right: true, className: 'px-2 py-1.5 text-right whitespace-nowrap', cell: r => (
+      <span className="inline-flex gap-1">
+        <button type="button" onClick={() => one(r.id, { status: 'optimization' }, `${r.keyword}: optimization required`)} title="Optimization required" className="px-1.5 py-0.5 rounded text-11.5 font-semibold text-amber-700 hover:bg-amber-50 cursor-pointer">Optimize</button>
+        <button type="button" onClick={() => one(r.id, { status: 'new_page' }, `${r.keyword}: new page required`)} title="New page required" className="px-1.5 py-0.5 rounded text-11.5 font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer">New page</button>
+        <button type="button" onClick={() => one(r.id, { status: 'completed' }, `${r.keyword}: completed`)} title="Completed" className="px-1.5 py-0.5 rounded text-11.5 font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer">Done</button>
+      </span>) },
+  ];
+  const filters = [
+    { id: 'status', label: 'Status', options: Object.entries(STATUS).map(([k, v]) => [k, v[0]]), test: (r, v) => r.status === v },
+    { id: 'role', label: 'Role', options: [['primary', 'Main'], ['secondary', 'Supporting'], ['none', 'No role']], test: (r, v) => (v === 'none' ? !r.role : r.role === v) },
+    { id: 'page', label: 'Page', options: [...new Set(rows.map(r => r.page).filter(Boolean))].sort().map(x => [x, x]), test: (r, v) => r.page === v },
+  ];
+  const count = (k) => d.status_counts?.[k] || 0;
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        {Object.entries(STATUS).map(([k, v]) => <div key={k} className="rounded-xl bg-white ring-1 ring-slate-200 px-3.5 py-2.5"><div className="text-12.5 text-slate-600">{v[0]}</div><div className="text-22 font-bold text-slate-900 tabular-nums leading-tight">{count(k)}</div></div>)}
+      </div>
+
+      {(d.cannibalization?.length > 0 || d.duplicates?.length > 0) ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Card title={`Cannibalization risks (${d.cannibalization.length})`} subtitle="Pages that would compete with each other for the same search.">
+            {d.cannibalization.length ? <ul className="space-y-2 max-h-72 overflow-auto">{d.cannibalization.map(x => <li key={x.keyword} className="text-12.5"><b className="text-slate-900">{x.keyword}</b> <span className="text-slate-400">{n0(x.volume)} a month</span><div className="text-slate-600">{x.why}</div><div className="font-mono text-11.5 text-slate-500">{x.pages.join('  ·  ')}</div></li>)}</ul> : <p className="text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} />No two pages compete for a keyword.</p>}
+          </Card>
+          <Card title={`Duplicate page targeting (${d.duplicates.length})`} subtitle="Keywords that should share one page, and pages with two main keywords.">
+            {d.duplicates.length ? <ul className="space-y-2 max-h-72 overflow-auto">{d.duplicates.map((x, i) => <li key={i} className="text-12.5"><b className="text-slate-900">{x.keywords.join(' · ')}</b><div className="text-slate-600">{x.why}</div>{x.pages.length > 0 && <div className="font-mono text-11.5 text-slate-500">{x.pages.join('  ·  ')}</div>}</li>)}</ul> : <p className="text-13 text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} />No page targets the same keyword twice.</p>}
+          </Card>
+        </div>
+      ) : <p className="rounded-lg bg-emerald-50 ring-1 ring-emerald-200 px-3 py-2 text-12.5 text-emerald-900 inline-flex items-center gap-1.5"><CheckCircle2 size={14} />No cannibalization or duplicate page targeting found in the saved keywords and the last website scan.</p>}
+      <p className="text-12 text-slate-500">Risks come from the saved keywords and the last website scan only: two pages are flagged when both carry a keyword in their title, heading, address or description about equally. They show where pages could compete; they do not show real ranking positions.</p>
+
+      <Card pad={false} title={`Keywords (${rows.length})`} subtitle="Tick keywords to put them on a page, make them the page's main keyword, or set their status.">
+        <DataTable bare minWidth={900} rows={rows} rowKey={r => r.id} columns={cols} filters={filters} initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-mapping-status" searchPlaceholder="Search keywords or pages" label="keywords" onState={st => { view.current = st.rows; }} rowClass={r => (sel.has(r.id) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')} />
+      </Card>
+
+      {sel.size > 0 && (
+        <div className="sticky bottom-3 z-20"><div role="toolbar" aria-label="Mapping actions" className="rounded-xl bg-white shadow-xl ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
+          <span className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-800 text-13.5 font-semibold">{sel.size} keyword{sel.size === 1 ? '' : 's'} selected</span>
+          <button type="button" onClick={() => setSel(new Set())} className="text-12.5 text-slate-500 hover:text-slate-800 underline cursor-pointer">Clear</button>
+          <Select value={page} onChange={e => setPage(e.target.value)} aria-label="Page" className="h-9 max-w-[260px] rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13"><option value="">Choose a page…</option>{pages.map(p => <option key={p.url} value={p.url}>{p.path}</option>)}</Select>
+          <Button size="sm" busy={busy === 'assign'} disabled={!page} onClick={() => send({ target_url: page }, o => `${o.updated} keyword${o.updated === 1 ? '' : 's'} put on the page`)}>Put on this page</Button>
+          <Button size="sm" busy={busy === 'assign'} disabled={!page} onClick={() => send({ target_url: page, role: 'primary' }, o => `${o.updated} keyword${o.updated === 1 ? '' : 's'}: main keyword of the page (one per page)`)}>Make main</Button>
+          <Button size="sm" busy={busy === 'assign'} onClick={() => send({ role: 'secondary' }, o => `${o.updated} keyword${o.updated === 1 ? '' : 's'} set as supporting`)}>Make supporting</Button>
+          <Select value="" onChange={e => e.target.value && send({ status: e.target.value }, o => `${o.updated} keyword${o.updated === 1 ? '' : 's'} updated`)} aria-label="Set status" className="h-9 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13"><option value="">Set status…</option><option value="optimization">Optimization required</option><option value="new_page">New page required</option><option value="completed">Completed</option><option value="mapped">Reset (work it out again)</option></Select>
+        </div></div>
+      )}
+    </div>
+  );
+}
 
 /** Which keyword goes on which page, which pages are missing, and which keywords are better as posts. */
 export default function KeywordMappingTab({ b }) {
@@ -56,7 +133,7 @@ export default function KeywordMappingTab({ b }) {
       {/* One slim toolbar: the three views, how far the mapping is, the button that saves it, and the document for the developer */}
       <div className="rounded-xl bg-white ring-1 ring-slate-200 px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Mapping views">
-          {[['keywords', `Keywords ${d.keywords}`], ['pages', `Pages ${d.pages.length}`], ['create', `To create ${todo.length}`]].map(([id, label]) => (
+          {[['keywords', `Keywords ${d.keywords}`], ['pages', `Pages ${d.pages.length}`], ['create', `To create ${todo.length}`], ['status', `Status and risks ${(d.cannibalization?.length || 0) + (d.duplicates?.length || 0) || ''}`.trim()]].map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>))}
         </div>
         <span className="text-12.5 text-slate-600" title={`${d.mapped} of ${d.keywords} keywords have a page. ${d.primaries} of ${d.pages.length} pages have a main keyword.`}><b className="text-slate-900 tabular-nums">{d.mapped}/{d.keywords}</b> keywords have a page · <b className="text-slate-900 tabular-nums">{d.primaries}/{d.pages.length}</b> pages have a main keyword</span>
@@ -100,6 +177,8 @@ export default function KeywordMappingTab({ b }) {
       </Card>
 
       </>}
+
+      {view === 'status' && <StatusView b={b} d={d} onData={r.setData} toast={toast} />}
 
       {view === 'keywords' && <KeywordsView b={b} onOpen={(url, focus) => setOpen({ url, focus })} />}
 

@@ -106,11 +106,11 @@ function Body({ b }) {
               <tr>
                 <th className="pl-4 py-3 w-10"><input type="checkbox" aria-label="Select this page" checked={pageAll} onChange={e => setSel(s => { const n = new Set(s); pager.rows.forEach(x => (e.target.checked ? n.add(x.id) : n.delete(x.id))); return n; })} className="accent-indigo-600" /></th>
                 <Th id="keyword" first="asc">Keyword</Th><Th id="list" first="asc">List</Th><Th id="volume" right>Volume</Th><Th id="kd" right>KD %</Th><th className="px-3 py-3 text-center font-semibold">Intent</th><Th id="cpc" right>CPC</Th>
-                <th className="px-3 py-3 text-left font-semibold">Trend</th><Th id="rank" right>Position</Th><Th id="added">Added</Th><th className="px-3 py-3 text-right font-semibold">Actions</th>
+                <th className="px-3 py-3 text-left font-semibold">Trend</th><Th id="rank" right>Position</Th><th className="px-3 py-3 text-left font-semibold" title="Where the keyword stands: not mapped, mapped to a page, optimization required, new page required or completed">Mapping</th><Th id="added">Added</Th><th className="px-3 py-3 text-right font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {r.loading && !r.data && Array.from({ length: 6 }).map((_, i) => <tr key={i}><td colSpan={11} className="px-4 py-4"><div className="h-4 rounded bg-slate-100 animate-pulse" /></td></tr>)}
+              {r.loading && !r.data && Array.from({ length: 6 }).map((_, i) => <tr key={i}><td colSpan={12} className="px-4 py-4"><div className="h-4 rounded bg-slate-100 animate-pulse" /></td></tr>)}
               {pager.rows.map(x => (
                 <tr key={x.id} data-just-added={fresh.has(x.keyword) ? '1' : undefined} className={sel.has(x.id) ? 'bg-indigo-50/50' : fresh.has(x.keyword) ? 'bg-emerald-50/50' : 'hover:bg-slate-50/60'}>
                   <td className="pl-4 py-3"><input type="checkbox" aria-label={`Select ${x.keyword}`} checked={sel.has(x.id)} onChange={() => toggle(x.id)} className="accent-indigo-600" /></td>
@@ -125,6 +125,7 @@ function Body({ b }) {
                   <td className="px-3 py-3 text-right tabular-nums">{x.cpc != null ? `₹${Number(x.cpc).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—'}</td>
                   <td className="px-3 py-3"><Spark v={x.trend} /></td>
                   <td className="px-3 py-3 text-right tabular-nums">{x.rank ? <span className="inline-flex items-center gap-1 font-medium">#{x.rank}{x.prev_rank && x.prev_rank !== x.rank && (x.rank < x.prev_rank ? <ArrowUp size={12} className="text-emerald-600" /> : <ArrowDown size={12} className="text-rose-600" />)}</span> : x.checked ? <span className="text-slate-400 text-12" title="Search Console shows no impressions for it in the last 28 days: it is not ranking yet">Not ranking</span> : <span className="text-slate-300" title="Not checked yet">{checking ? <Loader2 size={12} className="animate-spin inline" /> : '—'}</span>}</td>
+                  <td className="px-3 py-3 whitespace-nowrap"><Link to="/keyword-management/mapping" title={x.page ? `${x.page}${x.role ? ` (${x.role === 'primary' ? 'main' : 'supporting'} keyword)` : ''}` : 'No page yet. Open keyword mapping'} className={`px-2 py-0.5 rounded-md text-12 font-medium ${{ mapped: 'bg-blue-50 text-blue-800', optimization: 'bg-amber-50 text-amber-800', new_page: 'bg-rose-50 text-rose-800', completed: 'bg-emerald-50 text-emerald-800' }[x.mapping] || 'bg-slate-100 text-slate-600'}`}>{({ not_mapped: 'Not mapped', mapped: 'Mapped', optimization: 'Optimization required', new_page: 'New page required', completed: 'Completed' })[x.mapping] || 'Not mapped'}</Link></td>
                   <td className="px-3 py-3 whitespace-nowrap text-slate-600">{x.added ? new Date(x.added).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
                   <td className="px-3 py-3 text-right relative whitespace-nowrap">
                     <button type="button" onClick={() => track(x)} aria-label={`Track position of ${x.keyword}`} title="Track position: open Position Tracking for this keyword" className="inline-flex p-1.5 text-slate-500 hover:text-indigo-700 cursor-pointer disabled:opacity-60"><Crosshair size={16} /></button>
@@ -144,7 +145,7 @@ function Body({ b }) {
                   </td>
                 </tr>
               ))}
-              {!r.loading && !pager.rows.length && <tr><td colSpan={11} className="px-4 py-12 text-center text-slate-500">{all.length ? 'No saved keywords match these filters.' : <>You have not saved any keywords yet. <Link className="text-indigo-600 underline" to="/keyword-management/workspace">Find keywords</Link> and choose Pick and prepare.</>}</td></tr>}
+              {!r.loading && !pager.rows.length && <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-500">{all.length ? 'No saved keywords match these filters.' : <>You have not saved any keywords yet. <Link className="text-indigo-600 underline" to="/keyword-management/workspace">Find keywords</Link> and choose Pick and prepare.</>}</td></tr>}
             </tbody>
           </table>
         </div>

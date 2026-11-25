@@ -472,6 +472,7 @@ class Keyword(TimestampMixin, Base):
     tracked: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[str | None] = mapped_column(String(10))  # primary | secondary: the page's main keyword or one it supports (services/keyword_mapping.py)
     uses: Mapped[list[str] | None] = mapped_column(JSON)  # where it is meant to be used: blog, gmb_post, aeo, geo, chatgpt, website
+    mapping_status: Mapped[str | None] = mapped_column(String(16))  # a status set by hand: optimization | new_page | completed. NULL = worked out from the page match (services/keyword_mapping.py)
     source: Mapped[dict | None] = mapped_column(JSON)  # where the keyword was taken from: {kind, label, from, pages: [{url, in}], searches, at}
 
 
