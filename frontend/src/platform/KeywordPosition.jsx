@@ -121,6 +121,12 @@ export default function KeywordPosition({ b, keyword }) {
   const P = d?.project || {};
   const devPos = (d?.devices || {})[T.device || 'desktop']?.position;
   const st = P.status;
+  const cur = series[series.length - 1] || {};
+  const onFeatures = features.filter(([, on]) => on).length;
+  const pageCount = new Set(series.map(x => x.url).filter(Boolean)).size;
+  const counts = { 'SERP Features': serp.data?.state === 'ok' ? onFeatures : null, Competitors: serp.data?.state === 'ok' ? organic.length : null, Pages: pageCount, Progress: series.length };
+  const imp = st?.impressions, clk = st?.clicks;
+  const ctr = imp ? Math.round(((clk || 0) * 1000) / imp) / 10 : null;
   const rivals = (P.competitors || []).map(x => x.replace(/^www\./, ''));
   const rivalRows = rivals.map(dom => ({ dom, hit: organic.find(o => (o.site || '').replace(/^www\./, '') === dom) }));
   const TONE = { working: 'bg-emerald-50 text-emerald-800 ring-emerald-200', climbing: 'bg-sky-50 text-sky-800 ring-sky-200', weak: 'bg-amber-50 text-amber-800 ring-amber-200', invisible: 'bg-rose-50 text-rose-800 ring-rose-200', unchecked: 'bg-slate-50 text-slate-700 ring-slate-200' };
@@ -151,7 +157,7 @@ export default function KeywordPosition({ b, keyword }) {
       <p className="text-12 text-slate-500">Your own position comes from Search Console (your whole country, split by device). The location and language change the competitors and SERP features read from Google.</p>
       {rep.error && <ErrorNote>{rep.error.message}</ErrorNote>}
 
-      <div className="flex gap-6 border-b border-slate-200" role="tablist">{TABS.map(t => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`-mb-px pb-2.5 text-14 font-medium border-b-2 cursor-pointer ${tab === t ? 'border-indigo-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t}</button>)}</div>
+      <div className="flex gap-6 border-b border-slate-200" role="tablist">{TABS.map(t => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`-mb-px pb-2.5 text-14 font-medium border-b-2 cursor-pointer ${tab === t ? 'border-indigo-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t}{counts[t] != null && <span className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-11 font-semibold ${tab === t ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>{counts[t]}</span>}</button>)}</div>
 
       {!d ? <div className="flex items-center justify-center gap-2 py-14 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Reading the position history…</div> : !d.tracked ? (
         <Card>
@@ -200,9 +206,19 @@ export default function KeywordPosition({ b, keyword }) {
                 <Tile label="Search Volume" value={kfmt(d.volume)} sub={null} tip="Monthly searches, Google Keyword Planner" color="#64748b" />
                 <Tile label="Visibility" value={d.visibility != null ? `${d.visibility}%` : '—'} series={inRange.map(x => x.visibility)} color="#059669" tip="Estimate: share of searches that click a result at this position, from a published average click curve" />
                 <Tile label="Estimated Traffic" value={d.traffic != null ? kfmt(d.traffic) : '—'} series={inRange.map(x => x.traffic || 0)} color="#7c3aed" tip="Estimate: monthly searches times the click share at this position" />
-                <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4"><div className="text-13 text-slate-500">SERP Features</div>
+                <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4"><div className="text-13 text-slate-500">SERP Features{serp.data?.state === 'ok' && <span className="ml-1.5 font-semibold text-slate-800">{onFeatures} of {features.length}</span>}</div>
                   {serp.data?.state === 'ok' ? <div className="mt-2 flex flex-wrap gap-1.5">{features.filter(([, on]) => on).map(([n]) => <span key={n} className="px-2 py-0.5 rounded bg-slate-100 text-12 text-slate-700">{n}</span>)}{!features.some(([, on]) => on) && <span className="text-13 text-slate-400">None on this search</span>}</div> : serp.error || serp.data?.state === 'error' ? <div className="mt-2 text-12 text-slate-400">Not read</div> : <Loader2 size={14} className="animate-spin text-slate-400 mt-3" />}
                 </div>
+              <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
+                {[['Desktop position', (d.devices || {}).desktop?.position ? `#${Math.round(d.devices.desktop.position)}` : '—', (d.devices || {}).desktop ? `${d.devices.desktop.impressions} impressions` : 'No impressions'],
+                  ['Mobile position', (d.devices || {}).mobile?.position ? `#${Math.round(d.devices.mobile.position)}` : '—', (d.devices || {}).mobile ? `${d.devices.mobile.impressions} impressions` : 'No impressions'],
+                  ['Maps position', cur.maps_rank ? `#${cur.maps_rank}` : '—', cur.maps_rank ? 'in the local pack results' : 'not in the Maps results'],
+                  ['Impressions · 28 days', imp ?? '—', 'times your site showed'],
+                  ['Clicks · 28 days', clk ?? '—', ctr != null ? `${ctr}% click rate` : 'no impressions yet'],
+                  ['Cost per click', d.cpc != null ? `₹${d.cpc}` : '—', d.intent ? `${d.intent} intent` : 'Google Keyword Planner']].map(([l, v, sub]) => (
+                  <div key={l} className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3"><div className="text-12.5 text-slate-500">{l}</div><div className="text-22 font-bold text-slate-900 tabular-nums leading-tight">{v}</div><div className="text-12 text-slate-500 mt-0.5">{sub}</div></div>
+                ))}
+              </div>
               </div>
               <Trend series={series} range={range} setRange={setRange} />
               <div className="grid gap-4 lg:grid-cols-3">
