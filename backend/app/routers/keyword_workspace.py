@@ -1,5 +1,5 @@
 """The keyword workspace of a project: every keyword from every source in one list, with where it came from; collect, compare, pick."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -289,6 +289,8 @@ def competitor_analysis(body: AnalysisIn, b: Business = Depends(get_business), d
 def competitor_analyze(body: AnalyzeIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Read one competitor now: its Domain Authority and the keywords it ranks for (paid per keyword at Apify). No website audit."""
     from ..services import competitor_analysis as ca  # noqa: PLC0415
+    if not ca.valid_domain(body.domain):
+        raise HTTPException(400, "That is not a website domain. Enter it like example.com.")
     return ca.analyze_one(db, b, body.domain, body.limit, force=body.force)
 
 

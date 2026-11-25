@@ -31,3 +31,19 @@ def test_group_of_names_the_four_places():
     assert group_of("competitors", "Rival") == "competitor_keywords"
     assert group_of("google_ideas", "Saved by hand") == "manual"
     assert group_of("planner", "Google Keyword Planner") == "keyword_research"
+
+
+def test_the_same_keyword_twice_in_one_request_is_saved_once(client, monkeypatch):
+    """Two competitors rank for the same keyword, so a bulk save sends it twice. It must be one record that keeps both sources, not a server error."""
+    monkeypatch.setattr(keyword_metrics, "fill", lambda rows, cc=None: None)
+    bid = _project(client)
+    url = f"/api/v1/businesses/{bid}/keywords"
+    r = client.post(url, json=[{"keyword": "saree rental pune", "source": {"kind": "competitors", "label": "Competitor keywords: a.example", "competitor": "a.example"}},
+                               {"keyword": "Saree  rental pune", "source": {"kind": "competitors", "label": "Competitor keywords: b.example", "competitor": "b.example"}},
+                               {"keyword": "lehenga on rent", "source": {"kind": "competitors", "label": "Competitor keywords: a.example"}}])
+    assert r.status_code == 201, r.text
+    assert r.json()["added"] == 2 and r.json()["existing"] == []  # a repeat inside the request was not saved before it
+    rows = client.get(url).json()["keywords"]
+    assert sorted(k["keyword"] for k in rows) == ["lehenga on rent", "saree rental pune"]
+    src = next(k for k in rows if k["keyword"] == "saree rental pune")["source"]
+    assert {s["label"] for s in src["sources"]} == {"Competitor keywords: a.example", "Competitor keywords: b.example"}

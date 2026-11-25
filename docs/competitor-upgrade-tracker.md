@@ -38,9 +38,17 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 | O | 10 | Google Maps tab in two separate parts: Found on Google Maps (discovery table: name, category, address, distance, rating, reviews, website, Maps link, services, filters, CSV) and Local rank tracking (the existing street-grid and by-area tracker with competitor comparison, embedded). Research-run Maps results kept as a third view | DONE | the tab now shows before a research run. Category and services show Not available until a research run or a listing read has supplied them (the saved competitor has no category column). Not clicked through in a browser |
 | P | 11 | Research tab with four sections: Keyword Discovery (seeds, services, places; searches, KD, CPC, intent, questions), Competitor Research (multi-competitor keywords with filters), Location-Based Keywords (service x chosen places x phrase shapes, searches checked), Keyword Opportunities (missing, low KD, high volume, commercial, long-tail, question) with bulk save to My Keywords | DONE | built on existing endpoints, no backend change. Tab now shows before a research run; the old run view is a fifth section. Not clicked through in a browser. Related-keyword ideas from Keyword Planner are not shown separately |
 | Q | 14 | Keyword mapping: status per keyword (not mapped, mapped, optimization required, new page required, completed; the last three set by hand, the first two worked out), cannibalization risks (pages carrying a keyword about equally; the same words sent to different pages), duplicate page targeting (two main keywords on a page, same words in a different order), bulk assign to a page / main / supporting / status, Mapping column in My Keywords | DONE | risks come from the saved keywords and the last site scan, not from real ranking data. Not clicked through in a browser |
-| R | 17 | End-to-end test of the 15-step workflow + large datasets | TODO | |
+| R | 17 | End-to-end check: API workflow test (discover, select, analyze with a failing provider, keywords, gap, traffic, pages, trend, save without duplicates, map, refresh keeps history, project privacy, 3,000-keyword set) plus a real Chrome pass over 22 screens on a scratch database | DONE | found and fixed 3 defects (see below). Not covered: real provider calls (Apify, Places, DataForSEO), a second browser, mobile widths, the discovery run button against live Places |
 | S | - | Schema on dev DB (already there, app creates it at start-up; alembic_version is stale, so upgrade was not run); committed | DONE | |
 
-Pre-existing failing tests (not caused by this work): test_gbp_competitors::test_competitors_are_private, test_gbp_reports::test_reports_are_private, two in test_keyword_paragraphs.
 
-Also failing before this work (environment, not code): two tests in test_chatgpt_business (a Cloudflare URL in the environment).
+
+## Defects found by the end-to-end check (fixed)
+1. Saving the same keyword twice in one request (two competitors rank for it) crashed with a server error. Now it is one record with both sources.
+2. A competitor with no website became the domain "null" in the browser, and the server accepted it. The helper is fixed and the server now rejects anything that is not a website domain.
+3. The progress line showed "now null"; a missing HTTPException import in the keyword-workspace router would also have broken its error paths.
+
+## Test status
+- Full backend suite (with the two HTTPS variables in .env blanked, see below): 1208 passed, 9 failed. All 9 fail identically on the commit before this branch: test_auth::test_login_flow, 2 in test_keyword_paragraphs, 5 in test_backlink_scores and 1 in test_site_authority (the last 6 only fail when run after other tests).
+- Environment note: backend/.env has HTTPS PUBLIC_BASE_URL and FRONTEND_URL, which make test logins fail (secure cookies over http). Run the suite with `PUBLIC_BASE_URL= FRONTEND_URL= python -m pytest`.
+- The frontend's .env points API calls at http://localhost:8000. A browser test must start Vite with `VITE_API_URL=/api/v1` and `BACKEND_URL=<test backend>` or it talks to the real backend.

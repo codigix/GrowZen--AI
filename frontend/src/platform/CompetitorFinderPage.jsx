@@ -49,7 +49,7 @@ const MAX_KEYWORDS = 10;
 const isRunning = (r) => r && (r.status === 'queued' || r.status === 'running');
 const running = (s) => s === 'queued' || s === 'running';
 const baseSite = (d) => String(d || '').replace(/^(www|in|en|m)\./, '');
-const hostOf = (u) => { try { return baseSite(new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname); } catch (e) { return ''; } };
+const hostOf = (u) => { if (!u) return ''; try { return baseSite(new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname); } catch (e) { return ''; } };
 const AUDIT_LABEL = { queued: 'Queued…', running: 'Auditing…', done: 'Audited', failed: 'Failed' };
 // Compare always works: it reads what the competitor has (website, Google listing, or both) and compares each with yours.
 const compareHint = (c) => c?.website ? 'Compare its website and its Google listing with yours' : 'No website: compare its Google listing with yours';

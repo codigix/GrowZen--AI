@@ -11,7 +11,7 @@ import { api } from './seoApi';
 
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : num(n));
-const hostOf = (u) => { try { return new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
+const hostOf = (u) => { if (!u) return ''; try { return new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
 const STATUS = { analyzed: ['Analyzed', 'green'], partial: ['Partly read', 'amber'], pending: ['Pending', 'gray'], queued: ['Queued', 'gray'], running: ['Analyzing…', 'blue'], failed: ['Failed', 'red'], retry: ['Needs retry', 'amber'] };
 const SOURCE = { google_places: 'Google Maps', organic_serp: 'Organic search', manual: 'Added by hand' };
 const KIND = { direct: ['Direct', 'text-emerald-700 bg-emerald-50 ring-emerald-200'], indirect: ['Indirect', 'text-amber-700 bg-amber-50 ring-amber-200'] };
@@ -99,7 +99,7 @@ export function AutoBar({ auto }) {
       {prog.running ? (
         <div className="flex items-center gap-3 flex-1 min-w-[260px]">
           <Loader2 size={16} className="animate-spin text-indigo-600 shrink-0" />
-          <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Analyzing competitors <span className="font-normal text-slate-500">{prog.done} of {prog.total} · now {prog.current}</span></div>
+          <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Analyzing competitors <span className="font-normal text-slate-500">{prog.done} of {prog.total}{prog.current ? ` · now ${prog.current}` : ''}</span></div>
             <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.max(4, (prog.done / Math.max(1, prog.total)) * 100)}%` }} /></div></div>
           <Button size="sm" onClick={stop}>Stop</Button>
         </div>

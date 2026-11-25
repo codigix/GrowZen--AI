@@ -4,6 +4,7 @@ organic traffic they bring (a ranked-keywords read), and the pages that bring it
 Everything is kept: a competitor shows what was last read and when. "Analyze" reads it again."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -17,6 +18,14 @@ from . import competitor_keyword_report as ck
 def _host(d: str) -> str:
     d = (d or "").lower().strip()
     return d[4:] if d.startswith("www.") else d
+
+
+_DOMAIN = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
+
+
+def valid_domain(d: str) -> bool:
+    """A real website host such as example.com: letters, digits and hyphens in labels, at least one dot, a letter-only ending. 'null', 'localhost', an address with a path or a space are not."""
+    return bool(_DOMAIN.match(_host(d)))
 
 
 def _site_metrics(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
@@ -367,6 +376,8 @@ def start_auto(db: Session, b: Business, domains: list[str], limit: int = 100) -
         now = time.time()
         due = {}
         for d in dict.fromkeys(_host(x) for x in domains if x):
+            if not valid_domain(d):
+                continue  # not a website: nothing to read, and nothing to spend on
             why = due_reason(db, b, d, cfg, now)
             if why:
                 due[d] = why

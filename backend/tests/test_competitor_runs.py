@@ -178,3 +178,26 @@ def test_ratings_send_the_weights_and_labels_the_match_drawer_shows(client, monk
     assert out["weights"] == relevance.WEIGHTS and out["labels"]["services"] == "Product relevance" and out["direct_at"] == relevance.DIRECT_AT
     rel = next(iter(out["by_id"].values()))["relevance"]
     assert 0 <= rel["score"] <= 100 and set(rel["factors"]) <= set(relevance.WEIGHTS) and rel["label"] in ("direct", "related", "unrelated")
+
+
+def test_only_real_website_domains_are_read(client, monkeypatch):
+    """A competitor with no website must never become the domain 'null', and nothing is requested (or paid) for a name that is not a website."""
+    from app.services import competitor_analysis as ca
+    for good in ("example.com", "www.Sub.Example.co.in", "a-b.example"):
+        assert ca.valid_domain(good), good
+    for bad in ("null", "localhost", "no dot", "https://x.com/path", "-a.com", "a..com", "", "x.c", "a.example/"):
+        assert not ca.valid_domain(bad), bad
+    bid = _project(client)
+    base = KW.format(bid=bid)
+    calls = []
+    monkeypatch.setattr(apify_metrics, "check", lambda doms, force=False: calls.append(doms) or [{"domain": doms[0], "da": 1}])
+    r = client.post(f"{base}/analyze", json={"domain": "null"})
+    assert r.status_code == 400 and calls == []
+    from app.db import SessionLocal
+    from app.models import Business
+    db = SessionLocal()
+    try:
+        out = ca.start_auto(db, db.get(Business, bid), ["null", "localhost", ""])
+        assert out["running"] is False and calls == []  # nothing was due, nothing was called
+    finally:
+        db.close()

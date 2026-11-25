@@ -114,14 +114,16 @@ def keyword_progress(b: Business = Depends(get_business), db: Session = Depends(
 def add_keywords(body: list[KeywordIn], b: Business = Depends(get_business), db: Session = Depends(get_db)):
     added, existing, updated = 0, [], 0
     from ..services import keyword_workspace as kws  # noqa: PLC0415
+    batch: dict[str, Keyword] = {}  # keywords already handled in this request: the same keyword twice (two competitors rank for it) is one record, and the session does not autoflush
     for k in body:
         text = " ".join(k.keyword.lower().split())
-        row_ = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == text))
+        row_ = batch.get(text) or db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == text))
         if not row_:
             row_ = Keyword(business_id=b.id, keyword=text)
             added += 1
         else:
-            existing.append(text)
+            if text not in existing and text not in batch:
+                existing.append(text)  # it was saved before this request
             if k.source:  # already saved: the new place it was found is added, nothing is duplicated
                 updated += 1 if kws.merge_sources(row_, [{"kind": k.source.get("kind"), "label": k.source.get("label"), "detail": k.source.get("detail") or k.source.get("from")}], [k.source.get("competitor")] if k.source.get("competitor") else []) else 0
         for f, v in k.model_dump(exclude={"keyword"}).items():
@@ -129,6 +131,7 @@ def add_keywords(body: list[KeywordIn], b: Business = Depends(get_business), db:
                 setattr(row_, f, v)
         row_.intent = row_.intent or intent_of(text)
         db.add(row_)
+        batch[text] = row_
     db.flush()
     note = keyword_metrics.fill([r for r in (db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == " ".join(k.keyword.lower().split()))) for k in body) if r], market.serp_country(b))
     from ..services import keyword_workspace  # noqa: PLC0415
