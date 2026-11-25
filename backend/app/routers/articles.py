@@ -49,6 +49,7 @@ class GenerateIn(BaseModel):
     topic: str | None = Field(default=None, max_length=255)
     length: Literal["short", "standard", "long"] = "standard"
     title: str | None = Field(default=None, max_length=255)  # the SEO title picked on the Title step; empty = the model writes one
+    blog_title: str | None = Field(default=None, max_length=255)  # the Blog title (H1) picked on the Title step; empty = the H1 is the SEO title
     workflow: dict | None = None  # the SEO workflow: research stage results + the content brief the user confirmed (optional; older pages send none)
 
 
@@ -62,6 +63,8 @@ class TitleSuggestIn(BaseModel):
     primary: str = Field(min_length=2, max_length=255)
     secondary: list[str] = Field(default_factory=list, max_length=15)
     avoid: list[str] = Field(default_factory=list, max_length=20)
+    kind: Literal["seo", "blog"] = "seo"  # seo = SEO titles (Google, max 60); blog = Blog titles (the H1 on the page)
+    seo_title: str = Field(default="", max_length=255)  # for blog titles: the SEO title they go with
 
 
 class KeywordSuggestIn(BaseModel):
@@ -399,7 +402,8 @@ def suggest_keywords(body: KeywordSuggestIn, b: Business = Depends(get_business)
 def suggest_titles(body: TitleSuggestIn, b: Business = Depends(get_business)):
     """Five SEO title options for the Title step (shown before the article is written)."""
     try:
-        titles = svc.suggest_titles(body.topic, body.primary, body.secondary, b, body.avoid)
+        titles = (svc.suggest_blog_titles(body.topic, body.primary, body.seo_title, b, body.avoid) if body.kind == "blog"
+                  else svc.suggest_titles(body.topic, body.primary, body.secondary, b, body.avoid))
     except RuntimeError as exc:
         raise HTTPException(502, str(exc))
     if not titles:
@@ -460,7 +464,8 @@ def generate(body: GenerateIn, tasks: BackgroundTasks, b: Business = Depends(get
     if running:
         raise HTTPException(409, f"An article for '{keywords[0]}' is already being written. Wait for it to finish or delete it first.")
     a = Article(business_id=b.id, topic=(body.topic or "").strip() or None, length=body.length, keyword=keywords[0], title=(body.title or "").strip() or None, secondary_keywords=keywords[1:],
-                stats={"workflow": _clean_workflow(body.workflow)} if body.workflow else None, rising_keywords=[k for k, r in picked.items() if r], status="pending")
+                stats=({"workflow": _clean_workflow(body.workflow)} if body.workflow else {}) | ({"blog_title": " ".join(body.blog_title.split())} if (body.blog_title or "").strip() else {}) or None,
+                rising_keywords=[k for k, r in picked.items() if r], status="pending")
     db.add(a)
     db.commit()
     tasks.add_task(durable(svc.run_batch, [a.id], refs=[f"article:{a.id}"]))
@@ -677,6 +682,19 @@ def delete_content_image(article_id: int, name: str, b: Business = Depends(get_b
     return {"ok": True}
 
 
+def _ready_or_409(db: Session, a: Article, b: Business) -> None:
+    """Before publishing a new post: every mandatory requirement must pass (sections, FAQs, metadata, contact details, slug, business relevance,
+    and the last AI review's factual accuracy / promotion verdicts). Each failure is returned with the correction to make. A post that is already
+    live can still be updated."""
+    if seo._is_live(a):
+        return
+    rep = seo.build(db, a, b, with_ai=False, previous=(a.stats or {}).get("seo_report"))
+    seo.save(db, a, rep)
+    db.commit()
+    if rep["blocking"]:
+        raise HTTPException(409, "Not ready to publish. Fix these first: " + " · ".join(f"{x['label']} — {x['fix']}" for x in rep["blocking"]))
+
+
 @router.post("/{article_id}/publish")
 def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     a = _get(db, b, article_id)
@@ -684,6 +702,7 @@ def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business
         raise HTTPException(409, "Only a completed article can be published")
     if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
         raise HTTPException(422, "Add a featured image before publishing (Featured image section, above the article body).")
+    _ready_or_409(db, a, b)
     when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
     target = _target(db, b)
     if body.mode == "schedule" and target.method in sp.LOCAL_SCHEDULE:
@@ -722,6 +741,7 @@ def publish_react(article_id: int, body: PublishIn, b: Business = Depends(get_bu
         raise HTTPException(409, "Only a completed article can be published")
     if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
         raise HTTPException(422, "Add a featured image before publishing (Featured image section, above the article body).")
+    _ready_or_409(db, a, b)
     conn = _react_conn(db, b)
     when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
     from ..services import article_publishing as ap

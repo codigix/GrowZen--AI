@@ -311,6 +311,7 @@ _EDIT_SHAPE = ('"edits": [{"find": "an exact sentence or phrase copied from the 
 
 def expert(art: dict, b) -> dict:
     d = _ask([
+        *mp.template_block(_brand(b)),  # the blog template the article was written to
         "/expert: you are a subject-matter expert in the article's industry. Review the article for topic accuracy, completeness, unsupported claims and"
         " industry-specific correctness. Only flag real problems. Fix a problem with a small, exact text edit, or soften an unsupported claim.",
         "Business profile (true facts):", svc.ai.profile_text(b),
@@ -322,9 +323,10 @@ def expert(art: dict, b) -> dict:
 
 def human(art: dict, b) -> dict:
     d = _ask([
+        *mp.template_block(_brand(b)),  # the blog template the article was written to
         "/human: you are an experienced human editor. Review the article for natural language, repetition, readability, transitions and unnecessary"
         " promotional wording. Keep facts, keywords and meaning. Fix problems with small, exact text edits (a sentence at a time).",
-        f'Keep the exact phrase "{art["primary"]}" wherever it appears; do not remove keywords.',
+        *_density_instruction(art),
         "ARTICLE TEXT:", svc._text(svc._SCHEMA_RE.sub(" ", art["body"]))[:40000],
         "HEADINGS: " + json.dumps(svc.headings_of(svc._SCHEMA_RE.sub(" ", art["body"]))),
         'Also list "heading_fixes" ONLY for headings above that are grammatically wrong or awkward (e.g. a missing article: "Before Starting Digital Solution?"):'
@@ -373,6 +375,47 @@ def apply_heading_fixes(body: str, fixes: list[dict], primary: str) -> tuple[str
     return body, results
 
 
+def keyword_density(body: str, primary: str) -> tuple[float, int, int]:
+    """(density %, uses, words) of the primary keyword in the visible article text."""
+    text = svc._text(svc._SCHEMA_RE.sub(" ", body or ""))
+    words = len(text.split())
+    uses = len(re.findall(r"(?<!\w)" + re.escape(" ".join(primary.split())).replace(r"\ ", r"\s+") + r"(?!\w)", text, re.I)) if primary else 0
+    return (uses * len(primary.split()) * 100 / words if words else 0.0), uses, words
+
+
+def _density_instruction(art: dict) -> list[str]:
+    dens, uses, words = keyword_density(art["body"], art["primary"])
+    if dens > 2.5:  # too dense: replace some uses with natural wording (the edits keep it in the title, headings and first sentence untouched)
+        keep = max(1, round(words * 0.02 / max(1, len(art["primary"].split()))))
+        return [f'KEYWORD DENSITY: "{art["primary"]}" is used {uses} times in {words} words ({dens:.1f}%), above the 1-2% target. Include edits that replace'
+                f" about {uses - keep} of its uses in body sentences with natural synonyms or pronouns (keep it in the first sentence of the article)."]
+    return [f'Keep the exact phrase "{art["primary"]}" wherever it appears (its density is {dens:.1f}%, within the target); do not force it into new places.']
+
+
+def thin_keyword(body: str, primary: str) -> tuple[str, dict]:
+    """When the primary keyword is still above 2% after the human review (which has only a few edits), rewrite just enough body sentences that
+    use it, spread through the article, so they use a natural synonym or pronoun instead. The title, headings and the article's first sentence
+    are never touched (apply_edits works on body text only). Returns (body, summary)."""
+    dens, uses, words = keyword_density(body, primary)
+    if dens <= 2.5:
+        return body, {"before": round(dens, 2), "after": round(dens, 2), "rewritten": 0}
+    need = uses - max(1, round(words * 0.02 / max(1, len(primary.split()))))
+    text = svc._text(svc._SCHEMA_RE.sub(" ", body))
+    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if re.search(re.escape(primary), s, re.I) and len(s.split()) >= 6]
+    sents = [s for s in sents[1:] if not s.endswith("?")]  # not the first sentence of the article, not FAQ questions
+    if not sents or need <= 0:
+        return body, {"before": round(dens, 2), "after": round(dens, 2), "rewritten": 0}
+    step = max(1, len(sents) // max(1, need))
+    picked = sents[::step][: need + 2]
+    d = _ask([f'Rewrite each sentence below so it no longer contains the exact phrase "{primary}": use a natural synonym, a shorter reference or a pronoun.'
+              " Keep the meaning, the facts and the rest of the wording; the sentence must still read well on its own.",
+              "Sentences: " + json.dumps(picked),
+              'Answer with JSON only: {"edits": [{"find": "the exact original sentence", "replace": "the rewritten sentence"}]}'], 2400)
+    edits = [{"find": svc._plain(e.get("find")), "replace": svc._plain(e.get("replace"))} for e in (d.get("edits") or []) if isinstance(e, dict)]
+    new, results = apply_edits(body, edits, primary, max_kw_removals=need)
+    return new, {"before": round(dens, 2), "after": round(keyword_density(new, primary)[0], 2), "rewritten": sum(1 for r in results if r["applied"])}
+
+
 def _review_out(d: dict, art: dict) -> dict:
     v = str(d.get("verdict") or "").lower()
     issues = [{"issue": svc._plain(x.get("issue")), "severity": str(x.get("severity") or "low").lower()} for x in (d.get("issues") or [])
@@ -383,16 +426,19 @@ def _review_out(d: dict, art: dict) -> dict:
             "unsupported_claims": _strs(d.get("unsupported_claims"), 10, 300), "missing_topics": _strs(d.get("missing_topics"), 8, 200), "edits": edits}
 
 
-def apply_edits(body: str, edits: list[dict], primary: str) -> tuple[str, list[dict]]:
+def apply_edits(body: str, edits: list[dict], primary: str, max_kw_removals: int = 0) -> tuple[str, list[dict]]:
     """Apply small exact text edits safely: the text to find must appear exactly once, inside one piece of text (never across HTML tags),
-    the replacement is plain text, and an edit may not remove the primary keyword. Returns (body, results)."""
+    the replacement is plain text, and an edit may not remove the primary keyword, except up to max_kw_removals times when the keyword is too dense.
+    Returns (body, results)."""
     results = []
+    removals = 0
     for e in edits:
         f, r = e.get("find", ""), e.get("replace", "")
         why = ""
+        drops_kw = svc._has(f, primary) and not svc._has(r, primary)
         if not (15 <= len(f) <= 400) or not r or "<" in r or ">" in r:
             why = "not a usable edit"
-        elif svc._has(f, primary) and not svc._has(r, primary):
+        elif drops_kw and removals >= max_kw_removals:
             why = "would remove the primary keyword"
         elif not (0.4 <= len(r) / max(1, len(f)) <= 2.0):
             why = "changes too much at once"
@@ -408,6 +454,8 @@ def apply_edits(body: str, edits: list[dict], primary: str) -> tuple[str, list[d
                 import html
                 parts[i] = html.escape(html_unescape(parts[i]).replace(f, r), quote=False)  # stays valid HTML text
                 body = "".join(parts)
+                if drops_kw:
+                    removals += 1
         results.append({**e, "applied": not why, "skipped_because": why})
     return body, results
 

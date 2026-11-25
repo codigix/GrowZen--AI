@@ -209,13 +209,12 @@ def _full(b: Business, f: dict, a: Article, main: str) -> str:
     draft = svc.write(f["keyword"], f["secondary"], a.rising_keywords or [], b, topic=a.topic or "", length=a.length or "standard",
                       title_hint=f["title"] or None, meta_hint=f["meta"] or None)
     new = svc._SCHEMA_RE.sub("\n", draft["body"]).strip()
-    if f["title"]:
+    old_h1 = _H1.search(main)
+    if old_h1:  # the current H1 (the Blog title, or the SEO title when they are the same) is kept
+        new = _H1.sub(lambda _m: old_h1.group(0), new, count=1) if _H1.search(new) else f"{old_h1.group(0)}\n\n{new}"
+    elif f["title"]:
         h1 = f"<h1>{html.escape(f['title'], quote=False)}</h1>"
         new = _H1.sub(lambda _m: h1, new, count=1) if _H1.search(new) else f"{h1}\n\n{new}"
-    else:
-        old_h1 = _H1.search(main)
-        if old_h1:
-            new = _H1.sub(lambda _m: old_h1.group(0), new, count=1)
     return new
 
 

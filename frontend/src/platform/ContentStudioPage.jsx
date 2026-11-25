@@ -17,7 +17,7 @@ import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } f
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import BlogImageAnalysis from './BlogImageAnalysis';
 import SeoChecklist from './SeoChecklist';
-import { ResearchBriefStep, WorkflowPanel } from './SeoWorkflow';
+import { ResearchBriefStep, WorkflowPanel, runResearch } from './SeoWorkflow';
 import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
 import RegenerateContent, { SeoField } from './RegenerateContent';
@@ -571,8 +571,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   const elapsed = pending?.created_at ? Math.max(0, (now - new Date(pending.created_at).getTime()) / 1000) : 0;
   const preview = pendingFull.data?.id === pendingId ? pendingFull.data.body : '';
 
-  const generate = async ({ topic, keywords, length, title, workflow }) => {
-    const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, title: title || undefined, workflow: workflow || undefined, keywords: keywords.map(k => ({ keyword: k })) } });
+  const generate = async ({ topic, keywords, length, title, blog_title, workflow }) => {
+    const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, title: title || undefined, blog_title: blog_title || undefined, workflow: workflow || undefined, keywords: keywords.map(k => ({ keyword: k })) } });
     setPendingId(r.articles[0].id);
     setOpenId(null);
     list.reload(true);
@@ -871,18 +871,51 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   };
   const openTitleStep = () => { setTitleStage(true); setGenError(''); if (!titleOptions.length) suggestTitles(); };
 
+  // Blog title (H1): the heading readers see on the page, separate from the SEO title; suggested for the picked SEO title, editable.
+  const [blogTitleOptions, setBlogTitleOptions] = useState([]);
+  const [pickedBlogTitle, setPickedBlogTitle] = useState('');
+  const [blogTitleBusy, setBlogTitleBusy] = useState(false);
+  const [blogTitleError, setBlogTitleError] = useState('');
+  const suggestBlogTitles = async () => {
+    if (!pickedTitle.trim()) return;
+    setBlogTitleBusy(true); setBlogTitleError('');
+    try {
+      const r = await api(`/businesses/${b.id}/articles/titles`, { method: 'POST', body: { kind: 'blog', seo_title: pickedTitle.trim(), topic: topicText.trim() || kw.trim(), primary: kw.trim(), secondary: [], avoid: blogTitleOptions } });
+      setBlogTitleOptions(r.titles || []);
+      if (!pickedBlogTitle.trim() && r.titles?.length) setPickedBlogTitle(r.titles[0]);
+    } catch (e) { setBlogTitleError(`${e.message || e} You can type your own Blog title below, or leave it the same as the SEO title.`); }
+    finally { setBlogTitleBusy(false); }
+  };
+
   // Research & brief (the SEO workflow): after the title, the research stages run and the user confirms the brief; the article is written from it.
   const [briefStage, setBriefStage] = useState(false);
   const workflowInput = () => ({
-    title: pickedTitle.trim(), primary: kw.trim(), secondary: secondaryList.map(k => k.trim()).filter(Boolean),
+    title: pickedBlogTitle.trim() || pickedTitle.trim(), primary: kw.trim(), secondary: secondaryList.map(k => k.trim()).filter(Boolean),
     topic: topicText.trim() || kw.trim(), intent: intent || '', length: articleLength, audience: '', instructions: ''
   });
+
+  // "Next: Generate Blog": the research stages and the content brief run in the background (not shown), then the blog is written from them.
+  // If research fails, the blog is still written (without research).
+  const [researchMsg, setResearchMsg] = useState('');
+  const [researchSecs, setResearchSecs] = useState(0); // elapsed time, shown while the topic is researched
+  const researchAndGenerate = async () => {
+    setGenError(''); setGenBusy(true);
+    const started = Date.now();
+    setResearchSecs(0);
+    const tick = setInterval(() => setResearchSecs(Math.round((Date.now() - started) / 1000)), 1000);
+    let wf = null;
+    try {
+      wf = await runResearch(b, workflowInput(), (label, n, total) => setResearchMsg(`Researching the topic (step ${n} of ${total}): ${label}…`));
+    } catch { wf = null; }
+    setResearchMsg('Starting to write the blog…');
+    try { await generateBlog(wf || undefined); } finally { clearInterval(tick); setResearchMsg(''); }
+  };
 
   const generateBlog = (workflow) => {
     const keywords = [kw, ...secondaryList].map(k => k.trim().toLowerCase()).filter(Boolean);
     setGenBusy(true); setGenError('');
     // once writing starts, go on to the Write step (AI Draft) and show it from the top
-    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength, title: pickedTitle.trim(), workflow: workflow && workflow.brief ? workflow : undefined })
+    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength, title: pickedTitle.trim(), blog_title: pickedBlogTitle.trim() || undefined, workflow: workflow && workflow.brief ? workflow : undefined })
       .then(() => { setStep(1); setTimeout(() => document.getElementById('eeat-pipeline-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); })
       .catch(e => setGenError(e.message || String(e))).finally(() => setGenBusy(false));
   };
@@ -897,7 +930,12 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const h1Raw = (draft.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) || [])[1];
   const h1Text = h1Raw ? (() => { const t = document.createElement('textarea'); t.innerHTML = h1Raw.replace(/<[^>]+>/g, ''); return t.value.trim(); })() : '';
   const titleNow = meta.title.trim();
-  const h1Differs = Boolean(selectedArticle && h1Text && titleNow && h1Text !== titleNow);
+  // only when the heading followed the saved SEO title and the SEO title was then changed (a separate Blog title is not a mismatch)
+  const h1Differs = Boolean(selectedArticle && h1Text && titleNow && h1Text !== titleNow && h1Text === (selectedArticle.title || '').trim());
+  const setBlogTitle = (v) => {
+    const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    setDraft(d => (/<h1\b[^>]*>[\s\S]*?<\/h1>/i.test(d) ? d.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, `<h1>${esc}</h1>`) : `<h1>${esc}</h1>\n${d}`));
+  };
   const updateH1 = () => {
     const esc = titleNow.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     setDraft(d => d.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, `<h1>${esc}</h1>`));
@@ -1137,7 +1175,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
         {step === 0 && titleStage && !briefStage && (
           <div className="max-w-3xl space-y-4">
-            <div className="text-[12px] text-slate-500">Step 2 of 3 · Choose the SEO title. Next, the research stages build a content brief you can edit (or generate straight away without research).</div>
+            <div className="text-[12px] text-slate-500">Step 2 of 2 · Choose the SEO title and the Blog title, then generate the blog. The topic is researched automatically before writing.</div>
             <Field label="Topic" hint="You can still change the topic. Click Regenerate Titles after changing it.">
               <input className={inputCls} value={topicText} onChange={e => setTopicText(e.target.value)} />
             </Field>
@@ -1165,13 +1203,42 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               </div>
               {pickedTitle.trim() && kw.trim() && !pickedTitle.toLowerCase().includes(kw.trim().toLowerCase()) && <div className="mt-1 text-[11.5px] text-amber-800">This title does not contain the primary keyword “{kw}”.</div>}
             </Field>
-            {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
+
+            {/* Blog title (H1): the heading on the blog page, separate from the SEO title; the article is written for it */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-[12.5px] font-semibold text-slate-800">Blog title (H1)</div>
+                  <div className="text-[11.5px] text-slate-500">The heading readers see on the blog page. It can be longer and more descriptive than the SEO title. Leave it empty to use the SEO title.</div>
+                </div>
+                <Button size="sm" icon={blogTitleOptions.length ? RefreshCw : Sparkles} busy={blogTitleBusy} disabled={!pickedTitle.trim()} onClick={suggestBlogTitles}>{blogTitleOptions.length ? 'Regenerate' : 'Suggest Blog titles'}</Button>
+              </div>
+              {blogTitleOptions.length > 0 && (
+                <div className="grid grid-cols-1 gap-1.5" role="radiogroup" aria-label="Blog title options">
+                  {blogTitleOptions.map(t => (
+                    <button key={t} type="button" role="radio" aria-checked={pickedBlogTitle === t} onClick={() => setPickedBlogTitle(t)}
+                      className={`px-3 py-2 rounded-lg border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${pickedBlogTitle === t ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'bg-white border-slate-200 hover:border-indigo-300'}`}>
+                      <span className="text-[12.5px] font-semibold text-slate-800">{t}</span>
+                      <span className="text-[11px] text-slate-500 shrink-0">{t.length} characters</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {blogTitleError && <div className="text-[11.5px] text-amber-800">{blogTitleError}</div>}
+              <div className="flex items-center gap-2">
+                <input className={inputCls} value={pickedBlogTitle} onChange={e => setPickedBlogTitle(e.target.value)} placeholder={pickedTitle.trim() ? `Same as the SEO title: ${pickedTitle.trim()}` : 'Pick an SEO title first'} />
+                <span className={`text-[11.5px] font-semibold shrink-0 tabular-nums ${!pickedBlogTitle.trim() || (pickedBlogTitle.trim().length >= 35 && pickedBlogTitle.trim().length <= 90) ? 'text-emerald-700' : 'text-amber-700'}`}>{pickedBlogTitle.trim().length} / 35-90</span>
+              </div>
+              {pickedBlogTitle.trim() && kw.trim() && !pickedBlogTitle.toLowerCase().includes(kw.trim().toLowerCase()) && <div className="text-[11.5px] text-amber-800">This Blog title does not contain the primary keyword “{kw}”.</div>}
+            </div>
+            {generating &&<div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={() => { setTitleStage(false); setTitleOptions([]); setPickedTitle(''); }}>Back to keywords</Button>
-              <Button variant="ai" icon={Sparkles} disabled={!pickedTitle.trim() || titleBusy || generating} onClick={() => { setGenError(''); setBriefStage(true); }}>Next: Research &amp; Brief</Button>
-              <Button busy={genBusy} disabled={!pickedTitle.trim() || titleBusy || generating} onClick={() => generateBlog()} title="Write the article straight away, without the research stages">Generate without research</Button>
+              <Button disabled={genBusy} onClick={() => { setTitleStage(false); setTitleOptions([]); setPickedTitle(''); setBlogTitleOptions([]); setPickedBlogTitle(''); }}>Back to keywords</Button>
+              <Button variant="ai" icon={Sparkles} busy={genBusy} disabled={!pickedTitle.trim() || titleBusy || generating || genBusy} onClick={researchAndGenerate}>Next: Generate Blog</Button>
             </div>
+            {researchMsg && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />{researchMsg}
+              <span className="text-slate-500 tabular-nums">· {Math.floor(researchSecs / 60)}:{String(researchSecs % 60).padStart(2, '0')} elapsed (research usually takes under a minute)</span></div>}
           </div>
         )}
 
@@ -1363,6 +1430,13 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     <Button size="sm" variant="ai" icon={Sparkles} onClick={() => regenRef.current?.run('full')}>Regenerate article for this title</Button>
                   </div>
                 )}
+                <Field label="Blog title (H1)" hint="The heading readers see on the blog page. It can differ from the SEO title (which is shown in Google).">
+                  <div className="flex items-center gap-2">
+                    <input className={inputCls} value={h1Text} onChange={e => setBlogTitle(e.target.value)} placeholder="The article's main heading" />
+                    <span className={`text-[11.5px] font-semibold shrink-0 tabular-nums ${h1Text.length >= 35 && h1Text.length <= 90 ? 'text-emerald-700' : 'text-amber-700'}`}>{h1Text.length} / 35-90</span>
+                  </div>
+                  {h1Text && meta.keyword.trim() && !h1Text.toLowerCase().includes(meta.keyword.trim().toLowerCase()) && <div className="mt-1 text-[11.5px] text-amber-800">The Blog title does not contain the primary keyword “{meta.keyword}”.</div>}
+                </Field>
                 <SeoField kind="meta" value={meta.meta_description} onChange={v => setMeta(m => ({ ...m, meta_description: v }))}
                   onRegenerate={selectedArticle ? () => regenRef.current?.run('meta') : null} busy={fieldBusy === 'meta'} disabled={Boolean(fieldBusy)} />
                 {selectedArticle && <DuplicateNotice b={b} article={selectedArticle} title={meta.title} image={featured} />}

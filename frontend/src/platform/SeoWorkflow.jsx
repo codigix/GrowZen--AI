@@ -115,6 +115,54 @@ function StageList({ ids, rec, running, onRetry, retryable }) {
 
 const lines = (t) => String(t || '').split('\n').map(x => x.trim()).filter(Boolean);
 
+/**
+ * Runs the 8 research stages in the background (no brief screen) and returns the workflow to write the article from:
+ * { input, data, stages, brief }. A failed stage is retried once; if research still fails, returns null and the article is
+ * written without research. onProgress(label, n, total) reports which stage is running.
+ */
+// Stages that do not need each other's results run at the same time (3 waves instead of 8 one-by-one calls):
+// wave 1 reads Google / Keyword Planner and brainstorms; wave 2 uses the search intent and competitor pages; wave 3 writes the brief.
+const RESEARCH_WAVES = [
+  ['brainstorm', 'search_intent', 'analyze_keyword'],
+  ['entities', 'opportunities', 'content_gaps', 'competitors'],
+  ['content_brief'],
+];
+
+export async function runResearch(b, input, onProgress = () => {}) {
+  let c = { input };
+  const one = async (id, base) => {
+    let r = base;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        r = await api(`/businesses/${b.id}/articles/workflow-stage`, { method: 'POST', body: { stage: id, ctx: base }, timeout: 200000 });
+      } catch (e) {
+        r = { ...base, stages: { ...(base.stages || {}), [id]: { status: 'failed', error: e.message || String(e), output: {} } } };
+      }
+      if (r.stages?.[id]?.status === 'done') break;
+    }
+    return [id, r];
+  };
+  for (const [n, wave] of RESEARCH_WAVES.entries()) {
+    onProgress(wave.map(id => STAGES.find(s => s[0] === id)[2]).join(', '), n + 1, RESEARCH_WAVES.length);
+    const results = await Promise.all(wave.map(id => one(id, c)));
+    // merge: each stage's own record, the research data it fetched (Google results, competitor pages, Keyword Planner) and the brief
+    const merged = { ...c, data: { ...(c.data || {}) }, stages: { ...(c.stages || {}) } };
+    for (const [id, r] of results) {
+      if (r.stages?.[id]?.status !== 'done') return null;
+      merged.stages[id] = r.stages[id];
+      Object.assign(merged.data, r.data || {});
+      if (r.brief) merged.brief = r.brief;
+    }
+    c = merged;
+  }
+  const brief = c.brief;
+  if (!brief || (brief.outline || []).filter(s => s.h2?.trim()).length < 2) return null;
+  return {
+    input: c.input, data: c.data || {}, stages: c.stages || {},
+    brief: { ...brief, outline: brief.outline.filter(s => s.h2?.trim()), faqs: (brief.faqs || []).map(q => String(q).trim()).filter(Boolean) },
+  };
+}
+
 /** Research stages + editable content brief, shown after the title is chosen. */
 export function ResearchBriefStep({ b, input, onBack, onGenerate, genBusy, generating, genError }) {
   const [ctx, setCtx] = useState({ input });
