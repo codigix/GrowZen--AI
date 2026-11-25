@@ -233,3 +233,9 @@ class NamesIn(BaseModel):
 @router.post("/mark-picked")
 def mark_picked(body: NamesIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     return {"marked": kw.mark_picked(db, b, body.keywords)}
+
+
+@router.get("/saved")
+def saved_keywords(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import keyword_prepare  # noqa: PLC0415
+    return keyword_prepare.saved(db, b)

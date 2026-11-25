@@ -86,3 +86,51 @@ def secondary(db: Session, b: Business, primary: str, limit: int = 40) -> dict[s
         rows.append({"keyword": n, "volume": i.get("avg_monthly_searches") or 0, "cpc": i.get("high_top_of_page_bid"), "competition": i.get("competition"), "saved": False})
     rows.sort(key=lambda r: -(r["volume"] or 0))
     return {"rows": rows[:limit], "note": None}
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- saved keywords
+_trends: dict[tuple[str, str], tuple[float, list[int]]] = {}
+
+
+def _trend_of(keywords: list[str], country: str) -> dict[str, list[int]]:
+    """The last twelve months of searches of each keyword from Keyword Planner, kept for a day."""
+    import time  # noqa: PLC0415
+    now = time.time()
+    out: dict[str, list[int]] = {}
+    todo = []
+    for k in keywords:
+        hit = _trends.get((country, k))
+        if hit and now - hit[0] < 86400:
+            out[k] = hit[1]
+        else:
+            todo.append(k)
+    for i in range(0, len(todo), 100):
+        chunk = todo[i:i + 100]
+        try:
+            got = ads.historical_metrics(chunk, geo_target=ads.geo_target_for(country))
+        except Exception:  # noqa: BLE001 -- no trend rather than a failed page
+            break
+        for k in chunk:
+            series = [int(m.get("searches") or 0) for m in ((got.get(k) or {}).get("monthly") or [])][-12:]
+            _trends[(country, k)] = (now, series)
+            out[k] = series
+    return out
+
+
+def saved(db: Session, b: Business) -> dict[str, Any]:
+    """The Saved Keywords list: every kept keyword with its list (My List, Blog Ideas, Competitors), searches, difficulty, intent, cost, 12-month trend and the day it was added."""
+    from .keyword_mapping import is_blog  # noqa: PLC0415
+    rows = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id).order_by(Keyword.id.desc())))
+    cc = market.serp_country(b)
+    trends = _trend_of([k.keyword for k in rows][:300], cc) if rows else {}
+    from ..models import KeywordCandidate  # noqa: PLC0415
+    from .keyword_workspace import merge_key  # noqa: PLC0415
+    kds = {c.norm: c.kd for c in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)) if c.kd is not None}  # real difficulty read in the workspace
+    out = []
+    for k in rows:
+        src = k.source if isinstance(k.source, dict) else {}
+        text = " ".join(str(src.get(x) or "") for x in ("kind", "label", "from")).lower()
+        listing = "Competitors" if ("competitor" in text or src.get("competitors")) else "Blog Ideas" if is_blog(k.keyword, k.intent) else "My List"
+        out.append({"id": k.id, "keyword": k.keyword, "list": listing, "volume": k.volume, "kd": kds.get(merge_key(k.keyword), k.difficulty), "intent": k.intent, "cpc": k.cpc, "trend": trends.get(k.keyword), "added": (k.created_at.date().isoformat() if k.created_at else None),
+                    "role": k.role, "priority": k.priority, "topic": k.cluster, "rank": k.rank, "prev_rank": k.prev_rank, "page": k.target_url})
+    return {"rows": out, "country": cc, "lists": {n: sum(1 for r in out if r["list"] == n) for n in ("My List", "Blog Ideas", "Competitors")}}

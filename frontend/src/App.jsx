@@ -88,6 +88,7 @@ const KeywordMagicTool2Page = lazy(() => import('./platform/KeywordMagicTool2').
 /** A moved page: the address it had, with its ?q= and other choices kept. */
 const KeepSearch = ({ to }) => { const { search } = useLocation(); const [path, own = ''] = to.split('?'); const p = new URLSearchParams(own); new URLSearchParams(search).forEach((v, k) => p.set(k, v)); return <Navigate to={`${path}?${p}`} replace />; };
 const KeywordStrategyBuilderPage = lazy(() => import('./platform/KeywordStrategyBuilder').then(m => ({ default: m.KeywordStrategyBuilderPage })));
+const SavedKeywordsPage = lazy(() => import('./platform/SavedKeywords').then(m => ({ default: m.SavedKeywordsPage })));
 const KeywordHubPage = lazy(() => import('./platform/KeywordHub').then(m => ({ default: m.KeywordHubPage })));
 const KeywordMagicToolPage = lazy(() => import('./platform/KeywordMagicTool').then(m => ({ default: m.KeywordMagicToolPage })));
 const PageRankingsPage = lazy(() => import('./platform/PageRankings').then(m => ({ default: m.PageRankingsPage })));
@@ -194,6 +195,7 @@ export default function App() {
         <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="keyword-management/magic" element={<KeywordHubPage />} />
+        <Route path="keyword-management/tracked" element={<SavedKeywordsPage />} />
         <Route path="keyword-management/strategy" element={<KeywordStrategyBuilderPage />} />
         {['ai', 'discover', 'planner', 'explorer'].map(t => <Route key={t} path={`keyword-management/${t}`} element={<KeepSearch to="/keyword-management/workspace" />} />)}
         <Route path="keyword-management/magic2" element={<KeywordMagicTool2Page />} />
