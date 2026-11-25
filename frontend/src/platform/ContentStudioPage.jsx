@@ -779,7 +779,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     if (selectedArticle) {
       // a background refresh (scheduled posts are re-read every 30 s) brings the same saved content again: the edits typed since
       // then (slug, title, text...) must stay, so the editor is only refilled when the SAVED content really changed
-      const key = JSON.stringify([selectedArticle.id, selectedArticle.body, selectedArticle.keyword, selectedArticle.slug, selectedArticle.secondary_keywords, selectedArticle.title, selectedArticle.meta_description]);
+      const key = JSON.stringify([selectedArticle.id, selectedArticle.body, selectedArticle.keyword, selectedArticle.secondary_keywords, selectedArticle.title, selectedArticle.meta_description]);
       if (key === syncedKey.current) return;
       syncedKey.current = key;
       if ((selectedArticle.body || '') !== draft) syncingTo.current = selectedArticle.body || '';
@@ -954,6 +954,18 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     keyword: meta.keyword, slug: slugify(meta.slug, 100), secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
     title: meta.title, meta_description: meta.meta_description, body: draft
   });
+  // The web address (slug) saves itself when it is changed (typed and left, written by AI ✨, or reset to the keyword): only the slug is sent,
+  // so nothing else typed in the editor is saved or lost. Everything else still needs "Save changes".
+  const slugTouched = useRef(false);
+  const saveSlug = (raw) => {
+    if (!selectedArticle) return Promise.resolve();
+    const clean = slugify(raw, 100);
+    const next = clean === slugify(meta.keyword) ? '' : clean;  // the keyword's own address is stored as "follow the keyword"
+    if (next === (selectedArticle.slug || '') || (!next && !selectedArticle.slug)) return Promise.resolve();
+    return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: { slug: next } })
+      .then(() => { slugTouched.current = false; toast('✓ Web address saved'); if (onSaved) onSaved(); })
+      .catch(e => toast(e.message || String(e)));
+  };
   // SEO title / meta description: typed by hand or written by AI (✨); every regeneration uses what is in the boxes now
   const regenRef = useRef(null);
   const [fieldBusy, setFieldBusy] = useState('');
@@ -1413,11 +1425,15 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     <div className={`flex items-center min-w-0 flex-1 rounded-lg border bg-white overflow-hidden focus-within:ring-2 ${slugUsed ? 'border-rose-400 focus-within:ring-rose-300' : 'border-slate-300 focus-within:ring-indigo-500'}`}>
                       <span className="px-2.5 py-2 bg-slate-50 text-[12px] text-slate-500 border-r border-slate-200 whitespace-nowrap max-w-[55%] truncate" title={urlBase?.base}>{urlBase?.base ? urlBase.base.replace(/^https?:\/\//, '') : '/'}</span>
                       <input className="flex-1 min-w-0 px-2.5 py-2 text-[13px] font-mono outline-none" value={meta.slug.trim() ? meta.slug : slugify(meta.keyword)} aria-label="Web address slug" maxLength={100}
-                        onChange={e => setMeta(m => ({ ...m, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-\s]+/g, '').replace(/\s+/g, '-') }))}
-                        onBlur={() => setMeta(m => ({ ...m, slug: slugify(m.slug, 100) === slugify(m.keyword) ? '' : slugify(m.slug, 100) }))} />
+                        onChange={e => { slugTouched.current = true; setMeta(m => ({ ...m, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-\s]+/g, '').replace(/\s+/g, '-') })); }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        onBlur={() => {
+                          setMeta(m => ({ ...m, slug: slugify(m.slug, 100) === slugify(m.keyword) ? '' : slugify(m.slug, 100) }));
+                          if (slugTouched.current) saveSlug(meta.slug);
+                        }} />
                       <AiFieldButton busy={fieldBusy === 'slug'} disabled={Boolean(fieldBusy)} title="Write a new web address with AI (keeps the primary keyword)" onClick={() => regenRef.current?.run('slug')} />
                     </div>
-                    {meta.slug.trim() && slugify(meta.slug, 100) !== slugify(meta.keyword) && <Button size="sm" onClick={() => setMeta(m => ({ ...m, slug: '' }))}>Use the primary keyword</Button>}
+                    {meta.slug.trim() && slugify(meta.slug, 100) !== slugify(meta.keyword) && <Button size="sm" onClick={() => { setMeta(m => ({ ...m, slug: '' })); saveSlug(''); }}>Use the primary keyword</Button>}
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${slugHasKeyword ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>{slugHasKeyword ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}{slugHasKeyword ? 'Has the primary keyword' : 'Without the primary keyword'}</span>
                   </div>
                   {slugUsed && (
@@ -1506,7 +1522,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                       {selectedArticle && <ArticleDownloads b={b} article={{ ...selectedArticle, body: draft, title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, slug: meta.slug.trim() || slugify(meta.keyword), secondary_keywords: secondaryNow }} />}
                       {selectedArticle && <RegenerateContent ref={regenRef} b={b} article={selectedArticle} body={draft} onAccept={setDraft} toast={toast} onFieldBusy={setFieldBusy}
                         fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean), slug: meta.slug.trim() || slugify(meta.keyword) }}
-                        onField={(field, value) => (field === 'h1' ? setBlogTitle(value) : setMeta(m => ({ ...m, [field]: value })))} />}
+                        onField={(field, value) => { if (field === 'h1') setBlogTitle(value); else { setMeta(m => ({ ...m, [field]: value })); if (field === 'slug') saveSlug(value); } }} />}
                       <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
                         <button
                           type="button"
