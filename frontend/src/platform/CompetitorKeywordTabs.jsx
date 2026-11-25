@@ -1,10 +1,9 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { FocusBar, sameSite } from './TableBits';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Eye, Loader2, Plus, RefreshCw, Search } from 'lucide-react';
+import { ExternalLink, Eye, Loader2, Plus, Search } from 'lucide-react';
 import { Button, Badge, ErrorNote, Modal, useAction, useToast } from './SeoUi';
 import DataTable from './DataTable';
-import Select from '../components/Select';
 import { api, useApi } from './seoApi';
 import { BANDS, band } from './CompetitorTables';
 
@@ -12,7 +11,6 @@ const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
 const STATUS = { missing: ['Missing', 'red', 'A competitor ranks and you do not'], weak: ['Weak', 'amber', 'Both rank and they are more than 3 positions above you'], shared: ['Shared', 'blue', 'Both rank, within 3 positions of each other'], strong: ['Strong', 'green', 'Both rank and you are more than 3 positions above them'], only_you: ['Only you', 'gray', 'You rank, the competitors read do not'] };
 const SCORE_HELP = 'Opportunity score, 0 to 100, our own way of ordering your to-do list (not a Google ranking factor). Searches 30 (log scale, 10,000+ = full), ease 25 (100 minus difficulty), intent 15 (transactional 15, commercial or local 12, informational 6, navigational 2), distance 20 (missing 20, weak 2 per position behind, shared 4, strong 0), fit 10 (useful 10, maybe 5).';
 const FIT = { yes: ['Useful', 'green'], maybe: ['Maybe', 'amber'], have: ['You have it', 'blue'], no: ['Not useful', 'red'] };
-const COST = (n) => (0.021 + 0.003 * n).toFixed(2);
 const short = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '');
 const VOLUME = [['100', '100+ a month'], ['1000', '1,000+ a month'], ['10000', '10,000+ a month']];
 const KD = [['easy', 'Easy (under 30)'], ['mid', 'Medium (30 to 59)'], ['hard', 'Hard (60+)']];
@@ -28,48 +26,9 @@ export function useCompetitorGap(b) {
   return useApi(`/businesses/${b.id}/keyword-workspace/competitor-gap`);
 }
 
-/** One card per competitor: how many of its keywords are kept, and the button that reads its real rankings (paid per keyword). */
-function Readers({ gap, onRead, busy, only = '' }) {
-  const list = only ? gap.competitors.filter(c => c.domain === only) : gap.competitors;
-  const [size, setSize] = useState('100');
-  return (
-    <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div><h3 className="text-15 font-semibold text-slate-900">{only || 'Competitors'}</h3><p className="text-12.5 text-slate-500">Only their keywords are read: no website, speed or technical check. Rankings are for {COUNTRY[gap.country] || gap.country || 'the project market'}.</p></div>
-        <label className="ml-auto inline-flex items-center gap-2 text-12.5 text-slate-600">Keywords per competitor
-          <Select value={size} onChange={e => setSize(e.target.value)} aria-label="Keywords to read" className="h-8 w-28 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13">{['50', '100', '200', '300'].map(n => <option key={n} value={n}>{n}</option>)}</Select>
-        </label>
-      </div>
-      <ul className="mt-3 grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-        {list.map(c => (
-          <li key={c.domain} className="rounded-lg ring-1 ring-slate-200 px-3 py-2.5 flex items-center gap-3">
-            <div className="min-w-0 flex-1"><a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-13.5 font-semibold text-slate-900 hover:text-indigo-700 truncate block">{c.domain}</a>
-              <div className="text-12 text-slate-500">{c.keywords ? `${num(c.keywords)} keywords · read ${new Date(c.read_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : c.from_google ? `${c.from_google} from Google's top 10 on your searches` : 'Rankings not read yet'}</div></div>
-            <Button size="sm" icon={RefreshCw} busy={busy === c.domain} onClick={() => onRead(c.domain, Number(size))} title={`Reads up to ${size} ranked keywords: about $${COST(Number(size))} at Apify`}>{c.keywords ? 'Read again' : 'Read rankings'}</Button>
-          </li>
-        ))}
-        {!list.length && <li className="text-13 text-slate-500">No competitors chosen yet. Select them on the Competitors tab.</li>}
-      </ul>
-      <p className="mt-2 text-11.5 text-slate-400">Competitors are also read automatically on the Competitors tab. A read costs about $0.003 per keyword plus $0.02 a domain at Apify (about ${COST(Number(size))} for {size}).</p>
-    </div>
-  );
-}
-
-function useReader(b, gap) {
-  const [busy, error, run] = useAction();
-  const [toast, toastNode] = useToast();
-  const read = (domain, limit) => run(domain, async () => {
-    const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-rankings`, { method: 'POST', body: { domain, limit }, timeout: 180000 });
-    await gap.reload(true);
-    toast(r.note || `${r.rows.length} ranked keyword${r.rows.length === 1 ? '' : 's'} read for ${domain} (about $${r.cost})`);
-  });
-  return { busy, error, read, toastNode };
-}
-
 // ---------------------------------------------------------------------------------------------------------------------------------- Competitor keywords
 export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
   const gap = useCompetitorGap(b);
-  const { busy, error, read, toastNode } = useReader(b, gap);
   const [topics, setTopics] = useState(null);
   const [tBusy, tErr, tRun] = useAction();
   const g = gap.data;
@@ -147,8 +106,6 @@ export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
   return (
     <div className="space-y-4">
       <FocusBar name={only} what={focusBand ? `its ${focusBand === 'top3' ? 'top 3' : focusBand === 'top10' ? 'top 10' : focusBand} keywords` : 'its ranking keywords'} onAll={() => setFh('')} />
-      <Readers gap={g} onRead={read} busy={busy} only={only} />
-      {error && <ErrorNote>{error}</ErrorNote>}
       <div>
         <h3 className="text-15 font-semibold text-slate-900 mb-1.5">Where they rank</h3>
         {!only && <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="Competitors to show">
@@ -177,7 +134,6 @@ export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
         {tErr && <div className="mt-2"><ErrorNote>{tErr}</ErrorNote></div>}
         {topics?.rows?.length > 0 && <TopicList b={b} rows={topics.rows} />}
       </div>}
-      {toastNode}
     </div>
   );
 }
@@ -240,7 +196,6 @@ function TopicList({ b, rows }) {
 // ---------------------------------------------------------------------------------------------------------------------------------- Keyword gap
 export function KeywordGapTab({ b, focus = '' }) {
   const gap = useCompetitorGap(b);
-  const { busy, error, read, toastNode } = useReader(b, gap);
   const [status, setStatus] = useState('missing');
   const [fh, setFh] = useState(focus);
   const viewRef = useRef([]); // the rows the table shows now (kept in a ref: the table reports them on every render)
@@ -292,14 +247,12 @@ export function KeywordGapTab({ b, focus = '' }) {
         <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 px-4 py-3"><div className="text-13 text-emerald-800">Worth targeting</div><div className="text-28 font-bold text-emerald-900 tabular-nums leading-tight">{c.useful_gaps}</div><div className="text-12 text-emerald-800">gaps that fit your business</div></div>
       </div>
       {stale && <div role="alert" className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-13 text-amber-900"><b>The backend is running old code.</b> It still answers with the old gap names (Gap, Behind, Ahead), so the cards and table cannot fill in. Stop every backend process on port 8000, start the backend again, and reload this page.</div>}
-      {!hasData && <Readers gap={g} onRead={read} busy={busy} />}
-      {error && <ErrorNote>{error}</ErrorNote>}
       {!hasData ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-8 text-center text-13 text-slate-500">No competitor rankings are kept yet. They are read automatically on the Competitors tab, or open <b>SERP Features</b> in Position Tracking to read Google's top 10 on your tracked searches. Then the gap appears here.</div> : (
         <DataTable key={only} columns={cols} rows={pool} rowKey={r => r.keyword} filters={only ? filters.filter(f => f.id !== 'comp') : filters} initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-gap" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={1200} onState={s => { viewRef.current = s.rows; }}
           toolbar={<Button size="sm" variant="primary" icon={Plus} busy={wsBusy === 'ws'} onClick={send}>Send useful to Find Keywords</Button>} empty="No keywords in this view." />
       )}
       <p className="text-12 text-slate-500">Rankings are for {COUNTRY[g.country] || g.country || 'the project market'}. Your position is your checked position, or Search Console's average when Google showed your site.</p>
-      {toastNode}{toastNode2}
+      {toastNode2}
     </div>
   );
 }
