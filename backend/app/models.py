@@ -198,6 +198,38 @@ class Competitor(TimestampMixin, Base):
     selected: Mapped[bool | None] = mapped_column(Boolean)  # chosen for Competitor Watch and the later steps. NULL = saved before choosing existed (counts as chosen); False = found but not chosen
     lat: Mapped[float | None] = mapped_column(Float)  # where it is on the map (from its address), so its distance to any place can be worked out
     lng: Mapped[float | None] = mapped_column(Float)
+    domain: Mapped[str | None] = mapped_column(String(255), index=True)  # the website's host with no www or path: one competitor per domain
+    kind: Mapped[str | None] = mapped_column(String(10))  # direct | indirect | NULL = not judged yet. A Maps business is not automatically an organic SEO competitor
+    discovery: Mapped[list[str] | None] = mapped_column(JSON)  # every way it was found: google_places | organic_serp | manual
+
+
+class CompetitorAnalysisRun(Base):
+    """One analysis of one competitor domain. A new run is added on every refresh and the older ones stay, so the history of a competitor is never overwritten."""
+    __tablename__ = "competitor_analysis_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    domain: Mapped[str] = mapped_column(String(255), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="analyzing")  # analyzing | analyzed | partial | failed | retry
+    trigger: Mapped[str] = mapped_column(String(10), default="manual")  # manual | auto
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    parts: Mapped[dict | None] = mapped_column(JSON)  # {"authority": {"provider", "status": ok|failed|skipped, "error"}, "keywords": {...}}
+    missing: Mapped[list[str] | None] = mapped_column(JSON)  # metrics that could not be read
+    error: Mapped[str | None] = mapped_column(Text)
+    snapshot: Mapped[dict | None] = mapped_column(JSON)  # the figures as they were at the end of this run
+
+
+class ApiUsageLog(Base):
+    """Every paid or limited provider call: what, for whom, how it ended and what it cost, so quota use can be seen and a failing provider spotted."""
+    __tablename__ = "api_usage_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int | None] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(30), index=True)  # apify_moz | apify_ranked | google_places
+    target: Mapped[str | None] = mapped_column(String(255))
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    detail: Mapped[str | None] = mapped_column(String(300))
+    cost: Mapped[float | None] = mapped_column(Float)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 class LighthouseSiteAudit(TimestampMixin, Base):

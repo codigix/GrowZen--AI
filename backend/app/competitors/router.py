@@ -23,6 +23,13 @@ from . import hygiene, service
 router = APIRouter(prefix="/competitors", tags=["competitors"], dependencies=[Depends(current_user)])
 
 
+def _add_source(c: Competitor, source: str) -> None:
+    """Remember every way a competitor was found (Google Maps, organic search, typed in), and keep its domain clean."""
+    c.discovery = sorted({*(c.discovery or []), source})
+    if c.website and not c.domain:
+        c.domain = _host(c.website) or None
+
+
 def _upsert(db: Session, business_id: int, found: list[dict]) -> list[Competitor]:
     owner = db.get(Business, business_id)
     existing = {c.website: c for c in db.scalars(select(Competitor).where(Competitor.business_id == business_id)) if c.website}
@@ -115,9 +122,10 @@ def add_manual(body: CompetitorManualIn, db: Session = Depends(get_db), user: Us
         if _host(c.website) == host:
             if c.selected is False:  # typed in by hand: that is a choice
                 c.selected = True
-                db.commit()
+            _add_source(c, "manual")
+            db.commit()
             return row(c)
-    c = Competitor(business_id=b.id, website=website, name=body.name.strip() or host, source="manual", selected=True)
+    c = Competitor(business_id=b.id, website=website, name=body.name.strip() or host, source="manual", selected=True, domain=host, discovery=["manual"])
     db.add(c)
     db.commit()
     db.refresh(c)
@@ -145,10 +153,12 @@ def add_from_maps(body: MapsCompetitorIn, db: Session = Depends(get_db), user: U
     for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)):
         if (body.cid and c.place_id == body.cid) or (body.website and c.website and _host(c.website) == _host(body.website)) or (not c.website and not c.place_id and c.name == body.name):
             c.place_id = c.place_id or body.cid
+            _add_source(c, "google_places")
             db.commit()
             return row(c, {"listing"})
     c = Competitor(business_id=b.id, website=(body.website or None), place_id=body.cid, name=body.name.strip()[:255] or "Competitor", address=body.address, phone=body.phone, rating=body.rating,
-                   reviews=body.reviews, maps_link=body.maps_link, source="google_places", selected=True)
+                   reviews=body.reviews, maps_link=body.maps_link, source="google_places", selected=True,
+                   domain=_host(body.website) or None, discovery=["google_places"])
     db.add(c)
     db.commit()
     db.refresh(c)
@@ -219,6 +229,21 @@ MAX_CHOSEN = 8  # default; the real limit is COMPETITOR_WATCH_MAX
 
 class ChooseIn(BaseModel):
     selected: bool
+
+
+class KindIn(BaseModel):
+    kind: str | None = None  # direct | indirect | None to clear
+
+
+@router.patch("/{competitor_id}/kind")
+def set_kind(competitor_id: int, body: KindIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Mark a competitor as a direct or indirect one (or clear it). A business found on Google Maps is not automatically a direct organic competitor."""
+    c, _b = _own(db, user, competitor_id)
+    if body.kind not in (None, "direct", "indirect"):
+        raise HTTPException(400, "kind must be direct, indirect or empty")
+    c.kind = body.kind
+    db.commit()
+    return row(c, {"listing"})
 
 
 @router.patch("/{competitor_id}")

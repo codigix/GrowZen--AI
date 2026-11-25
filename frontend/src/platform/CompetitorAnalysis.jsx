@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, Check, CheckCircle2, ExternalLink, Eye, Layers, Loader2, MapPin, MoreHorizontal, Plus, Search, Trash2, Users, X } from 'lucide-react';
+import { BarChart3, Check, Clock, CheckCircle2, ExternalLink, Eye, Layers, Loader2, MapPin, MoreHorizontal, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { Button, Badge, ErrorNote, Modal, useToast } from './SeoUi';
 import DataTable from './DataTable';
 import { BANDS, DISTANCE, band } from './CompetitorTables';
@@ -12,7 +12,10 @@ import { api } from './seoApi';
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : num(n));
 const hostOf = (u) => { try { return new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
-const STATUS = { analyzed: ['Analyzed', 'green'], partial: ['Partly read', 'amber'], pending: ['Pending', 'gray'], queued: ['Waiting', 'gray'], running: ['Analyzing…', 'blue'], failed: ['Failed', 'red'] };
+const STATUS = { analyzed: ['Analyzed', 'green'], partial: ['Partly read', 'amber'], pending: ['Pending', 'gray'], queued: ['Queued', 'gray'], running: ['Analyzing…', 'blue'], failed: ['Failed', 'red'], retry: ['Needs retry', 'amber'] };
+const SOURCE = { google_places: 'Google Maps', organic_serp: 'Organic search', manual: 'Added by hand' };
+const KIND = { direct: ['Direct', 'text-emerald-700 bg-emerald-50 ring-emerald-200'], indirect: ['Indirect', 'text-amber-700 bg-amber-50 ring-amber-200'] };
+const fdate = (t) => (t ? new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 const daTone = (v) => (v == null ? 'bg-slate-100 text-slate-400' : v >= 60 ? 'bg-emerald-100 text-emerald-800' : v >= 30 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800');
 const COST = (n) => (0.021 + 0.003 * n).toFixed(2);
 
@@ -116,25 +119,28 @@ function Logo({ host, name }) {
     : <img src={`https://${host}/favicon.ico`} alt="" width={32} height={32} loading="lazy" referrerPolicy="no-referrer" onError={() => setBad(true)} className="w-8 h-8 rounded-md object-contain bg-white ring-1 ring-slate-200 p-1 shrink-0" />;
 }
 
-function Stat({ icon: Icon, label, value, sub, tone }) {
+function Stat({ icon: Icon, label, value, sub, tone, help }) {
   return (
     <div className={`rounded-xl ring-1 px-4 py-3.5 flex items-center gap-3.5 ${tone}`}>
       <span className="w-11 h-11 rounded-xl bg-white/80 inline-flex items-center justify-center shrink-0"><Icon size={22} className="opacity-80" /></span>
-      <div className="min-w-0"><div className="text-13 text-slate-600">{label}</div><div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{value}</div>{sub && <div className="text-11.5 text-slate-500 truncate">{sub}</div>}</div>
+      <div className="min-w-0"><div className="text-13 text-slate-600 flex items-center gap-1">{label}{help && <Tip text={help} align="left"><span tabIndex={0} aria-label={help} className="cursor-help text-slate-400 text-11 font-bold rounded-full ring-1 ring-slate-300 w-4 h-4 inline-flex items-center justify-center">?</span></Tip>}</div><div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{value}</div>{sub && <div className="text-11.5 text-slate-500 truncate">{sub}</div>}</div>
     </div>
   );
 }
 
-/** The four figures above the table. */
+/** The four figures above the table. Each is counted on its own: discovered (unique domains found), selected (confirmed by you), analyzed (every part read), Avg DA (only the sites that have one). */
 export function AnalysisStats({ rows, status, isChosen, metrics }) {
-  const das = rows.map(c => metrics[c.host]?.da).filter(v => v != null);
-  const analyzed = rows.filter(c => status(c) === 'analyzed').length;
+  const uniq = (list) => new Set(list.map(c => c.host || `name:${(c.name || '').toLowerCase()}`)).size;
+  const das = [...new Map(rows.filter(c => c.host).map(c => [c.host, metrics[c.host]?.da])).values()].filter(v => v != null);
+  const discovered = uniq(rows);
+  const selected = uniq(rows.filter(isChosen));
+  const analyzed = uniq(rows.filter(c => status(c) === 'analyzed'));
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
-      <Stat icon={Users} label="Total competitors" value={rows.length} sub="found around the place" tone="bg-indigo-50/60 ring-indigo-100" />
-      <Stat icon={CheckCircle2} label="Selected" value={rows.filter(isChosen).length} sub="watched and compared" tone="bg-emerald-50/60 ring-emerald-100" />
-      <Stat icon={BarChart3} label="Analyzed" value={analyzed} sub={`${rows.length - analyzed} still to read`} tone="bg-sky-50/60 ring-sky-100" />
-      <Stat icon={Layers} label="Avg. Domain Authority" value={das.length ? Math.round(das.reduce((a, v) => a + v, 0) / das.length) : '—'} sub={das.length ? `from ${das.length} site${das.length === 1 ? '' : 's'}` : 'analyze a competitor to read it'} tone="bg-violet-50/60 ring-violet-100" />
+      <Stat icon={Users} label="Discovered competitors" value={discovered} sub="unique domains found" help="Unique competitor websites found on Google Maps or added by hand. A business seen twice counts once. Found does not mean selected." tone="bg-indigo-50/60 ring-indigo-100" />
+      <Stat icon={CheckCircle2} label="Selected competitors" value={selected} sub="confirmed by you" help="Competitors you confirmed. Only these are watched and compared in the other tabs." tone="bg-emerald-50/60 ring-emerald-100" />
+      <Stat icon={BarChart3} label="Analyzed competitors" value={analyzed} sub={`${discovered - analyzed} not fully read`} help="Competitors whose Domain Authority and ranked keywords were both read. Reading only one of them is Partly read and does not count here." tone="bg-sky-50/60 ring-sky-100" />
+      <Stat icon={Layers} label="Avg. Domain Authority" value={das.length ? Math.round(das.reduce((x, v) => x + v, 0) / das.length) : '—'} sub={das.length ? `from ${das.length} of ${discovered} site${discovered === 1 ? '' : 's'}` : 'analyze a competitor to read it'} help="Average of the Domain Authority figures that were read. Sites without a figure are left out, not counted as zero." tone="bg-violet-50/60 ring-violet-100" />
     </div>
   );
 }
@@ -146,6 +152,8 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const [running, setRunning] = useState({}); // host -> 'running' | 'failed'
   const [adding, setAdding] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [kinds, setKinds] = useState({}); // competitor id -> direct | indirect | '' (just set)
+  const [hist, setHist] = useState(null); // {c, runs, loading}
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
   const viewRef = useRef([]); // the rows the table shows now (filtered, sorted): the header checkbox selects these
@@ -159,6 +167,15 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const toggle = (k) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const allOn = view.length > 0 && view.every(c => sel.has(c.key));
 
+  const setKind = async (c, kind) => {
+    if (!c.reg?.id) { toast('Save this competitor first (select it), then mark it direct or indirect.'); return; }
+    try { await api(`/competitors/${c.reg.id}/kind`, { method: 'PATCH', body: { kind: kind || null } }); setKinds(k => ({ ...k, [c.reg.id]: kind || '' })); } catch (e) { toast(e.message); }
+  };
+  const kindOf = (c) => (c.reg?.id != null && kinds[c.reg.id] !== undefined ? kinds[c.reg.id] : c.reg?.kind) || '';
+  const openHistory = async (c) => {
+    setHist({ c, runs: [], loading: true });
+    try { const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/history?domain=${encodeURIComponent(c.host)}`); setHist({ c, runs: r.runs || [], loading: false }); } catch (e) { setHist({ c, runs: [], loading: false, error: e.message }); }
+  };
   const analyze = async (list) => {
     const todo = list.filter(c => c.host && running[c.host] !== 'running');
     if (!todo.length) { toast('Nothing to analyze: these have no website.'); return; }
@@ -188,25 +205,33 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const cols = [
     { id: 'sel', header: <input type="checkbox" aria-label="Select every row shown" checked={allOn} onChange={e => setSel(s => { const n = new Set(s); view.forEach(c => (e.target.checked ? n.add(c.key) : n.delete(c.key))); return n; })} className="accent-indigo-600" />, csv: false,
       cell: c => <input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.key)} onChange={() => toggle(c.key)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
-    { id: 'name', header: 'Competitor', first: 'asc', value: c => [c.name, c.host, city(c)].filter(Boolean).join(' · '), className: 'px-3 py-2.5 min-w-[280px] max-w-[360px]', tip: { what: 'The competitor, its website and where it is. The distance is from the place you are searching.' },
+    { id: 'name', header: 'Competitor', first: 'asc', value: c => c.name, className: 'px-3 py-2.5 min-w-[220px] max-w-[300px]', tip: { what: 'The competitor business. Press the name for its full profile.' },
       cell: c => (
         <div className="flex items-center gap-2.5">
           <Logo host={c.host} name={c.name} />
-          <div className="min-w-0">
-            <button type="button" onClick={() => onDetail(c)} className="block max-w-full text-left font-semibold text-slate-900 hover:text-indigo-700 hover:underline truncate cursor-pointer" title={`Open the full profile of ${c.name}: rankings, strategy, Google Maps listing, site and links`}>{c.name}{c.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</button>
-            {c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" title={`Open ${c.host} in a new tab`} className="text-12.5 text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.host}</span><ExternalLink size={10} className="shrink-0" /></a> : <span className="block text-12 text-slate-400">no website</span>}
-            <span className="flex items-center gap-1 text-12 text-slate-500 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" />{c.maps?.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.name} ${c.maps.address}`)}`} target="_blank" rel="noreferrer" title={`${c.maps.address}. Open it on Google Maps in a new tab`} className="truncate hover:text-indigo-700 hover:underline">{city(c)}</a> : <span className="truncate">location not known</span>}{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span>
-          </div>
+          <button type="button" onClick={() => onDetail(c)} className="block min-w-0 text-left font-semibold text-slate-900 hover:text-indigo-700 hover:underline truncate cursor-pointer" title={`Open the full profile of ${c.name}: rankings, strategy, Google Maps listing, site and links`}>{c.name}{c.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</button>
         </div>) },
-    { id: 'da', header: 'DA', value: c => c.m.da ?? null, first: 'desc', tip: { what: 'Domain Authority, 0 to 100 (Moz).' }, className: 'px-3 py-2.5 text-center', thClass: 'px-3 py-3', cell: c => <Go tip={`Domain Authority of ${c.host || c.name}: ${c.m.da ?? 'not read yet'}. Open the backlink comparison for it`} onClick={() => onGo('backlinks', c.host)}><span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(c.m.da)}`}>{c.m.da ?? '—'}</span></Go> },
-    { id: 'kw', header: 'Ranking keywords', right: true, first: 'desc', value: c => c.m.keywords ?? null, tip: { what: 'How many keywords it ranks for in a ranked-keywords read, for the market below.' }, cell: c => <Go tip={`See the ${num0(c.m.keywords)} keywords ${c.name} ranks for, and where you stand against it`} onClick={() => onGo('keywords', c.host)}>{num0(c.m.keywords)}</Go> },
-    { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: c => c.m.top3 ?? null, tip: { what: 'Keywords where it holds one of the first three positions.' }, cell: c => <Go tip={`See the keywords where ${c.name} is in the top 3`} onClick={() => onGo('keywords', c.host, 'top3')}>{num0(c.m.top3)}</Go> },
-    { id: 'top10', header: 'Top 10', right: true, first: 'desc', value: c => c.m.top10 ?? null, tip: { what: 'Keywords on page 1 of Google.' }, cell: c => <Go tip={`See the keywords where ${c.name} is on page 1`} onClick={() => onGo('keywords', c.host, 'top10')}>{num0(c.m.top10)}</Go> },
-    { id: 'avg', header: 'Avg position', right: true, value: c => c.m.avg_position ?? null, cell: c => <Go tip={`Average position of ${c.name} across its ranked keywords. Open them`} onClick={() => onGo('keywords', c.host)}>{c.m.avg_position == null ? '—' : `#${c.m.avg_position}`}</Go> },
-    { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: c => c.m.traffic ?? null, tip: { what: 'Estimated organic visits a month from the keywords it ranks for.' }, cell: c => <Go tip={`Estimated monthly visits to ${c.name}. Open the traffic comparison`} onClick={() => onGo('traffic', c.host)}>{kfmt(c.m.traffic)}</Go> },
-    { id: 'rd', header: 'Ref. domains', right: true, first: 'desc', value: c => c.m.rd ?? null, cell: c => <Go tip={`Websites linking to ${c.name}. Open the backlink comparison`} onClick={() => onGo('backlinks', c.host)}>{kfmt(c.m.rd)}</Go>, tip: { what: 'Websites linking to it (Moz).' } },
-    { id: 'match', header: 'Match', first: 'desc', value: c => c.maps?.relevance?.score ?? null, tip: { what: 'How well it matches your business on nine factors. Open the profile for the breakdown.' },
+    { id: 'domain', header: 'Website domain', first: 'asc', value: c => c.host || '', className: 'px-3 py-2.5 min-w-[150px]', tip: { what: 'The website domain, cleaned (no www or path). One row per domain.' },
+      cell: c => (c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" title={`Open ${c.host} in a new tab`} className="text-13 text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.host}</span><ExternalLink size={10} className="shrink-0" /></a> : <span className="text-12 text-slate-400">no website</span>) },
+    { id: 'loc', header: 'Location / distance', first: 'asc', value: c => [city(c), c.maps?.distance_m != null ? `${(c.maps.distance_m / 1000).toFixed(1)} km` : ''].filter(Boolean).join(' · '), className: 'px-3 py-2.5 min-w-[170px]', tip: { what: 'Where its Google Maps listing is, and how far that is from the place you are searching.', from: 'Google Places' },
+      cell: c => <span className="flex items-center gap-1 text-12.5 text-slate-600 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" />{c.maps?.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.name} ${c.maps.address}`)}`} target="_blank" rel="noreferrer" title={`${c.maps.address}. Open it on Google Maps in a new tab`} className="truncate hover:text-indigo-700 hover:underline">{city(c)}</a> : <span className="truncate text-slate-400">Not available</span>}{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span> },
+    { id: 'source', header: 'Found by', value: c => (c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', '), className: 'px-3 py-2.5 text-12.5 text-slate-600', hide: true,
+      tip: { what: 'How it was found. A business found on Google Maps is a local competitor; it is not automatically a competitor for organic search.', from: 'Google Places, organic search or added by hand' },
+      cell: c => <span>{(c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', ') || <span className="text-slate-300">Not available</span>}</span> },
+    { id: 'kind', header: 'Direct / indirect', value: c => (KIND[kindOf(c)] || ['Not judged'])[0], className: 'px-3 py-2.5 whitespace-nowrap',
+      tip: { what: 'Your own judgement: a direct competitor sells what you sell to the same customers; an indirect one overlaps only in part. Press to change it.' },
+      cell: c => { const k = kindOf(c); const next = k === 'direct' ? 'indirect' : k === 'indirect' ? '' : 'direct'; return <button type="button" onClick={() => setKind(c, next)} title={`Press to set: ${next ? KIND[next][0] : 'not judged'}`} className={`text-12 font-semibold px-2 py-0.5 rounded-full ring-1 cursor-pointer ${k ? KIND[k][1] : 'text-slate-400 ring-slate-200 bg-white'}`}>{k ? KIND[k][0] : 'Not judged'}</button>; } },
+    { id: 'da', header: 'DA', value: c => c.m.da ?? null, first: 'desc', tip: { what: 'Domain Authority, 0 to 100: how strongly a site is likely to rank. It is not the Match score.', from: 'Moz, read through Apify' }, className: 'px-3 py-2.5 text-center', thClass: 'px-3 py-3', cell: c => <Go tip={`Domain Authority of ${c.host || c.name}: ${c.m.da ?? 'not read yet'}. Open the backlink comparison for it`} onClick={() => onGo('backlinks', c.host)}><span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(c.m.da)}`}>{c.m.da ?? '—'}</span></Go> },
+    { id: 'kw', header: 'Ranking keywords', right: true, first: 'desc', value: c => c.m.keywords ?? null, tip: { what: 'How many keywords it ranks for in a ranked-keywords read, for the market below. Not available until analyzed.', from: 'Ranked-keywords read (Apify)' }, cell: c => <Go tip={`See the ${num0(c.m.keywords)} keywords ${c.name} ranks for, and where you stand against it`} onClick={() => onGo('keywords', c.host)}>{num0(c.m.keywords)}</Go> },
+    { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: c => c.m.top3 ?? null, tip: { what: 'Keywords where it holds one of the first three positions.', from: 'Counted from its ranked keywords' }, cell: c => <Go tip={`See the keywords where ${c.name} is in the top 3`} onClick={() => onGo('keywords', c.host, 'top3')}>{num0(c.m.top3)}</Go> },
+    { id: 'top10', header: 'Top 10', right: true, first: 'desc', value: c => c.m.top10 ?? null, tip: { what: 'Keywords on page 1 of Google.', from: 'Counted from its ranked keywords' }, cell: c => <Go tip={`See the keywords where ${c.name} is on page 1`} onClick={() => onGo('keywords', c.host, 'top10')}>{num0(c.m.top10)}</Go> },
+    { id: 'avg', header: 'Avg position', right: true, value: c => c.m.avg_position ?? null, tip: { what: 'Average position across its ranked keywords. Lower is better.', from: 'Counted from its ranked keywords' }, cell: c => <Go tip={`Average position of ${c.name} across its ranked keywords. Open them`} onClick={() => onGo('keywords', c.host)}>{c.m.avg_position == null ? '—' : `#${c.m.avg_position}`}</Go> },
+    { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: c => c.m.traffic ?? null, tip: { what: 'Estimated organic visits a month. An estimate, not verified traffic.', from: 'Estimated from ranked keywords' }, cell: c => <Go tip={`Estimated monthly visits to ${c.name}. Open the traffic comparison`} onClick={() => onGo('traffic', c.host)}>{kfmt(c.m.traffic)}</Go> },
+    { id: 'rd', header: 'Ref. domains', right: true, first: 'desc', value: c => c.m.rd ?? null, cell: c => <Go tip={`Websites linking to ${c.name}. Open the backlink comparison`} onClick={() => onGo('backlinks', c.host)}>{kfmt(c.m.rd)}</Go>, tip: { what: 'Websites linking to it. Not available until analyzed.', from: 'Moz' } },
+    { id: 'match', header: 'Match', first: 'desc', value: c => c.maps?.relevance?.score ?? null, tip: { what: 'Match score, 0 to 100: how closely it competes with your business. Press the score for the factors. It is not Domain Authority.', from: 'Calculated here from its Maps listing and site' },
       cell: c => (!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <Go tip={`${c.maps.relevance.label_text || 'Match'}, score ${c.maps.relevance.score}/100. Open the profile for the nine-factor breakdown`} onClick={() => onDetail(c)}><span className="inline-flex items-center gap-1.5"><b className="tabular-nums">{c.maps.relevance.score}</b><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span></Go> : <span className="text-slate-300">—</span>) },
+    { id: 'last', header: 'Last analyzed', first: 'desc', value: c => c.m.kw_read_at || c.m.site_read_at || null, className: 'px-3 py-2.5 whitespace-nowrap text-12.5 text-slate-600', tip: { what: 'When its figures were last read. Not available until it has been analyzed.' },
+      cell: c => { const t = c.m.kw_read_at || c.m.site_read_at; return t ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : <span className="text-slate-300">Not available</span>; } },
     { id: 'status', header: 'Status', value: c => (STATUS[c.status] || STATUS.pending)[0], className: 'px-3 py-2.5 whitespace-nowrap',
       cell: c => {
         const done = c.status === 'analyzed' || c.status === 'partial';
@@ -221,9 +246,17 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           <Icon label={`View ${c.name}`} onClick={() => onDetail(c)}><Eye size={16} /></Icon>
           <Icon label="Analyze now: Domain Authority and ranked keywords" disabled={!c.host || c.status === 'running'} onClick={() => analyze([c])}><BarChart3 size={16} /></Icon>
           <Icon label="Its keywords" onClick={() => onGo('keywords', c.host)}><Layers size={16} /></Icon>
+          <Icon label="Analysis history: every earlier read of this competitor" disabled={!c.host} onClick={() => openHistory(c)}><Clock size={16} /></Icon>
           <Icon label={c.chosen ? 'Remove from selected competitors' : 'Select as a competitor'} onClick={() => choose([c], !c.chosen)} tone={c.chosen ? 'text-emerald-600 hover:text-emerald-800' : 'text-slate-500 hover:text-emerald-700'}><CheckCircle2 size={16} /></Icon>
           {c.reg && <Icon label="Remove this competitor" onClick={() => { setSel(new Set([c.key])); setConfirm(true); }} tone="text-slate-400 hover:text-rose-600"><Trash2 size={16} /></Icon>}
         </span>) },
+  ];
+  const locations = [...new Set(data.map(c => city(c)).filter(Boolean))].sort();
+  const filters = [
+    { id: 'status', label: 'Analysis status', options: Object.entries(STATUS).map(([k, v]) => [k, v[0]]), test: (c, v) => c.status === v },
+    { id: 'location', label: 'Location', options: locations.map(l => [l, l]), test: (c, v) => city(c) === v },
+    { id: 'da', label: 'Domain Authority', options: [['strong', 'Strong (60+)'], ['mid', 'Medium (30 to 59)'], ['weak', 'Weak (under 30)'], ['unread', 'Not read']], test: (c, v) => (v === 'unread' ? c.m.da == null : c.m.da != null && (v === 'strong' ? c.m.da >= 60 : v === 'mid' ? c.m.da >= 30 && c.m.da < 60 : c.m.da < 30)) },
+    { id: 'sel', label: 'Selection', options: [['yes', 'Selected'], ['no', 'Not selected']], test: (c, v) => (v === 'yes' ? c.chosen : !c.chosen) },
   ];
   const toolbar = (
     <>
@@ -246,7 +279,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           {addError && <div className="w-full"><ErrorNote>{addError}</ErrorNote></div>}
         </form>
       )}
-      <DataTable columns={cols} rows={data} rowKey={c => c.key} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1100} label="competitors"
+      <DataTable columns={cols} rows={data} rowKey={c => c.key} toolbar={toolbar} filters={filters} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1500} label="competitors"
         exportName="competitors" searchPlaceholder="Search competitor by name or domain" onState={s => { viewRef.current = s.rows; }}
         rowClass={c => (sel.has(c.key) ? 'bg-indigo-50/50' : c.chosen ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-slate-50')}
         empty={rows.length ? 'No competitor matches these filters.' : scope === 'near' ? `No competitor found within ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} of ${placeName || 'this place'}. Try Everywhere, a larger distance or Find more.` : 'No competitors yet. Find them on Google Maps or add one by its website.'} />
@@ -266,6 +299,18 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
       )}
       <Modal open={confirm} onClose={() => setConfirm(false)} title="Remove competitors?" width="max-w-md" footer={<><Button onClick={() => setConfirm(false)}>Cancel</Button><Button variant="danger" onClick={remove}>Remove {picked.filter(c => c.reg).length}</Button></>}>
         <p className="text-13 text-slate-600">These saved competitors are deleted from your list, with their kept keywords: {picked.filter(c => c.reg).map(c => c.name).join(', ')}. Businesses only found on Google Maps are not saved and stay as they are.</p>
+      </Modal>
+      <Modal open={!!hist} onClose={() => setHist(null)} title={hist ? `Analysis history: ${hist.c.name}` : ''} width="max-w-2xl" footer={<Button onClick={() => setHist(null)}>Close</Button>}>
+        {hist?.loading ? <p className="text-13 text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Loading…</p>
+          : hist?.error ? <ErrorNote>{hist.error}</ErrorNote>
+          : !hist?.runs.length ? <p className="text-13 text-slate-500">Not analyzed yet. Each analysis is kept here; a refresh adds a new line and never replaces an old one.</p>
+          : <ul className="space-y-2">{hist.runs.map(r => (
+            <li key={r.id} className="rounded-lg ring-1 ring-slate-200 px-3 py-2 text-12.5">
+              <div className="flex flex-wrap items-center gap-2"><Badge tone={(STATUS[r.status] || STATUS.pending)[1]}>{(STATUS[r.status] || [r.status])[0]}</Badge><span className="text-slate-600">{fdate(r.finished_at || r.started_at)}</span><span className="text-slate-400">{r.trigger === 'auto' ? 'automatic' : 'by hand'}</span></div>
+              <div className="mt-1 text-slate-600">{Object.entries(r.parts || {}).map(([k, v]) => `${k === 'authority' ? 'Domain Authority' : 'Ranked keywords'}: ${v.status === 'ok' ? 'read' : 'not read'} (${v.provider})`).join(' · ') || '—'}</div>
+              {r.error && <div className="mt-1 text-amber-700">{r.error}</div>}
+              {r.snapshot && Object.values(r.snapshot).some(v => v != null) && <div className="mt-1 text-slate-500">DA {r.snapshot.da ?? '—'} · keywords {num(r.snapshot.keywords)} · top 10 {num(r.snapshot.top10)} · traffic {kfmt(r.snapshot.traffic)} · ref. domains {kfmt(r.snapshot.rd)}</div>}
+            </li>))}</ul>}
       </Modal>
       {toastNode}
     </div>

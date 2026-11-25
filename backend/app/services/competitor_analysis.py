@@ -37,6 +37,10 @@ def metrics(db: Session, b: Business, domains: list[str]) -> dict[str, dict[str,
     by: dict[str, list[CompetitorKeyword]] = {}
     for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain.in_(domains or [""]))):
         by.setdefault(r.domain, []).append(r)
+    from ..models import CompetitorAnalysisRun  # noqa: PLC0415
+    last: dict[str, Any] = {}
+    for run in db.scalars(select(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.domain.in_(domains or [""])).order_by(CompetitorAnalysisRun.id)):
+        last[run.domain] = run  # the newest run of each domain wins
     out: dict[str, dict[str, Any]] = {}
     for d in domains:
         rows = by.get(d, [])
@@ -48,23 +52,87 @@ def metrics(db: Session, b: Business, domains: list[str]) -> dict[str, dict[str,
                   "top3": sum(1 for p in pos if p <= 3) if has_kw else None, "top10": sum(1 for p in pos if p <= 10) if has_kw else None,
                   "avg_position": round(sum(pos) / len(pos), 1) if pos else None, "kw_read_at": max((r.read_at for r in rows), default=None).isoformat() if rows else None,
                   "status": "analyzed" if has_kw and has_site else "partial" if has_kw or has_site else "pending"}
+        run = last.get(d)
+        if run and out[d]["status"] == "pending" and run.status in ("failed", "retry"):
+            out[d]["status"] = run.status  # tried and nothing could be read: say so instead of Pending
+        out[d]["last_run"] = {"status": run.status, "finished_at": run.finished_at.isoformat() if run.finished_at else None, "missing": run.missing or [], "error": run.error} if run else None
     return out
 
 
-def analyze_one(db: Session, b: Business, domain: str, limit: int = 100) -> dict[str, Any]:
-    """Read one competitor: its site strength (Moz) and the keywords it ranks for. Each part reports its own reason when it could not be read."""
+def _retryable(msg: str) -> bool:
+    m = (msg or "").lower()
+    return any(w in m for w in ("429", "quota", "limit", "timeout", "timed out", "answered 5", "no apify key", "unavailable", "connect"))
+
+
+def log_usage(db: Session, b: Business | None, provider: str, target: str, ok: bool, detail: str | None = None, cost: float | None = None) -> None:
+    """One line per provider call, so quota use and a failing provider can be seen. Never stops the analysis."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+    from ..models import ApiUsageLog  # noqa: PLC0415
+    try:
+        db.add(ApiUsageLog(business_id=b.id if b else None, provider=provider, target=target[:255], ok=ok, detail=(detail or "")[:300] or None, cost=cost, at=datetime.now(timezone.utc)))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+
+def analyze_one(db: Session, b: Business, domain: str, limit: int = 100, trigger: str = "manual") -> dict[str, Any]:
+    """Read one competitor: its site strength (Moz, through Apify) and the keywords it ranks for. Each part reports its own reason when it could not be read, and every run is kept
+    (status, provider per part, what was missing, the figures at the end), so a refresh never overwrites the history. analyzed = both parts read; partial = one; retry / failed = none."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+    from ..models import CompetitorAnalysisRun  # noqa: PLC0415
     domain = _host(domain)
+    run = CompetitorAnalysisRun(business_id=b.id, domain=domain, status="analyzing", trigger=trigger, started_at=datetime.now(timezone.utc), parts={})
+    db.add(run)
+    db.commit()
     notes: list[str] = []
+    parts: dict[str, dict[str, Any]] = {}
     try:
         got = apify_metrics.check([domain], force=True)
-        if got and got[0].get("error"):
-            notes.append(f"Domain Authority: {str(got[0]['error'])[:140]}")
+        err = got[0].get("error") if got else "no answer"
+        if err or not got or got[0].get("da") is None:
+            notes.append(f"Domain Authority: {str(err or 'no figure returned')[:140]}")
+            parts["authority"] = {"provider": "Moz via Apify", "status": "failed", "error": str(err or "no figure returned")[:200]}
+        else:
+            parts["authority"] = {"provider": "Moz via Apify", "status": "ok"}
     except Exception as exc:  # noqa: BLE001 -- a part that fails must not stop the other
         notes.append(f"Domain Authority: {str(exc)[:140]}")
+        parts["authority"] = {"provider": "Moz via Apify", "status": "failed", "error": str(exc)[:200]}
+    log_usage(db, b, "apify_moz", domain, parts["authority"]["status"] == "ok", parts["authority"].get("error"))
     r = ck.ranked(db, b, domain, limit)
+    kw_ok = bool(r.get("rows")) and not r.get("note")
     if r.get("note"):
         notes.append(f"Keywords: {r['note']}")
-    return {"domain": domain, "metrics": metrics(db, b, [domain])[domain], "notes": notes, "cost": r.get("cost"), "keywords_read": len(r.get("rows") or [])}
+    parts["keywords"] = {"provider": "Apify ranked-keywords actor", "status": "ok" if kw_ok else "failed", **({"error": str(r["note"])[:200]} if r.get("note") else {})}
+    log_usage(db, b, "apify_ranked", domain, kw_ok, r.get("note"), r.get("cost"))
+    ok = [k for k, v in parts.items() if v["status"] == "ok"]
+    missing = [k for k, v in parts.items() if v["status"] != "ok"]
+    errors = "; ".join(f"{k}: {v['error']}" for k, v in parts.items() if v.get("error"))
+    run.status = "analyzed" if not missing else "partial" if ok else "retry" if _retryable(errors) else "failed"
+    run.finished_at, run.parts, run.missing, run.error = datetime.now(timezone.utc), parts, missing, errors or None
+    m = metrics(db, b, [domain])[domain]
+    run.snapshot = {k: m.get(k) for k in ("da", "pa", "spam", "rd", "keywords", "traffic", "top3", "top10", "avg_position")}
+    db.commit()
+    m = metrics(db, b, [domain])[domain]
+    return {"domain": domain, "metrics": m, "notes": notes, "cost": r.get("cost"), "keywords_read": len(r.get("rows") or []), "run": {"id": run.id, "status": run.status, "missing": missing}}
+
+
+def history(db: Session, b: Business, domain: str, limit: int = 20) -> list[dict[str, Any]]:
+    """The earlier analyses of one competitor, newest first."""
+    from ..models import CompetitorAnalysisRun  # noqa: PLC0415
+    q = select(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.domain == _host(domain)).order_by(CompetitorAnalysisRun.id.desc()).limit(limit)
+    return [{"id": r.id, "status": r.status, "trigger": r.trigger, "started_at": r.started_at.isoformat() if r.started_at else None, "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+             "parts": r.parts or {}, "missing": r.missing or [], "error": r.error, "snapshot": r.snapshot or {}} for r in db.scalars(q)]
+
+
+def usage(db: Session, b: Business, limit: int = 50) -> dict[str, Any]:
+    """Provider calls made for this project: totals per provider and the latest calls."""
+    from sqlalchemy import case, func  # noqa: PLC0415
+    from ..models import ApiUsageLog  # noqa: PLC0415
+    tot = db.execute(select(ApiUsageLog.provider, func.count(), func.sum(case((ApiUsageLog.ok.is_(False), 1), else_=0)), func.coalesce(func.sum(ApiUsageLog.cost), 0.0))
+                     .where(ApiUsageLog.business_id == b.id).group_by(ApiUsageLog.provider)).all()
+    last = db.scalars(select(ApiUsageLog).where(ApiUsageLog.business_id == b.id).order_by(ApiUsageLog.id.desc()).limit(limit))
+    return {"providers": [{"provider": p, "calls": c, "failed": int(f or 0), "cost": round(float(x or 0), 4)} for p, c, f, x in tot],
+            "latest": [{"provider": r.provider, "target": r.target, "ok": r.ok, "detail": r.detail, "cost": r.cost, "at": r.at.isoformat() if r.at else None} for r in last]}
 
 
 def pages(db: Session, b: Business, domains: list[str], limit: int = 200) -> list[dict[str, Any]]:
@@ -154,7 +222,7 @@ def _work(business_id: int, todo: list[str], limit: int) -> None:
                 break
             p["current"] = d
             try:
-                r = analyze_one(db, b, d, limit)
+                r = analyze_one(db, b, d, limit, trigger="auto")
                 if r["notes"] and r["metrics"]["status"] == "pending":
                     p["failed"][d] = r["notes"][0]
             except Exception as exc:  # noqa: BLE001 -- one competitor failing must not stop the rest

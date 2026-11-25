@@ -291,6 +291,20 @@ def competitor_analyze(body: AnalyzeIn, b: Business = Depends(get_business), db:
     return ca.analyze_one(db, b, body.domain, body.limit)
 
 
+@router.get("/competitor-analysis/history")
+def competitor_history(domain: str, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Every earlier analysis of one competitor (status, provider per part, what was missing, the figures then). Refreshing adds a run and never overwrites one."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"runs": ca.history(db, b, domain)}
+
+
+@router.get("/competitor-analysis/usage")
+def competitor_usage(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Provider calls made for this project: totals per provider and the latest calls."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.usage(db, b)
+
+
 @router.post("/competitor-analysis/pages")
 def competitor_pages(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     from ..services import competitor_analysis as ca  # noqa: PLC0415
