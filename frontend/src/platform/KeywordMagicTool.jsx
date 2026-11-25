@@ -134,7 +134,7 @@ function Body({ b }) {
     const r = await api(`/businesses/${b.id}/keyword-workspace/add`, { method: 'POST', body: { ideas: list.slice(0, 500).map(i => ({ keyword: i.keyword, volume: i.volume, detail: `Keyword Magic Tool: ${seed}` })), label: 'Keyword Magic Tool' } });
     toast(r.added ? `${r.added} keyword${r.added === 1 ? '' : 's'} sent to the Keyword Workspace` : 'Already in the Keyword Workspace');
   });
-  const goTo = (k, c = country) => { const q = k.trim(); if (q.length > 1) navigate(`/keyword-management/magic?q=${encodeURIComponent(q)}${c ? `&c=${c}` : ''}${areas.length && c === country ? `&a=${encodeURIComponent(areas.join('|'))}` : ''}`); };
+  const goTo = (k, c = country) => { const q = k.trim(); if (q.length > 1) navigate(`/keyword-management/magic?tab=ideas&q=${encodeURIComponent(q)}${c ? `&c=${c}` : ''}${areas.length && c === country ? `&a=${encodeURIComponent(areas.join('|'))}` : ''}`); };
   const toggle = (k) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const toggleOpen = (w) => setOpen(s => { const n = new Set(s); n.has(w) ? n.delete(w) : n.add(w); return n; });
   const pageAll = pager.rows.length > 0 && pager.rows.every(r => sel.has(r.keyword));
@@ -255,3 +255,5 @@ function Body({ b }) {
 export function KeywordMagicToolPage() {
   return <SeoShell title="Keyword Magic Tool" subtitle="Every keyword idea for a topic: variations, questions and related searches, narrowed by match, filters and shared words, then sent to your Keyword Workspace">{(b) => <Body key={b.id} b={b} />}</SeoShell>;
 }
+
+export { Body as KeywordMagicBody };

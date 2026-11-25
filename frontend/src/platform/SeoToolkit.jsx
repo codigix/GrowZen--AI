@@ -425,7 +425,8 @@ function KeywordOverview({ b }) {
   const dropArea = (name) => { const next = chosen.filter(e => e.name !== name); setChosen(next); rerun(namesOf(next), activeCountry); };
   const changeCountry = (c) => { setCountry(c); setChosen([]); rerun([], c || home); };
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
-  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); setData(null); const pls = pl ?? namesOf(chosen); startKd(kw, (c ?? activeCountry) || '', pls, k === undefined); setKdMap({}); kdBatch.current += 1; setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, places: pls, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
+  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); navigate({ search: new URLSearchParams({ ...Object.fromEntries(params), q: kw }).toString() }, { replace: true }); // the keyword stays in the address, so the other tab of the page opens on it
+ setData(null); const pls = pl ?? namesOf(chosen); startKd(kw, (c ?? activeCountry) || '', pls, k === undefined); setKdMap({}); kdBatch.current += 1; setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, places: pls, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);
@@ -509,7 +510,7 @@ function KeywordOverview({ b }) {
   };
   const countriesShown = (() => { const l = (data?.countries || []).map(c => ({ ...c, v: inPeriod(c.monthly, c.volume) })).filter(c => c.v); const tot = l.reduce((a, c) => a + c.v, 0) || 1; return l.map(c => ({ ...c, share: Math.round((c.v * 1000) / tot) / 10 })).sort((x, y) => y.v - x.v); })();
   const groupsShown = (k) => { const g = data?.groups?.[k]; return { total: g?.total || 0, volume: g?.volume || 0, all: g?.all || [], rows: (g?.rows || []).map(r => ({ ...r, v: inPeriod(r.monthly, r.volume) })).sort((x, y) => (y.v || 0) - (x.v || 0)) }; };
-  const openIdeas = (view) => navigate(`/keyword-management/magic?q=${encodeURIComponent(data.keyword)}&view=${view}${data.country ? `&c=${data.country}` : ''}${chosen.length ? `&a=${encodeURIComponent(namesOf(chosen).join('|'))}` : ''}`);
+  const openIdeas = (view) => navigate(`/keyword-management/magic?tab=ideas&q=${encodeURIComponent(data.keyword)}&view=${view}${data.country ? `&c=${data.country}` : ''}${chosen.length ? `&a=${encodeURIComponent(namesOf(chosen).join('|'))}` : ''}`);
   const askKd = async (k) => {
     setKdMap(mm => ({ ...mm, [k]: 'loading' }));
     try { const r = await api(`/businesses/${b.id}/seo/keyword-difficulty/batch`, { method: 'POST', body: { keywords: [k], country: data.country || null, places: namesOf(chosen) }, timeout: 240000 }); setKdMap(mm => ({ ...mm, [k]: r.results?.[0]?.score ?? null })); } catch { setKdMap(mm => ({ ...mm, [k]: null })); }
@@ -805,3 +806,5 @@ export { DomainOverviewPage } from './DomainOverview';
 export const KeywordGapPage = page('Keyword Gap', "Searches where the Google Maps competitors show and you do not, and where you are weaker or stronger", KeywordGap);
 export const CompareDomainsPage = page('Compare Domains', "You and your top competitors side by side", CompareDomains);
 export const KeywordOverviewPage = page('Keyword Overview', "One keyword from the Google Keyword Planner: searches per month, trend, competition, cost per click and related ideas", KeywordOverview);
+
+export { KeywordOverview as KeywordOverviewBody };
