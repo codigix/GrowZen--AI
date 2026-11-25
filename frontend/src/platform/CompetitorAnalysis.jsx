@@ -213,14 +213,6 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           {c.reg && <Icon label="Remove this competitor" onClick={() => { setSel(new Set([c.key])); setConfirm(true); }} tone="text-slate-400 hover:text-rose-600"><Trash2 size={16} /></Icon>}
         </span>) },
   ];
-  const filters = [
-    { id: 'status', label: 'Status', options: [['analyzed', 'Analyzed'], ['partial', 'Partly read'], ['pending', 'Pending'], ['running', 'Analyzing'], ['queued', 'Waiting']], test: (c, v) => c.status === v },
-    { id: 'chosen', label: 'Selection', options: [['yes', 'Selected'], ['no', 'Not selected']], test: (c, v) => (v === 'yes' ? c.chosen : !c.chosen) },
-    { id: 'match', label: 'Match', options: [['direct', 'Direct competitor'], ['related', 'Related business'], ['unrelated', 'Not a competitor']], test: (c, v) => c.maps?.relevance?.label === v },
-    { id: 'dist', label: 'Distance', options: DISTANCE, test: (c, v) => c.maps?.distance_m != null && c.maps.distance_m <= Number(v) },
-    { id: 'da', label: 'Authority', options: [['strong', 'Strong (60+)'], ['mid', 'Medium (30 to 59)'], ['weak', 'Weak (under 30)'], ['unread', 'Not read']], test: (c, v) => (v === 'unread' ? c.m.da == null : c.m.da != null && (v === 'strong' ? c.m.da >= 60 : v === 'mid' ? c.m.da >= 30 && c.m.da < 60 : c.m.da < 30)) },
-    { id: 'rank', label: 'Rankings', options: [['top3', 'Has top 3 keywords'], ['top10', 'Has page 1 keywords'], ['none', 'No ranking keywords read']], test: (c, v) => (v === 'none' ? !c.m.keywords : v === 'top3' ? (c.m.top3 || 0) > 0 : (c.m.top10 || 0) > 0) },
-  ];
   const toolbar = (
     <>
       <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden" role="group" aria-label="Where">
@@ -242,7 +234,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           {addError && <div className="w-full"><ErrorNote>{addError}</ErrorNote></div>}
         </form>
       )}
-      <DataTable columns={cols} rows={data} rowKey={c => c.key} filters={filters} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1100} label="competitors"
+      <DataTable columns={cols} rows={data} rowKey={c => c.key} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={1100} label="competitors"
         exportName="competitors" searchPlaceholder="Search competitor by name or domain" onState={s => { viewRef.current = s.rows; }}
         rowClass={c => (sel.has(c.key) ? 'bg-indigo-50/50' : c.chosen ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-slate-50')}
         empty={rows.length ? 'No competitor matches these filters.' : scope === 'near' ? `No competitor found within ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} of ${placeName || 'this place'}. Try Everywhere, a larger distance or Find more.` : 'No competitors yet. Find them on Google Maps or add one by its website.'} />
