@@ -165,3 +165,16 @@ def test_due_reasons_new_retry_refresh_and_daily_limit(client, monkeypatch):
         assert out["running"] is False and out.get("limit_reached") is True
     finally:
         db.close()
+
+
+def test_ratings_send_the_weights_and_labels_the_match_drawer_shows(client, monkeypatch):
+    from app.competitors import relevance
+    bid = _project(client)
+    client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "https://rival.example"})
+    monkeypatch.setattr(relevance, "_ai_fit", lambda *a, **k: {})  # no AI call in a test
+    r = client.post(f"{KW.format(bid=bid)}/ratings", json={"location": None})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["weights"] == relevance.WEIGHTS and out["labels"]["services"] == "Product relevance" and out["direct_at"] == relevance.DIRECT_AT
+    rel = next(iter(out["by_id"].values()))["relevance"]
+    assert 0 <= rel["score"] <= 100 and set(rel["factors"]) <= set(relevance.WEIGHTS) and rel["label"] in ("direct", "related", "unrelated")

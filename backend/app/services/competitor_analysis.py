@@ -448,7 +448,7 @@ def ratings(db: Session, b: Business, location: str | None) -> dict[str, Any]:
     from ..services import categories as _categories  # noqa: PLC0415
     own_rental = bool(_categories.rental_seeds(getattr(b, "name", None), getattr(b, "primary_category", None), [s.get("name") for s in (getattr(b, "services", None) or [])], getattr(b, "description", None)))
     relevance.rate(b, cands, keywords, authority, lambda u: intel.scan_site(u, max_pages=0, timeout=6), own_rental, extra)
-    out: dict[str, Any] = {"centre": {"lat": centre[0], "lng": centre[1]} if centre else None, "keywords": keywords, "by_id": {}}
+    out: dict[str, Any] = {"centre": {"lat": centre[0], "lng": centre[1]} if centre else None, "keywords": keywords, "by_id": {}, "weights": relevance.WEIGHTS, "labels": relevance.LABELS, "direct_at": relevance.DIRECT_AT, "related_at": relevance.RELATED_AT}
     for x in cands:
         out["by_id"][str(x["_id"])] = {"address": x.get("address"), "distance_m": x.get("distance_m"), "relevance": x.get("relevance")}
     _rated[key] = (time.time(), out)

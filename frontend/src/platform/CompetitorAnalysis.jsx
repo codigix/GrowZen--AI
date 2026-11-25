@@ -117,6 +117,39 @@ export function AutoBar({ auto }) {
   );
 }
 
+/** How a competitor's Match score was worked out: every factor that was measured, its weight and how much it added. A factor that could not be measured is named and left out, the rest count for more. */
+function MatchDrawer({ c, rating, onClose, onProfile }) {
+  const r = c.maps?.relevance;
+  const W = rating?.weights || {};
+  const L = rating?.labels || {};
+  const f = r?.factors || {};
+  const used = Object.keys(f).filter(k => W[k]);
+  const total = used.reduce((a, k) => a + W[k], 0) || 1;
+  const missing = Object.keys(W).filter(k => !(k in f));
+  const capped = f.services != null && f.intent != null && Math.min(f.services, f.intent) < 40;
+  return (
+    <Modal open onClose={onClose} width="max-w-xl" title={`Match score: ${c.name}`} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={onProfile}>Open full profile</Button></>}>
+      <div className="flex items-center gap-4">
+        <span className="text-28 font-bold tabular-nums text-slate-900">{r.score}<span className="text-14 font-medium text-slate-400"> / 100</span></span>
+        <div><Badge tone={r.label === 'direct' ? 'green' : r.label === 'related' ? 'amber' : 'gray'}>{r.label_text}</Badge>
+          <div className="text-12 text-slate-500 mt-0.5">Direct from {rating?.direct_at ?? 65}, related from {rating?.related_at ?? 40}. This is how closely it competes with your business. It is not Domain Authority.</div></div>
+      </div>
+      {r.reason && <p className="mt-3 text-13 text-slate-700">{r.reason} <span className="text-slate-400">({r.judged_by === 'ai' ? 'judged by AI' : 'judged from the words on its listing and site'})</span></p>}
+      <table className="mt-3 w-full text-12.5">
+        <thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Factor</th><th className="font-medium text-right">Score</th><th className="font-medium text-right">Weight</th><th className="font-medium text-right">Adds</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">
+          {used.sort((a, b2) => W[b2] * f[b2] - W[a] * f[a]).map(k => (
+            <tr key={k}><td className="py-1.5"><div className="text-slate-900">{L[k] || k}</div><div className="h-1.5 w-40 rounded-full bg-slate-100 mt-1 overflow-hidden"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.max(0, Math.min(100, f[k]))}%` }} /></div></td>
+              <td className="text-right tabular-nums">{f[k]}</td><td className="text-right tabular-nums text-slate-500">{Math.round((W[k] / total) * 100)}%</td><td className="text-right tabular-nums font-semibold">{((f[k] * W[k]) / total).toFixed(1)}</td></tr>))}
+        </tbody>
+      </table>
+      {missing.length > 0 && <p className="mt-2 text-12 text-slate-500">Not measured, so left out (the others count for more): {missing.map(k => L[k] || k).join(', ')}.</p>}
+      {capped && <p className="mt-2 text-12.5 text-amber-700">Capped: its services or the need it serves score under 40, so it cannot count as a direct competitor however near or visible it is.</p>}
+      {r.traffic_from && <p className="mt-2 text-12 text-slate-500">Organic traffic strength comes from {r.traffic_from === 'keywords' ? 'its kept ranked keywords' : 'the strength of its site (Domain Authority), as no keyword read exists yet'}.</p>}
+    </Modal>
+  );
+}
+
 const REFRESH = [[0, 'Never by itself'], [7, 'Every 7 days'], [14, 'Every 14 days'], [30, 'Every 30 days']];
 const PROVIDER = { apify_moz: 'Domain Authority (Moz via Apify)', apify_ranked: 'Ranked keywords (Apify)', google_places: 'Google Places' };
 
@@ -209,6 +242,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const [confirm, setConfirm] = useState(false);
   const [kinds, setKinds] = useState({}); // competitor id -> direct | indirect | '' (just set)
   const [hist, setHist] = useState(null); // {c, runs, loading}
+  const [why, setWhy] = useState(null); // the competitor whose Match score is open
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
   const viewRef = useRef([]); // the rows the table shows now (filtered, sorted): the header checkbox selects these
@@ -284,7 +318,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
     { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: c => c.m.traffic ?? null, tip: { what: 'Estimated organic visits a month. An estimate, not verified traffic.', from: 'Estimated from ranked keywords' }, cell: c => <Go tip={`Estimated monthly visits to ${c.name}. Open the traffic comparison`} onClick={() => onGo('traffic', c.host)}>{kfmt(c.m.traffic)}</Go> },
     { id: 'rd', header: 'Ref. domains', right: true, first: 'desc', value: c => c.m.rd ?? null, cell: c => <Go tip={`Websites linking to ${c.name}. Open the backlink comparison`} onClick={() => onGo('backlinks', c.host)}>{kfmt(c.m.rd)}</Go>, tip: { what: 'Websites linking to it. Not available until analyzed.', from: 'Moz' } },
     { id: 'match', header: 'Match', first: 'desc', value: c => c.maps?.relevance?.score ?? null, tip: { what: 'Match score, 0 to 100: how closely it competes with your business. Press the score for the factors. It is not Domain Authority.', from: 'Calculated here from its Maps listing and site' },
-      cell: c => (!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <Go tip={`${c.maps.relevance.label_text || 'Match'}, score ${c.maps.relevance.score}/100. Open the profile for the nine-factor breakdown`} onClick={() => onDetail(c)}><span className="inline-flex items-center gap-1.5"><b className="tabular-nums">{c.maps.relevance.score}</b><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span></Go> : <span className="text-slate-300">—</span>) },
+      cell: c => (!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <Go tip={`${c.maps.relevance.label_text || 'Match'}, score ${c.maps.relevance.score}/100. Press to see which factors make it up`} onClick={() => setWhy(c)}><span className="inline-flex items-center gap-1.5"><b className="tabular-nums">{c.maps.relevance.score}</b><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span></Go> : <span className="text-slate-300">—</span>) },
     { id: 'last', header: 'Last analyzed', first: 'desc', value: c => c.m.kw_read_at || c.m.site_read_at || null, className: 'px-3 py-2.5 whitespace-nowrap text-12.5 text-slate-600', tip: { what: 'When its figures were last read. Not available until it has been analyzed.' },
       cell: c => { const t = c.m.kw_read_at || c.m.site_read_at; return t ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : <span className="text-slate-300">Not available</span>; } },
     { id: 'status', header: 'Status', value: c => (STATUS[c.status] || STATUS.pending)[0], className: 'px-3 py-2.5 whitespace-nowrap',
@@ -355,6 +389,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
       <Modal open={confirm} onClose={() => setConfirm(false)} title="Remove competitors?" width="max-w-md" footer={<><Button onClick={() => setConfirm(false)}>Cancel</Button><Button variant="danger" onClick={remove}>Remove {picked.filter(c => c.reg).length}</Button></>}>
         <p className="text-13 text-slate-600">These saved competitors are deleted from your list, with their kept keywords: {picked.filter(c => c.reg).map(c => c.name).join(', ')}. Businesses only found on Google Maps are not saved and stay as they are.</p>
       </Modal>
+      {why && <MatchDrawer c={why} rating={rating} onClose={() => setWhy(null)} onProfile={() => { const c = why; setWhy(null); onDetail(c); }} />}
       <Modal open={!!hist} onClose={() => setHist(null)} title={hist ? `Analysis history: ${hist.c.name}` : ''} width="max-w-2xl" footer={<Button onClick={() => setHist(null)}>Close</Button>}>
         {hist?.loading ? <p className="text-13 text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Loading…</p>
           : hist?.error ? <ErrorNote>{hist.error}</ErrorNote>

@@ -22,7 +22,7 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 | # | Phase | Item | Status | Needs |
 |---|-------|------|--------|-------|
 | A | 2 | Summary cards/table: Referring domains, Not Available/Not Connected states per metric | PARTIAL | none |
-| B | 2/3 | Click Match score opens factor drawer | PARTIAL | profile page has it; add a quick drawer |
+| B | 2/3 | Match score drawer: score, label, reason, every measured factor with weight and points added, factors left out, cap note | DONE | uses the existing nine factors (category, services, area, keywords, SERP, intent, page, opportunity, traffic). Built, not clicked through in a browser |
 | C | 3 | Discovery inputs: business category, up to 3 primary services, seed keywords, country, language, radius; refresh from Maps; duplicates merged by domain, source kept | DONE | Maps discovery only. Organic search discovery is D. Business name as an input is not added (the project's own name is already excluded). Built, not clicked through in a browser |
 | D | 3 | Organic search discovery (competitor domains from SERP) | TODO | provider decision |
 | E | 4 | Auto-analyze settings: new competitors, Domain Authority, keywords, retry failed (tries in a row), refresh period, cache hours, daily limit | DONE | per project, saved at once; scheduler runs retries and refresh |
