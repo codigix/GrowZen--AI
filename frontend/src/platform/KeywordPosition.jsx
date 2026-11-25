@@ -154,7 +154,18 @@ export default function KeywordPosition({ b, keyword }) {
       <div className="flex gap-6 border-b border-slate-200" role="tablist">{TABS.map(t => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`-mb-px pb-2.5 text-14 font-medium border-b-2 cursor-pointer ${tab === t ? 'border-indigo-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t}</button>)}</div>
 
       {!d ? <div className="flex items-center justify-center gap-2 py-14 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Reading the position history…</div> : !d.tracked ? (
-        <Card><p className="text-13 text-slate-600">“{keyword}” is not in your saved keywords, so it is not tracked. <Link className="text-indigo-600 underline" to={`/keyword-management/prepare?k=${q}`}>Prepare and save it</Link> first.</p></Card>
+        <Card>
+          <p className="text-13 text-slate-600">“{keyword}” is not in your saved keywords, so there is no position history for it yet.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="primary" busy={busy === 'track'} onClick={() => run('track', async () => {
+              await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: [{ keyword, source: { type: 'position_tracking' } }] });
+              await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: [keyword] }, timeout: 120000 }).catch(() => null);
+              await rep.reload(true);
+              toast(`“${keyword}” is now tracked`);
+            })}>Track this keyword now</Button>
+            <Link to={`/keyword-management/prepare?k=${q}`}><Button>Prepare it first (role, priority, wordings)</Button></Link>
+          </div>
+        </Card>
       ) : (
         <>
           {tab === 'Overview' && (
