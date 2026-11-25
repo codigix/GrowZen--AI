@@ -194,6 +194,16 @@ def keyword_position(keyword: str = Query(min_length=2, max_length=255), days: i
     return out
 
 
+@router.get("/keyword-position/search-console")
+def keyword_position_gsc(keyword: str = Query(min_length=2, max_length=255), days: int = Query(90, ge=7, le=240), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """One search from Search Console: per day, page, device and country, with the period before for growth. Google's own figures."""
+    from ..services import google_rank as _gr  # noqa: PLC0415
+    try:
+        return {"state": "ok", **_gr.keyword_report(db, b, keyword, days)}
+    except _gr.RankCheckError as exc:
+        return {"state": "error", "message": str(exc)[:240]}
+
+
 @router.get("/keyword-position/serp")
 def keyword_position_serp(keyword: str = Query(min_length=2, max_length=255), b: Business = Depends(get_business)):
     """What Google shows for the keyword right now (competitors, features, our result). Read live, not kept."""

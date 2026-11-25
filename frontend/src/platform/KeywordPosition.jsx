@@ -6,9 +6,20 @@ import { Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : String(Math.round(n)));
-const RANGES = [['1M', 30], ['3M', 90], ['6M', 180], ['1Y', 365], ['All time', 3650]];
+const RANGES = [['28 days', 28], ['3 months', 90], ['6 months', 180]];
 const TABS = ['Overview', 'SERP Features', 'Competitors', 'Pages', 'Progress'];
-const Card = ({ title, children, className = '', action }) => <div className={`rounded-xl bg-white ring-1 ring-slate-200 p-4 ${className}`}>{(title || action) && <div className="flex items-center mb-2"><h3 className="text-15 font-semibold text-slate-900">{title}</h3><div className="ml-auto">{action}</div></div>}{children}</div>;
+const METRICS = [['position', 'Position', '#2563eb'], ['clicks', 'Clicks', '#059669'], ['impressions', 'Impressions', '#7c3aed'], ['ctr', 'Click rate', '#d97706']];
+const Card = ({ title, subtitle, children, className = '', action, pad = true }) => (
+  <div className={`rounded-xl bg-white ring-1 ring-slate-200 ${className}`}>
+    {(title || action) && <div className={`flex items-start gap-3 ${pad ? 'px-4 pt-4' : 'px-4 pt-4 pb-3'}`}><div className="min-w-0"><h3 className="text-15 font-semibold text-slate-900">{title}</h3>{subtitle && <p className="text-12 text-slate-500 mt-0.5">{subtitle}</p>}</div><div className="ml-auto shrink-0">{action}</div></div>}
+    <div className={pad ? 'p-4' : ''}>{children}</div>
+  </div>
+);
+const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+const pct = (n) => (n == null ? '—' : `${n}%`);
+const shortDay = (d) => new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const dayName = (d) => new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const cc = { IND: 'India', USA: 'United States', GBR: 'United Kingdom', CAN: 'Canada', AUS: 'Australia', ARE: 'United Arab Emirates', SGP: 'Singapore', DEU: 'Germany', FRA: 'France', PAK: 'Pakistan', BGD: 'Bangladesh', NPL: 'Nepal', LKA: 'Sri Lanka', SAU: 'Saudi Arabia' };
 
 function Delta({ now, before }) {
   if (!now || !before || now === before) return null;
@@ -16,35 +27,68 @@ function Delta({ now, before }) {
   return <span className={`inline-flex items-center text-13 font-semibold ${up ? 'text-emerald-600' : 'text-rose-600'}`}>{up ? <ArrowUp size={13} /> : <ArrowDown size={13} />}{Math.abs(now - before)}</span>;
 }
 
-function Tile({ label, value, sub, series, color = '#2563eb', tip }) {
+/** A change against the period before: `good` says which direction is better (a lower position is better, more clicks is better). */
+function Change({ now, before, kind = 'pct', good = 'up', unit = '' }) {
+  if (now == null || before == null || before === 0 && kind === 'pct') return <span className="text-12 text-slate-400">{before == null || before === 0 ? 'no data in the period before' : ''}</span>;
+  const diff = kind === 'pct' ? Math.round(((now - before) * 1000) / before) / 10 : Math.round((now - before) * 10) / 10;
+  if (diff === 0) return <span className="text-12 text-slate-500">no change</span>;
+  const better = good === 'up' ? diff > 0 : diff < 0;
+  return <span className={`inline-flex items-center gap-0.5 text-12.5 font-semibold ${better ? 'text-emerald-600' : 'text-rose-600'}`}>{diff > 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{Math.abs(diff)}{kind === 'pct' ? '%' : unit}<span className="font-normal text-slate-500 ml-1">vs before</span></span>;
+}
+
+function Growth({ label, value, change, series, color, tip, hint }) {
   const data = (series || []).map((v, i) => ({ i, v }));
   return (
-    <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 min-w-0" title={tip}>
+    <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4 min-w-0 flex flex-col" title={tip}>
       <div className="text-13 text-slate-500">{label}</div>
-      <div className="flex items-baseline gap-2"><div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{value}</div>{sub}</div>
-      {data.length > 1 ? <div className="h-10 -mx-1 mt-1"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data}><Area type="monotone" dataKey="v" stroke={color} fill={color} fillOpacity={0.12} strokeWidth={1.5} isAnimationActive={false} /></AreaChart></ResponsiveContainer></div> : <div className="mt-1 text-11.5 text-slate-400">Trend appears after more checks</div>}
+      <div className="mt-0.5 text-28 font-bold text-slate-900 tabular-nums leading-tight">{value}</div>
+      <div className="mt-0.5 min-h-[18px]">{change}</div>
+      <div className="h-9 -mx-1 mt-2">{data.filter(x => x.v != null).length > 1 ? <ResponsiveContainer width="100%" height="100%"><AreaChart data={data}><Area type="monotone" dataKey="v" stroke={color} fill={color} fillOpacity={0.12} strokeWidth={1.5} isAnimationActive={false} connectNulls /></AreaChart></ResponsiveContainer> : <div className="text-11.5 text-slate-400 pt-2">{hint || 'Too few days with data for a trend'}</div>}</div>
     </div>
   );
 }
 
-function Trend({ series, range, setRange }) {
-  const cut = new Date(Date.now() - range * 864e5).toISOString().slice(0, 10);
-  const data = series.filter(s => s.day >= cut && s.rank).map(s => ({ ...s, label: s.day }));
-  const low = Math.max(0, ...data.map(x => x.rank));
-  const top = Math.max(10, Math.ceil((low + 1) / 5) * 5);
+function Table({ head, rows, empty }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-13">
+        <thead><tr className="text-12 text-slate-500 bg-slate-50/70">{head.map(([h, right], i) => <th key={h} className={`px-4 py-2 font-medium whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr></thead>
+        <tbody className="divide-y divide-slate-100">{rows.length ? rows : <tr><td colSpan={head.length} className="px-4 py-8 text-center text-slate-500">{empty}</td></tr>}</tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Search Console's own daily figures for this search over the chosen period, one metric at a time. Days without a figure are left out of the position line. */
+function Performance({ days, metric, setMetric, range, setRange, from, to }) {
+  const m = METRICS.find(x => x[0] === metric);
+  const data = useMemo(() => {
+    const by = new Map(days.map(x => [x.day, x]));
+    const out = [];
+    for (let d = new Date(`${from}T00:00:00`); d <= new Date(`${to}T00:00:00`); d.setDate(d.getDate() + 1)) {
+      const k = d.toISOString().slice(0, 10), r = by.get(k);
+      out.push({ day: k, position: r && r.impressions ? r.position : null, clicks: r ? r.clicks : 0, impressions: r ? r.impressions : 0, ctr: r && r.impressions ? r.ctr : null });
+    }
+    return out;
+  }, [days, from, to]);
+  const has = data.some(x => x.impressions > 0);
+  const maxPos = Math.max(10, ...data.map(x => x.position || 0));
+  const top = Math.ceil((maxPos + 1) / 5) * 5;
   const ticks = [1, ...Array.from({ length: top / 5 }, (_, i) => (i + 1) * 5)];
   return (
-    <Card title="Ranking Trend" action={<div className="flex gap-1">{RANGES.map(([l, d]) => <button key={l} type="button" aria-pressed={range === d} onClick={() => setRange(d)} className={`px-2.5 h-7 rounded text-12.5 font-medium cursor-pointer ${range === d ? 'bg-indigo-50 text-indigo-700 underline underline-offset-4' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>}>
-      {data.length === 0 ? <p className="text-13 text-slate-500 py-10 text-center">No position has been read for this keyword in this period yet. Press Update report.</p> : (
+    <Card title="Performance on Google" subtitle={`Search Console, ${dayName(from)} to ${dayName(to)}. Position is the average on the days the site was shown.`}
+      action={<div className="flex gap-1">{RANGES.map(([l, d]) => <button key={l} type="button" aria-pressed={range === d} onClick={() => setRange(d)} className={`px-2.5 h-7 rounded text-12.5 font-medium cursor-pointer ${range === d ? 'bg-indigo-50 text-indigo-700 underline underline-offset-4' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>}>
+      <div className="flex flex-wrap gap-1.5 mb-3">{METRICS.map(([k, l, c]) => <button key={k} type="button" aria-pressed={metric === k} onClick={() => setMetric(k)} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${metric === k ? 'text-white ring-transparent' : 'text-slate-600 ring-slate-300 hover:bg-slate-50'}`} style={metric === k ? { background: c } : undefined}>{l}</button>)}</div>
+      {!has ? <p className="text-13 text-slate-500 py-12 text-center">Search Console has no impressions for this search in this period. It appears here as soon as Google shows your site for it.</p> : (
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ left: 0, right: 12, top: 8 }}>
-              <defs><linearGradient id="kpg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563eb" stopOpacity={0.25} /><stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} /></linearGradient></defs>
+              <defs><linearGradient id="kpg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={m[2]} stopOpacity={0.25} /><stop offset="100%" stopColor={m[2]} stopOpacity={0.02} /></linearGradient></defs>
               <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} minTickGap={30} />
-              <YAxis reversed domain={[1, top]} ticks={ticks} interval={0} tick={{ fontSize: 11, fill: '#64748b' }} width={32} allowDecimals={false} />
-              <Tooltip formatter={(v) => [`#${v}`, 'Position']} labelFormatter={d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-              <Area type="monotone" dataKey="rank" stroke="#2563eb" strokeWidth={2} fill="url(#kpg)" dot={{ r: 4, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={false} />
+              <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={shortDay} minTickGap={36} />
+              {metric === 'position' ? <YAxis reversed domain={[1, top]} ticks={ticks} interval={0} tick={{ fontSize: 11, fill: '#64748b' }} width={32} allowDecimals={false} /> : <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} width={36} domain={[0, (mx) => Math.max(mx, metric === 'ctr' ? 5 : 3)]} />}
+              <Tooltip formatter={(v) => [v == null ? 'not shown that day' : metric === 'position' ? `#${v}` : metric === 'ctr' ? `${v}%` : v, m[1]]} labelFormatter={dayName} />
+              <Area type="monotone" dataKey={metric} stroke={m[2]} strokeWidth={2} fill="url(#kpg)" connectNulls dot={{ r: 3.5, fill: m[2], stroke: '#fff', strokeWidth: 1.5 }} activeDot={{ r: 5.5 }} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -90,18 +134,19 @@ function LocationPick({ b, value, country, custom, onPick }) {
 export default function KeywordPosition({ b, keyword }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState('Overview');
-  const [range, setRange] = useState(90);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
   const q = encodeURIComponent(keyword);
   const rep = useApi(`/businesses/${b.id}/seo/keyword-position?keyword=${q}&days=365`);
   const serp = useApi(`/businesses/${b.id}/seo/keyword-position/serp?keyword=${q}`);
   const tracked = useApi(`/businesses/${b.id}/keywords`);
+  const [range, setRange] = useState(90);
+  const [metric, setMetric] = useState('position');
+  const gsc = useApi(`/businesses/${b.id}/seo/keyword-position/search-console?keyword=${q}&days=${range}`);
   const list = (tracked.data?.keywords || []).map(k => k.keyword);
   const d = rep.data;
   const s = d?.summary || {};
   const series = d?.series || [];
-  const inRange = useMemo(() => series.filter(x => x.day >= new Date(Date.now() - range * 864e5).toISOString().slice(0, 10)), [series, range]);
 
   const T = d?.targeting || {};
   const setTarget = (patch) => run('target', async () => {
@@ -111,7 +156,7 @@ export default function KeywordPosition({ b, keyword }) {
   });
   const update = () => run('update', async () => {
     await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: [keyword] }, timeout: 120000 });
-    await rep.reload(true); serp.reload(true);
+    await rep.reload(true); serp.reload(true); gsc.reload(true);
     toast(`Position of “${keyword}” updated from Google Search Console`);
   });
   const go = (k) => navigate(k ? `/rank-tracking/landscape?kw=${encodeURIComponent(k)}` : '/rank-tracking/landscape');
@@ -123,10 +168,13 @@ export default function KeywordPosition({ b, keyword }) {
   const st = P.status;
   const cur = series[series.length - 1] || {};
   const onFeatures = features.filter(([, on]) => on).length;
-  const pageCount = new Set(series.map(x => x.url).filter(Boolean)).size;
-  const counts = { 'SERP Features': serp.data?.state === 'ok' ? onFeatures : null, Competitors: serp.data?.state === 'ok' ? organic.length : null, Pages: pageCount, Progress: series.length };
-  const imp = st?.impressions, clk = st?.clicks;
-  const ctr = imp ? Math.round(((clk || 0) * 1000) / imp) / 10 : null;
+  const G = gsc.data?.state === 'ok' ? gsc.data : null;
+  const gdays = (G?.series || []).filter(x => x.impressions > 0);
+  const now = G?.now || {}, before = G?.before || {};
+  const imp = G ? now.impressions : st?.impressions, clk = G ? now.clicks : st?.clicks;
+  const ctr = G ? now.ctr : (imp ? Math.round(((clk || 0) * 1000) / imp) / 10 : null);
+  const daily = (key) => (G?.series || []).map(x => (key === 'position' || key === 'ctr' ? (x.impressions ? x[key] : null) : x[key]));
+  const counts = { 'SERP Features': serp.data?.state === 'ok' ? onFeatures : null, Competitors: serp.data?.state === 'ok' ? organic.length : null, Pages: G ? G.pages.length : null, Progress: G ? gdays.length : series.length };
   const rivals = (P.competitors || []).map(x => x.replace(/^www\./, ''));
   const rivalRows = rivals.map(dom => ({ dom, hit: organic.find(o => (o.site || '').replace(/^www\./, '') === dom) }));
   const TONE = { working: 'bg-emerald-50 text-emerald-800 ring-emerald-200', climbing: 'bg-sky-50 text-sky-800 ring-sky-200', weak: 'bg-amber-50 text-amber-800 ring-amber-200', invisible: 'bg-rose-50 text-rose-800 ring-rose-200', unchecked: 'bg-slate-50 text-slate-700 ring-slate-200' };
@@ -201,26 +249,45 @@ export default function KeywordPosition({ b, keyword }) {
                   </div>
                 ) : <p className="text-13 text-slate-500">No status yet: press Update report to read the position.</p>}
               </Card>
-              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
-                <Tile label={`Position · ${(DEVICES.find(x => x[0] === T.device) || DEVICES[0])[1]}`} value={devPos ? Math.round(devPos) : s.current ? s.current : '—'} sub={<Delta now={s.current} before={s.previous} />} series={inRange.filter(x => x.rank).map(x => -x.rank)} tip="Average position on Google over the last 28 days, from Search Console" />
-                <Tile label="Search Volume" value={kfmt(d.volume)} sub={null} tip="Monthly searches, Google Keyword Planner" color="#64748b" />
-                <Tile label="Visibility" value={d.visibility != null ? `${d.visibility}%` : '—'} series={inRange.map(x => x.visibility)} color="#059669" tip="Estimate: share of searches that click a result at this position, from a published average click curve" />
-                <Tile label="Estimated Traffic" value={d.traffic != null ? kfmt(d.traffic) : '—'} series={inRange.map(x => x.traffic || 0)} color="#7c3aed" tip="Estimate: monthly searches times the click share at this position" />
-                <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4"><div className="text-13 text-slate-500">SERP Features{serp.data?.state === 'ok' && <span className="ml-1.5 font-semibold text-slate-800">{onFeatures} of {features.length}</span>}</div>
-                  {serp.data?.state === 'ok' ? <div className="mt-2 flex flex-wrap gap-1.5">{features.filter(([, on]) => on).map(([n]) => <span key={n} className="px-2 py-0.5 rounded bg-slate-100 text-12 text-slate-700">{n}</span>)}{!features.some(([, on]) => on) && <span className="text-13 text-slate-400">None on this search</span>}</div> : serp.error || serp.data?.state === 'error' ? <div className="mt-2 text-12 text-slate-400">Not read</div> : <Loader2 size={14} className="animate-spin text-slate-400 mt-3" />}
-                </div>
-              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-                {[['Desktop position', (d.devices || {}).desktop?.position ? `#${Math.round(d.devices.desktop.position)}` : '—', (d.devices || {}).desktop ? `${d.devices.desktop.impressions} impressions` : 'No impressions'],
-                  ['Mobile position', (d.devices || {}).mobile?.position ? `#${Math.round(d.devices.mobile.position)}` : '—', (d.devices || {}).mobile ? `${d.devices.mobile.impressions} impressions` : 'No impressions'],
-                  ['Maps position', cur.maps_rank ? `#${cur.maps_rank}` : '—', cur.maps_rank ? 'in the local pack results' : 'not in the Maps results'],
-                  ['Impressions · 28 days', imp ?? '—', 'times your site showed'],
-                  ['Clicks · 28 days', clk ?? '—', ctr != null ? `${ctr}% click rate` : 'no impressions yet'],
-                  ['Cost per click', d.cpc != null ? `₹${d.cpc}` : '—', d.intent ? `${d.intent} intent` : 'Google Keyword Planner']].map(([l, v, sub]) => (
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <Growth label="Average position" value={now.position != null ? `#${now.position}` : s.current ? `#${s.current}` : '—'} color="#2563eb" series={daily('position')} change={<Change now={now.position} before={before.position} kind="abs" good="down" />} tip={`Search Console average position over the last ${range} days, weighted by impressions`} />
+                <Growth label="Clicks" value={num(clk)} color="#059669" series={daily('clicks')} change={<Change now={now.clicks} before={before.clicks} />} tip={`Clicks from Google to your site for this search in the last ${range} days`} />
+                <Growth label="Impressions" value={num(imp)} color="#7c3aed" series={daily('impressions')} change={<Change now={now.impressions} before={before.impressions} />} tip={`Times your site was shown for this search in the last ${range} days`} />
+                <Growth label="Click rate" value={pct(ctr)} color="#d97706" series={daily('ctr')} change={<Change now={now.ctr} before={before.ctr} kind="abs" good="up" unit=" pts" />} tip="Clicks divided by impressions" />
+                <Growth label="Searches a month" value={kfmt(d.volume)} color="#64748b" series={[]} hint={d.cpc != null ? `Cost per click ₹${d.cpc}${d.intent ? ` · ${d.intent} intent` : ''}` : 'Google Keyword Planner'} change={<span className="text-12 text-slate-500">Google Keyword Planner</span>} tip="Average monthly searches in your country" />
+              </div>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                {[['Maps position', cur.maps_rank ? `#${cur.maps_rank}` : '—', cur.maps_rank ? 'in the local pack results' : 'not in the Maps results'],
+                  ['Desktop position', (d.devices || {}).desktop?.position ? `#${Math.round(d.devices.desktop.position)}` : '—', (d.devices || {}).desktop ? `${num(d.devices.desktop.impressions)} impression${d.devices.desktop.impressions === 1 ? '' : 's'}` : 'no impressions'],
+                  ['Mobile position', (d.devices || {}).mobile?.position ? `#${Math.round(d.devices.mobile.position)}` : '—', (d.devices || {}).mobile ? `${num(d.devices.mobile.impressions)} impression${d.devices.mobile.impressions === 1 ? '' : 's'}` : 'no impressions'],
+                  ['Visibility', d.visibility != null ? `${d.visibility}%` : '—', 'estimate from the average click curve'],
+                  ['Estimated traffic', d.traffic != null ? `${num(d.traffic)} / mo` : '—', 'estimate: searches × click share at this position']].map(([l, v, sub]) => (
                   <div key={l} className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3"><div className="text-12.5 text-slate-500">{l}</div><div className="text-22 font-bold text-slate-900 tabular-nums leading-tight">{v}</div><div className="text-12 text-slate-500 mt-0.5">{sub}</div></div>
                 ))}
+                <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3"><div className="text-12.5 text-slate-500">SERP features{serp.data?.state === 'ok' && <span className="ml-1.5 font-semibold text-slate-800">{onFeatures} of {features.length}</span>}</div>
+                  {serp.data?.state === 'ok' ? <div className="mt-1.5 flex flex-wrap gap-1.5">{features.filter(([, on]) => on).map(([n]) => <span key={n} className="px-2 py-0.5 rounded bg-indigo-50 text-12 text-indigo-800">{n}</span>)}{!onFeatures && <span className="text-13 text-slate-400">None on this search</span>}</div> : serp.data?.state === 'error' ? <div className="mt-1 text-12 text-slate-400">Not read</div> : <Loader2 size={14} className="animate-spin text-slate-400 mt-2" />}
+                </div>
               </div>
-              </div>
-              <Trend series={series} range={range} setRange={setRange} />
+              {gsc.data?.state === 'error' && <ErrorNote>{gsc.data.message}</ErrorNote>}
+              {G ? <Performance days={G.series} metric={metric} setMetric={setMetric} range={range} setRange={setRange} from={G.from} to={G.to} /> : <Card><div className="flex items-center justify-center gap-2 py-12 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Reading Search Console…</div></Card>}
+              {G && (
+                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                  <Card pad={false} title="Pages ranking for it" subtitle="Your pages Google showed for this search" action={<button type="button" onClick={() => setTab('Pages')} className="text-12.5 text-indigo-600 hover:underline cursor-pointer">All</button>}>
+                    <Table head={[['Page'], ['Clicks', 1], ['Impressions', 1], ['Click rate', 1], ['Avg position', 1]]} empty="No page of your site was shown for this search in this period."
+                      rows={G.pages.slice(0, 6).map(r => <tr key={r.page}><td className="px-4 py-2.5 max-w-[360px]"><a href={r.page} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">{r.page.replace(/^https?:\/\/(www\.)?/, '')}</a></td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{pct(r.ctr)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{r.position}</td></tr>)} />
+                  </Card>
+                  <div className="space-y-4">
+                    <Card pad={false} title="By device">
+                      <Table head={[['Device'], ['Clicks', 1], ['Impr.', 1], ['Pos.', 1]]} empty="No device data."
+                        rows={G.devices.map(r => <tr key={r.device}><td className="px-4 py-2.5 capitalize">{r.device}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{r.position}</td></tr>)} />
+                    </Card>
+                    <Card pad={false} title="By country">
+                      <Table head={[['Country'], ['Clicks', 1], ['Impr.', 1], ['Pos.', 1]]} empty="No country data."
+                        rows={G.countries.slice(0, 5).map(r => <tr key={r.country}><td className="px-4 py-2.5">{cc[r.country] || r.country}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{r.position}</td></tr>)} />
+                    </Card>
+                  </div>
+                </div>
+              )}
               <div className="grid gap-4 lg:grid-cols-3">
                 <Card title="Keyword Position Summary"><table className="w-full text-13"><tbody className="divide-y divide-slate-100">
                   {[['Current Position', s.current, <Delta key="d" now={s.current} before={s.previous} />], ['Previous Position', s.previous], ['Best Position', s.best], ['Worst Position', s.worst], ['Average Position', s.average]].map(([l, v, x]) => <tr key={l}><td className="py-2 text-slate-600">{l}</td><td className="py-2 text-right font-semibold tabular-nums">{v ?? '—'} {x}</td></tr>)}
@@ -242,8 +309,24 @@ export default function KeywordPosition({ b, keyword }) {
           )}
           {tab === 'SERP Features' && <Card title="SERP Features on this search" action={<span className="text-12 text-slate-400">Read live from Google</span>}>{serp.data?.state === 'ok' ? <ul className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">{features.map(([n, on]) => <li key={n} className={`rounded-lg px-3 py-2 text-13 ring-1 ${on ? 'bg-indigo-50 ring-indigo-200 text-indigo-900' : 'bg-white ring-slate-200 text-slate-400'}`}>{n}<div className="text-11.5">{on ? 'On this search' : 'Not shown'}</div></li>)}</ul> : <p className="text-13 text-slate-500">{serp.data?.message || 'Reading Google…'}</p>}{serp.data?.state === 'ok' && <p className="mt-3 text-13 text-slate-600">Ads: {serp.data.ads} · People also ask: {serp.data.questions}</p>}</Card>}
           {tab === 'Competitors' && <Card title="Top 10 on Google right now" action={<span className="text-12 text-slate-400">Your competitors are marked</span>}>{serp.data?.state === 'ok' ? <table className="w-full text-13"><thead><tr className="text-12 text-slate-500"><th className="text-left py-1.5 w-14">Position</th><th className="text-left">Page</th><th className="text-left">Domain</th></tr></thead><tbody className="divide-y divide-slate-100">{organic.map(o => <tr key={o.url} className={o.mine ? 'bg-emerald-50/60' : ''}><td className="py-2 tabular-nums">{o.position}</td><td className="py-2 max-w-[420px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline inline-flex items-center gap-1 truncate">{o.title || o.url}<ExternalLink size={11} /></a></td><td className="py-2">{o.site}{o.mine && <span className="ml-2 text-11 font-semibold text-emerald-700">You</span>}{rivals.includes((o.site || '').replace(/^www\./, '')) && <span className="ml-2 text-11 font-semibold text-rose-700">Your competitor</span>}</td></tr>)}</tbody></table> : <p className="text-13 text-slate-500">{serp.data?.message || 'Reading Google…'}</p>}{serp.data?.state === 'ok' && !mine && <p className="mt-3 text-13 text-slate-500">Your site is not in Google's top 10 for this search.</p>}</Card>}
-          {tab === 'Pages' && <Card title="Pages of your site that ranked">{(() => { const m = new Map(); series.forEach(x => { if (x.url) { const e = m.get(x.url) || { url: x.url, first: x.day, last: x.day, best: null }; e.last = x.day; e.best = x.rank && (e.best == null || x.rank < e.best) ? x.rank : e.best; m.set(x.url, e); } }); const l = [...m.values()]; return l.length ? <table className="w-full text-13"><thead><tr className="text-12 text-slate-500"><th className="text-left py-1.5">Page</th><th className="text-right">Best position</th><th className="text-right">First seen</th><th className="text-right">Last seen</th></tr></thead><tbody className="divide-y divide-slate-100">{l.map(e => <tr key={e.url}><td className="py-2"><a href={e.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{e.url}</a></td><td className="py-2 text-right tabular-nums">{e.best ?? '—'}</td><td className="py-2 text-right">{e.first}</td><td className="py-2 text-right">{e.last}</td></tr>)}</tbody></table> : <p className="text-13 text-slate-500">No page has ranked for it yet.</p>; })()}</Card>}
-          {tab === 'Progress' && <Card title="Every check">{series.length ? <table className="w-full text-13"><thead><tr className="text-12 text-slate-500"><th className="text-left py-1.5">Date</th><th className="text-right">Position</th><th className="text-right">Impressions</th><th className="text-right">Clicks</th><th className="text-right">Visibility</th><th className="text-right">Est. traffic</th></tr></thead><tbody className="divide-y divide-slate-100">{[...series].reverse().map(x => <tr key={x.day}><td className="py-2">{x.day}</td><td className="py-2 text-right tabular-nums">{x.rank ? `#${x.rank}` : 'Not ranking'}</td><td className="py-2 text-right tabular-nums">{x.impressions ?? '—'}</td><td className="py-2 text-right tabular-nums">{x.clicks ?? '—'}</td><td className="py-2 text-right tabular-nums">{x.visibility}%</td><td className="py-2 text-right tabular-nums">{x.traffic != null ? kfmt(x.traffic) : '—'}</td></tr>)}</tbody></table> : <p className="text-13 text-slate-500">Nothing read yet. Press Update report.</p>}</Card>}
+          {tab === 'Pages' && (
+            <div className="space-y-4">
+              <Card pad={false} title="Pages that ranked for this search" subtitle={G ? `Search Console, ${dayName(G.from)} to ${dayName(G.to)}` : ''}>
+                {G ? <Table head={[['Page'], ['Clicks', 1], ['Impressions', 1], ['Click rate', 1], ['Avg position', 1]]} empty="No page of your site was shown for this search in this period."
+                  rows={G.pages.map(r => <tr key={r.page}><td className="px-4 py-2.5 max-w-[520px]"><a href={r.page} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">{r.page}</a></td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{pct(r.ctr)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{r.position}</td></tr>)} /> : <div className="px-4 pb-4 text-13 text-slate-500">{gsc.data?.message || 'Reading Search Console…'}</div>}
+              </Card>
+              <Card pad={false} title="Pages of your website that carry the keyword" subtitle="From the last website crawl: the keyword is in the page's title, heading or description">
+                <Table head={[['Page'], ['Where it appears']]} empty={P.crawled === false ? 'Your website has not been crawled yet.' : 'No page carries this keyword yet. Add it to the page you want to rank.'}
+                  rows={(P.pages || []).map(pg => <tr key={pg.url}><td className="px-4 py-2.5"><a href={pg.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">{pg.url}</a></td><td className="px-4 py-2.5 text-slate-600 capitalize">{pg.in.join(', ')}</td></tr>)} />
+              </Card>
+            </div>
+          )}
+          {tab === 'Progress' && (
+            <Card pad={false} title="Day by day" subtitle={G ? `Search Console, the days Google showed your site for this search (${gdays.length} of ${G.series.length || 0} days)` : ''}>
+              {G ? <Table head={[['Date'], ['Position', 1], ['Impressions', 1], ['Clicks', 1], ['Click rate', 1]]} empty="No impressions for this search in this period."
+                rows={[...gdays].reverse().map(x => <tr key={x.day}><td className="px-4 py-2.5">{dayName(x.day)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{x.position}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(x.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(x.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{pct(x.ctr)}</td></tr>)} /> : <div className="px-4 pb-4 text-13 text-slate-500">{gsc.data?.message || 'Reading Search Console…'}</div>}
+            </Card>
+          )}
         </>
       )}
       {toastNode}
