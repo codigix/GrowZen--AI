@@ -5,6 +5,7 @@ import { ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, CheckCircle2, Chev
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
+import PlacePicker from './PlacePicker';
 import Select from '../components/Select';
 
 const TAG_HELP = { gap: 'Competitors use it, you do not', win: 'You already rank in the top 3', almost: 'You are on page 2 of Google', shared: 'You and a competitor both use it', yours: 'Only your own places mention it', idea: 'Suggested by Google or AI' };
@@ -362,10 +363,7 @@ export default function KeywordWorkspace({ b, onUse }) {
               </div>
               {/* row 2: the figures are for this place and this time, then the filters */}
               <div className="px-4 pb-4 flex flex-wrap items-center gap-x-3 gap-y-2.5">
-                <label className="relative inline-flex items-center"><MapPin size={14} className="absolute left-3 text-slate-400 pointer-events-none z-10" />
-                  <Select value={place} onChange={e => setPlace(e.target.value)} aria-label="Location" className="h-9 w-[210px] appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-9 pr-8 text-13 font-medium text-slate-800 cursor-pointer hover:bg-slate-50 text-left">
-                    {places.map((x, n) => <option key={x.name} value={n === 0 ? '' : x.name}>{x.name}{x.kind === 'Country' ? '' : ` (${x.kind.toLowerCase()})`}</option>)}</Select>
-                </label>
+                <PlacePicker b={b} value={place} places={places} onChange={setPlace} onSaved={() => placesApi.reload(true)} />
                 <label className="relative inline-flex items-center"><CalendarDays size={14} className="absolute left-3 text-slate-400 pointer-events-none z-10" />
                   <Select value={period} onChange={e => setPeriod(e.target.value)} aria-label="Time" className="h-9 w-[170px] appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-9 pr-8 text-13 font-medium text-slate-800 cursor-pointer hover:bg-slate-50 text-left">
                     <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</Select>
