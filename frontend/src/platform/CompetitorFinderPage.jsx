@@ -1104,41 +1104,48 @@ function Research({ b }) {
       {toastNode}
 
 
-      {/* where to find competitors */}
-      <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="inline-flex items-center gap-1.5 text-13 font-semibold text-slate-800"><MapPin size={15} className="text-indigo-500" />Find competitors in</span>
-        <PlacePicker b={b} value={place} onChange={(v) => setPlace(v)} width={300} canSave={false} places={[{ name: state?.defaults?.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} />
-        <Button icon={MapPin} busy={mapsBusy === 'maps'} onClick={findOnMaps} title="Looks up the businesses Google Maps shows for your type of business around this place">Find on Google Maps</Button>
-        {state.setup?.google_results && <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} onClick={() => start(defaults.keywords, place || defaults.location)} title="Reads Google's results for your keywords from this place">{result ? 'Run research again' : 'Research this place'}</Button>}
-        <span className="text-12 text-slate-500 min-w-[200px] flex-1">Google Maps and Google results are read for this place. Choose another place to find the competitors there.</span>
-      </div>
-      {/* One compact bar: status, settings, run */}
-      <div className={`ai-glass-card rounded px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 ${result || isRunning(current) ? '' : 'hidden'}`}>
-        <div className="min-w-0 flex-1">
-          {isRunning(current) ? (
-            <div className="flex items-center gap-3">
-              <Loader2 size={16} className="animate-spin text-indigo-600 shrink-0" />
-              <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Researching competitors… <span className="font-normal text-slate-500 truncate">{p?.step || 'Starting'}</span></div>
-                <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${p ? Math.round((p.done / p.total) * 100) : 4}%` }} /></div></div>
-            </div>
-          ) : result ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-12.5 text-slate-600">
-              <span title={`${result.keywords.length} keywords · ${result.ideas?.competitor_keywords?.length || 0} competitor keywords · ${result.gaps?.keywords?.length || 0} gaps`}><b className="text-slate-900">Researched {fmtDateTime(result.analysed_at)}</b> · {result.location || 'India'} · {result.keywords.length} keyword{result.keywords.length === 1 ? '' : 's'}</span>
-              <span title={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'}>Google <b className={`tabular-nums ${s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'}`}>{s.keywords_ranked ? `${s.visibility}%` : '—'}</b> · {s.keywords_ranked}/{s.keywords_total} keywords</span>
-              <span title={`in Maps for ${s.local_ranked} of ${s.keywords_total}`}>Maps <b className="text-slate-900 tabular-nums">{s.local_visibility}%</b></span>
-              <span title={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''}>Competitors <b className="text-slate-900 tabular-nums">{s.competitors}</b>{s.local_leader ? <span className="text-slate-400"> · leader {s.local_leader.name}</span> : null}</span>
-            </div>
-          ) : <div className="text-13 text-slate-600">Research who outranks you on Google and Maps, then find keywords from it.</div>}
+      {/* one section: where to look, what to run, and what the last run found */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200">
+        <div className="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="inline-flex items-center gap-1.5 text-13 font-semibold text-slate-800"><MapPin size={15} className="text-indigo-500" />Find competitors in</span>
+          <PlacePicker b={b} value={place} onChange={(v) => setPlace(v)} width={300} canSave={false} places={[{ name: state?.defaults?.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} />
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button icon={MapPin} busy={mapsBusy === 'maps'} disabled={isRunning(current)} onClick={findOnMaps} title="Looks up the businesses Google Maps shows for your type of business around this place">Find on Google Maps</Button>
+            <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup?.google_results} onClick={() => start(defaults.keywords, place || defaults.location)} title="Reads Google's results for your keywords, searched from this place">{result ? 'Run research again' : 'Research this place'}</Button>
+          </div>
         </div>
-        {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-${slugOf(b.name)}-${today()}.md`, researchMd(result), 'text/markdown')}>Download research</Button>}
-        {result && <Button size="sm" icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>}
-        {result && <Button size="sm" variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup.google_results} onClick={() => start(defaults.keywords, defaults.location)}>Run again</Button>}
-        {result && <Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button>}
+        <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 rounded-b-xl flex flex-wrap items-center gap-x-5 gap-y-2">
+          <div className="min-w-0 flex-1">
+            {isRunning(current) ? (
+              <div className="flex items-center gap-3">
+                <Loader2 size={16} className="animate-spin text-indigo-600 shrink-0" />
+                <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Researching competitors… <span className="font-normal text-slate-500 truncate">{p?.step || 'Starting'}</span></div>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-slate-200 overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${p ? Math.round((p.done / p.total) * 100) : 4}%` }} /></div></div>
+              </div>
+            ) : result ? (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+                <div className="text-12.5 text-slate-600" title={`${result.keywords.length} keywords · ${result.ideas?.competitor_keywords?.length || 0} competitor keywords · ${result.gaps?.keywords?.length || 0} gaps`}><b className="text-slate-900">Researched {fmtDateTime(result.analysed_at)}</b><br />{result.location || 'India'} · {result.keywords.length} keyword{result.keywords.length === 1 ? '' : 's'}</div>
+                {[
+                  ['Google visibility', s.keywords_ranked ? `${s.visibility}%` : '—', s.keywords_ranked ? `${s.keywords_ranked} of ${s.keywords_total} keywords shown` : 'link Search Console to see it', s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'],
+                  ['Maps visibility', `${s.local_visibility}%`, `in Maps for ${s.local_ranked} of ${s.keywords_total}`, 'text-slate-900'],
+                  ['Competitors', s.competitors, s.local_leader ? `leader ${s.local_leader.name}` : 'found', 'text-slate-900'],
+                ].map(([l, v, sub, cls]) => <div key={l} className="min-w-[110px]"><div className="text-11.5 text-slate-500">{l}</div><div className={`text-18 font-bold tabular-nums leading-tight ${cls}`}>{v}</div><div className="text-11.5 text-slate-500 max-w-[200px] truncate" title={sub}>{sub}</div></div>)}
+              </div>
+            ) : <div className="text-13 text-slate-600">Research who outranks you on Google and Maps for this place, then see their keywords and the gap.</div>}
+            {!isRunning(current) && result && place && result.location && !String(result.location).toLowerCase().includes(String(place).split(',')[0].toLowerCase()) && (
+              <div className="mt-1.5 text-12 text-amber-700">The results above are for {result.location}. Press “Run research again” to read {place.split(',')[0]}.</div>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button>
+            {result && <Button size="sm" icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>}
+            {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-${slugOf(b.name)}-${today()}.md`, researchMd(result), 'text/markdown')}>Download</Button>}
+          </div>
+        </div>
       </div>
       {current?.status === 'failed' && <ErrorNote>{current.error || 'The research failed.'}</ErrorNote>}
       {isRunning(current) && <LiveResults progress={p} />}
 
-      {!result && !isRunning(current) && <div className="flex justify-end -mb-2"><Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button></div>}
       <div className="grid gap-5 items-start">
       <div className="min-w-0 space-y-3">
       {!result && !isRunning(current) && <Card title="Research your competitors" subtitle="Add the searches your customers type, then run it. The Maps competitors are registered for site audits at the same time."><SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start'} error={error} setupInfo={state.setup} hasRun={false} /></Card>}
