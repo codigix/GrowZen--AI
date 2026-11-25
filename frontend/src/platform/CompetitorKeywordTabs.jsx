@@ -40,7 +40,6 @@ export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
   const [sel, setSel] = useState(() => new Set());
   const [drawer, setDrawer] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [showRanges, setShowRanges] = useState(false);
   const [toast, toastNode2] = useToast();
   const viewRef = useRef([]); // the rows the table shows now (filtered, sorted)
   const rows = useMemo(() => {
@@ -116,16 +115,15 @@ export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
             actions={[{ label: `All analyzed (${analyzed.length})`, disabled: !analyzed.length, onClick: () => setChosen(new Set(analyzed.map(c => c.domain))) }]} />
           <span className="text-12 text-slate-400">{chosen.size ? `${chosen.size} of ${g.competitors.length} shown` : 'every competitor read is shown'}</span>
         </div>}
-        <div className="mb-2"><button type="button" aria-expanded={showRanges || rangeActive} onClick={() => setShowRanges(v => !v)} className={`h-8 px-3 rounded-md border text-12.5 font-semibold cursor-pointer ${showRanges || rangeActive ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>Ranges and page{rangeActive ? ' (on)' : ''}</button></div>
-        {(showRanges || rangeActive) && <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-12.5 text-slate-600">
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-12.5 text-slate-600">
           {[['Position', 'pmin', 'pmax', 1, 100], ['Searches / mo', 'vmin', 'vmax', 0, null], ['Difficulty', 'kmin', 'kmax', 0, 100]].map(([l, lo, hi, min, max]) => (
             <span key={l} className="inline-flex items-center gap-1.5">{l}
               <input type="number" min={min} max={max ?? undefined} value={rng[lo]} onChange={e => setRng(r => ({ ...r, [lo]: e.target.value }))} placeholder="from" aria-label={`${l} from`} className="h-8 w-20 rounded-lg ring-1 ring-inset ring-slate-300 px-2 text-13" />
               <input type="number" min={min} max={max ?? undefined} value={rng[hi]} onChange={e => setRng(r => ({ ...r, [hi]: e.target.value }))} placeholder="to" aria-label={`${l} to`} className="h-8 w-20 rounded-lg ring-1 ring-inset ring-slate-300 px-2 text-13" /></span>))}
           <span className="inline-flex items-center gap-1.5">Ranking page<input value={rng.url} onChange={e => setRng(r => ({ ...r, url: e.target.value }))} placeholder="part of the address" aria-label="Ranking page contains" className="h-8 w-44 rounded-lg ring-1 ring-inset ring-slate-300 px-2 text-13" /></span>
           {rangeActive && <button type="button" onClick={() => setRng({ pmin: '', pmax: '', vmin: '', vmax: '', kmin: '', kmax: '', url: '' })} className="text-indigo-700 hover:underline cursor-pointer">Clear ranges</button>}
-        </div>}
-        <DataTable key={only} initialFilters={{ ...(only ? { domain: only } : {}), ...(only && focusBand ? { pos: focusBand } : {}) }} columns={cols} rows={base} rowKey={r => r.id} filters={filters.filter(f => f.id !== 'domain')} collapseFilters onState={st => { viewRef.current = st.rows; }}
+        </div>
+        <DataTable key={only} initialFilters={{ ...(only ? { domain: only } : {}), ...(only && focusBand ? { pos: focusBand } : {}) }} columns={cols} rows={base} rowKey={r => r.id} filters={filters.filter(f => f.id !== 'domain')} onState={st => { viewRef.current = st.rows; }}
           toolbar={<><Button size="sm" variant="primary" icon={Plus} busy={adding} disabled={!picked.length} onClick={() => addToMy(picked)} title="Add the ticked keywords to My Keywords">Add {picked.length || ''} ticked</Button><Button size="sm" icon={Plus} busy={adding} disabled={!base.length} onClick={() => addToMy(viewRef.current.length ? viewRef.current : base)} title="Add every keyword the table shows now, with its filters, to My Keywords (up to 300 at a time)">Add all filtered</Button></>} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-keywords" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={1100}
           empty={g.competitors.some(c => c.keywords) ? 'No keywords match.' : 'Competitors are analyzed automatically; their ranking keywords appear here as each is read.'} />
       </div>
@@ -189,7 +187,7 @@ function TopicList({ b, rows }) {
   ];
   return (
     <div className="mt-3">
-      <DataTable columns={cols} rows={rows} rowKey={r => r.keyword} filters={filters} collapseFilters initialSort={{ key: 'volume', dir: 'desc' }} pageSize={15} exportName="competitor-topics" searchPlaceholder="Search topics" label="keywords" bare onState={s => { viewRef.current = s.rows; }}
+      <DataTable columns={cols} rows={rows} rowKey={r => r.keyword} filters={filters} initialSort={{ key: 'volume', dir: 'desc' }} pageSize={15} exportName="competitor-topics" searchPlaceholder="Search topics" label="keywords" bare onState={s => { viewRef.current = s.rows; }}
         toolbar={<Button size="sm" variant="primary" icon={Plus} busy={busy === 's'} onClick={send}>Send useful to Find Keywords</Button>} />
       {toastNode}
     </div>
@@ -251,7 +249,7 @@ export function KeywordGapTab({ b, focus = '' }) {
       </div>
       {stale && <div role="alert" className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-13 text-amber-900"><b>The backend is running old code.</b> It still answers with the old gap names (Gap, Behind, Ahead), so the cards and table cannot fill in. Stop every backend process on port 8000, start the backend again, and reload this page.</div>}
       {!hasData ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-8 text-center text-13 text-slate-500">No competitor rankings are kept yet. They are read automatically on the Competitors tab, or open <b>SERP Features</b> in Position Tracking to read Google's top 10 on your tracked searches. Then the gap appears here.</div> : (
-        <DataTable key={only} columns={cols} rows={pool} rowKey={r => r.keyword} filters={only ? filters.filter(f => f.id !== 'comp') : filters} collapseFilters initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-gap" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={1200} onState={s => { viewRef.current = s.rows; }}
+        <DataTable key={only} columns={cols} rows={pool} rowKey={r => r.keyword} filters={only ? filters.filter(f => f.id !== 'comp') : filters} initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-gap" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={1200} onState={s => { viewRef.current = s.rows; }}
           toolbar={<Button size="sm" variant="primary" icon={Plus} busy={wsBusy === 'ws'} onClick={send}>Send useful to Find Keywords</Button>} empty="No keywords in this view." />
       )}
       <p className="text-12 text-slate-500">Rankings are for {COUNTRY[g.country] || g.country || 'the project market'}. Your position is your checked position, or Search Console's average when Google showed your site.</p>

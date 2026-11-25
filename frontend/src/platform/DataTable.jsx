@@ -115,11 +115,10 @@ export function downloadCsv(name, head, body) {
  */
 export default function DataTable({
   columns, rows, rowKey = (r, i) => r.id ?? i, initialSort = null, pageSize = 25, search = true, searchPlaceholder = 'Search this table', filters = [], exportName = '',
-  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState, initialSearch = '', initialFilters = {}, collapseFilters = false
+  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState, initialSearch = '', initialFilters = {}
 }) {
   const [q, setQ] = useState(initialSearch);
   const [fv, setFv] = useState(initialFilters);
-  const [showF, setShowF] = useState(() => Object.values(initialFilters).some(Boolean)); // with collapseFilters the filters sit behind one button
   const [hidden, setHidden] = useState(() => new Set(columns.filter(c => c.hide === true).map(c => c.id)));
   const cols = columns.filter(c => !hidden.has(c.id));
   const byId = useMemo(() => Object.fromEntries(columns.map(c => [c.id, c])), [columns]);
@@ -133,19 +132,17 @@ export default function DataTable({
   const active = Object.values(fv).filter(Boolean).length + (needle ? 1 : 0);
   const exportable = columns.filter(c => c.csv !== false && c.value);
   const bar = search || filters.length > 0 || exportName || columnsMenu || toolbar;
-  const filterEls = filters.map(f => (
-<label key={f.id} className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">{f.label}
-              <Select value={fv[f.id] || ''} onChange={e => setFv(x => ({ ...x, [f.id]: e.target.value }))} aria-label={`Filter by ${f.label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer max-w-[11rem] ${fv[f.id] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
-                <option value="">All</option>{f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
-            </label>));
   const box = (
     <>
       {bar && (
         <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
           {search && <label className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} className="h-8 w-56 pl-8 pr-2 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></label>}
-          {collapseFilters && filters.length > 0 && <button type="button" aria-expanded={showF} onClick={() => setShowF(v => !v)} className={`h-8 px-3 inline-flex items-center gap-1.5 rounded-md border text-12.5 font-semibold cursor-pointer ${showF || Object.values(fv).some(Boolean) ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>Filters{Object.values(fv).filter(Boolean).length ? ` (${Object.values(fv).filter(Boolean).length})` : ''}<ChevronDown size={13} className={showF ? 'rotate-180' : ''} /></button>}
-          {!collapseFilters && filterEls}
+          {filters.map(f => (
+            <label key={f.id} className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">{f.label}
+              <Select value={fv[f.id] || ''} onChange={e => setFv(x => ({ ...x, [f.id]: e.target.value }))} aria-label={`Filter by ${f.label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer max-w-[11rem] ${fv[f.id] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
+                <option value="">All</option>{f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </Select>
+            </label>))}
           {toolbar}
           <span className="ml-auto flex flex-wrap items-center gap-2">
             {active > 0 && <span className="text-12.5 text-slate-500" role="status">{sorted.length} of {rows.length} · <button type="button" onClick={() => { setQ(''); setFv({}); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></span>}
@@ -159,7 +156,6 @@ export default function DataTable({
             {exportName && exportable.length > 0 && <button type="button" onClick={() => downloadCsv(exportName, exportable.map(c => (typeof c.header === 'string' ? c.header : c.label || c.id)), sorted.map(r => exportable.map(c => c.value(r))))} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer hover:bg-slate-50" title="Download the rows shown (with the search and filters applied) as a CSV file"><Download size={13} />Export CSV</button>}
           </span>
         </div>)}
-      {collapseFilters && showF && filters.length > 0 && <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/60 flex flex-wrap items-center gap-x-4 gap-y-2">{filterEls}</div>}
       <div className="overflow-x-auto">
         <table className="w-full text-13" style={{ minWidth }}>
           <thead className={`${headClass} text-12 uppercase tracking-wide`}>

@@ -1,6 +1,5 @@
 import React, { Suspense, lazy, useState } from 'react';
 import { ExternalLink, Loader2 } from 'lucide-react';
-import { Button } from './SeoUi';
 import DataTable from './DataTable';
 
 // The rank tracker is a large page: it is only loaded when this section is opened.
@@ -46,17 +45,15 @@ export default function CompetitorMaps({ b, rows, legacy = null }) {
     { id: 'site', label: 'Website', options: [['yes', 'Has a website'], ['no', 'No website']], test: (r, v) => (v === 'yes' ? !!r.host : !r.host) },
     { id: 'sel', label: 'Selection', options: [['yes', 'Selected'], ['no', 'Not selected']], test: (r, v) => (v === 'yes' ? r.chosen : !r.chosen) },
   ];
+  const parts = [['found', `Found on Google Maps (${list.length})`], ['rank', 'Local rank tracking'], ...(legacy ? [['searches', 'Maps results for your research searches']] : [])];
   return (
     <div className="space-y-3">
-      {part === 'found'
-        ? <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => setPart('rank')}>See local rank tracking</Button>
-            {legacy && <Button onClick={() => setPart('searches')}>Maps results from your research run</Button>}
-          </div>
-        : <div><Button onClick={() => setPart('found')}>← Back to the list of businesses</Button></div>}
+      <div className="inline-flex flex-wrap rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden bg-white" role="group" aria-label="Google Maps views">
+        {parts.map(([k, l]) => <button key={k} type="button" aria-pressed={part === k} onClick={() => setPart(k)} className={`h-9 px-3.5 text-13 font-medium cursor-pointer ${part === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}
+      </div>
       {part === 'found' && <>
         <div className="rounded-lg bg-sky-50 ring-1 ring-sky-200 px-3 py-2 text-12.5 text-sky-900">This is <b>discovery</b>: the businesses Google Maps returned around your place. Being on this list does not mean a business ranks above or below you for any keyword, and it is not automatically a competitor for organic search. Real Maps positions are in <button type="button" onClick={() => setPart('rank')} className="font-semibold underline cursor-pointer">Local rank tracking</button>.</div>
-        <DataTable columns={cols} rows={list} rowKey={r => r.id} filters={filters} collapseFilters initialSort={{ key: 'distance', dir: 'asc' }} exportName="google-maps-competitors" searchPlaceholder="Search businesses, categories or addresses" label="businesses" minWidth={1300}
+        <DataTable columns={cols} rows={list} rowKey={r => r.id} filters={filters} initialSort={{ key: 'distance', dir: 'asc' }} exportName="google-maps-competitors" searchPlaceholder="Search businesses, categories or addresses" label="businesses" minWidth={1300}
           empty="No business found on Google Maps yet. Press Find or refresh on Google Maps on the Competitors tab." />
       </>}
       {part === 'rank' && <>

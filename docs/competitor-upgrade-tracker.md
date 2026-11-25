@@ -53,18 +53,5 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 - Environment note: backend/.env has HTTPS PUBLIC_BASE_URL and FRONTEND_URL, which make test logins fail (secure cookies over http). Run the suite with `PUBLIC_BASE_URL= FRONTEND_URL= python -m pytest`.
 - The frontend's .env points API calls at http://localhost:8000. A browser test must start Vite with `VITE_API_URL=/api/v1` and `BACKEND_URL=<test backend>` or it talks to the real backend.
 
-## Redesign: 4-step guided flow (agreed with the owner)
-Rules from the owner: no tab bars anywhere (moving between views is done with buttons only); the tables keep ALL their columns, filters, exports and actions (nothing erased): only the layout changes.
-- Step bar, Step 1 Find (simple form, More options folded), Step 2 Shortlist (plain list with Choose / Chosen buttons): DONE.
-- Step 3 Analyze: the full original competitor table with all its columns, the four summary cards, the auto-analyze bar, Columns menu, CSV export and bulk actions. Filters are folded behind one Filters button.
-- Step 4 Opportunities: seven big buttons (Keywords to win = the full keyword gap, All competitor keywords = the full competitor keyword table, Their best pages, Traffic compared, Backlinks compared, On Google Maps, Find new keywords), each with an "All opportunities" back button. Every table keeps all its columns and filters; filters are folded behind a Filters button and the range filters behind a "Ranges and page" button.
-- DataTable has a new optional prop, collapseFilters (default off), so no other page in the app changes.
-- Auto-analyze again reads every competitor found, as before the redesign (an earlier version of the redesign limited it to the chosen ones).
-- Browser checks: 18 of 18 (full table and every column, filters, bulk actions, drawer, add-to-My-Keywords, old links).
-- Removed from the page and no longer used (still in the code): my trimmed Analyze table, the merged Keywords view and the competitor detail window. They can be deleted.
-
-## Layout change: home screen of four cards (owner's choice, replaces the step bar across the top)
-- /competitor-finder opens on a home screen with four big cards (Find competitors, Choose competitors, Analyze, Opportunities), each with its real status and one button; only the next thing to do is highlighted. No bar or tabs across the top.
-- Every other page has one "Back to Competitors" button and a "My competitors" button. Inside Opportunities, an "All opportunities" button goes back one level.
-- Old links (?tab=..., ?step=...) still open the right page directly.
-- 8 browser checks pass; the full tables, columns and filters are unchanged.
+## Redesign reverted (owner's decision)
+The 4-step / home-cards redesign of /competitor-finder was tried and then undone at the owner's request. The page is back to the 8-tab version (Competitors, Keyword gap, Competitor keywords, Traffic comparison, Top pages, Backlink comparison, Google Maps, Research) exactly as at commit cf0ac986. The redesign commits (9d7e0d81, e0fd774d, 4189d5cc, 9487d0bd) stay in the git history and can be brought back with git revert of the revert.
