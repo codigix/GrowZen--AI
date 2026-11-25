@@ -46,6 +46,9 @@ def create_post(body: PostIn, b: Business = Depends(get_business), db: Session =
             raise HTTPException(409, "Link the Google Business Profile first: a post cannot be scheduled without it.")
         if when <= datetime.now(timezone.utc) + timedelta(minutes=2):
             raise HTTPException(422, "Choose a time in the future. To post at once, use Post now.")
+        from ..services import post_image_host
+        if (why := post_image_host.hosting_problem(db, b, data.get("image_url"))):
+            raise HTTPException(409, why)
     p = Post(business_id=b.id, **data, status="draft")
     db.add(p)
     db.flush()
@@ -108,6 +111,9 @@ def schedule_post(post_id: int, body: ScheduleIn, b: Business = Depends(get_busi
         raise HTTPException(422, str(exc)) from exc
     if when is None or when <= datetime.now(timezone.utc) + timedelta(minutes=2):
         raise HTTPException(422, "Choose a time in the future. To post at once, use Post now.")
+    from ..services import post_image_host
+    if (why := post_image_host.hosting_problem(db, b, p.image_url)):
+        raise HTTPException(409, why)
     task = _post_task(db, b, p.id, ("scheduled",))
     if task:  # a new time replaces the old one: back to waiting, then approved for the new time
         d = {k: v for k, v in (task.detail or {}).items() if k not in ("approved_by", "approved_at")}

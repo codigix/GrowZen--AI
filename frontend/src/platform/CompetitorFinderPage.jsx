@@ -822,6 +822,8 @@ function Research({ b }) {
   const [loadError, setLoadError] = useState('');
   const [params] = useSearchParams();
   const [tab, setTab] = useState(() => (['competitors', 'gap', 'keywords', 'traffic', 'pages', 'backlinks', 'maps', 'research'].includes(params.get('tab')) ? params.get('tab') : ['overview', 'rankings'].includes(params.get('tab')) ? 'research' : 'competitors'));
+  const [focus, setFocus] = useState({ host: '', band: '' }); // the competitor (and ranking band) a table cell sent you to
+  const goTo = (t, host = '', band = '') => { setFocus({ host, band }); setTab(t); };
   const [settings, setSettings] = useState(false);
   const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
   const [radiusKm, setRadiusKm] = useState('5'); // how far around the place a competitor may be
@@ -1159,7 +1161,7 @@ function Research({ b }) {
       {(result || registered.length > 0) && (
         <div className={isRunning(current) ? 'space-y-3 opacity-60 pointer-events-none select-none' : 'space-y-3'} aria-busy={isRunning(current)}>
           <div>
-            <Tabs value={tab} onChange={setTab} tabs={[
+            <Tabs value={tab} onChange={(t) => goTo(t)} tabs={[
               { id: 'competitors', label: 'Competitors', count: poolRows.length },
               { id: 'gap', label: 'Keyword gap' },
               { id: 'keywords', label: 'Competitor keywords' },
@@ -1170,15 +1172,15 @@ function Research({ b }) {
             ]} />
             {tab === 'competitors' && <>
               <CompetitorsPanel b={b} auto={auto} rating={rating} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
-                isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onKeywords={() => setTab('keywords')}
+                isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onGo={goTo}
                 addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
-            {tab === 'gap' && <KeywordGapTab b={b} />}
-            {tab === 'keywords' && <CompetitorKeywordsTab b={b} />}
-            {tab === 'traffic' && <TrafficTab rows={poolRows} analysis={analysis} />}
-            {tab === 'pages' && <TopPagesTab b={b} rows={poolRows} />}
-            {tab === 'backlinks' && <BacklinkTab rows={poolRows} analysis={analysis} />}
+            {tab === 'gap' && <KeywordGapTab key={focus.host} b={b} focus={focus.host} />}
+            {tab === 'keywords' && <CompetitorKeywordsTab key={`${focus.host}|${focus.band}`} b={b} focus={focus.host} band={focus.band} />}
+            {tab === 'traffic' && <TrafficTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
+            {tab === 'pages' && <TopPagesTab key={focus.host} b={b} rows={poolRows} focus={focus.host} />}
+            {tab === 'backlinks' && <BacklinkTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
             {tab === 'maps' && result && <MapsTab r={result} kit={null} />}
             {tab === 'research' && result && (
               <div className="space-y-3">

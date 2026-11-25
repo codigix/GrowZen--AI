@@ -115,10 +115,10 @@ export function downloadCsv(name, head, body) {
  */
 export default function DataTable({
   columns, rows, rowKey = (r, i) => r.id ?? i, initialSort = null, pageSize = 25, search = true, searchPlaceholder = 'Search this table', filters = [], exportName = '',
-  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState
+  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState, initialSearch = '', initialFilters = {}
 }) {
-  const [q, setQ] = useState('');
-  const [fv, setFv] = useState({});
+  const [q, setQ] = useState(initialSearch);
+  const [fv, setFv] = useState(initialFilters);
   const [hidden, setHidden] = useState(() => new Set(columns.filter(c => c.hide === true).map(c => c.id)));
   const cols = columns.filter(c => !hidden.has(c.id));
   const byId = useMemo(() => Object.fromEntries(columns.map(c => [c.id, c])), [columns]);

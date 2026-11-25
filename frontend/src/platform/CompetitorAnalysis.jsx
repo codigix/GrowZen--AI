@@ -5,6 +5,8 @@ import { Button, Badge, ErrorNote, Modal, useToast } from './SeoUi';
 import DataTable from './DataTable';
 import { BANDS, DISTANCE, band } from './CompetitorTables';
 import Select from '../components/Select';
+import Tip from './Tip';
+import { FocusBar, sameSite } from './TableBits';
 import { api } from './seoApi';
 
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
@@ -138,7 +140,7 @@ export function AnalysisStats({ rows, status, isChosen, metrics }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------- the table
-export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearCount, allCount, radius, placeName, isChosen, metrics, reload, onChoose, onRemove, onAdd, onDetail, onKeywords, addBusy, addError, onFindMaps, findBusy }) {
+export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearCount, allCount, radius, placeName, isChosen, metrics, reload, onChoose, onRemove, onAdd, onDetail, onGo, addBusy, addError, onFindMaps, findBusy }) {
   const [toast, toastNode] = useToast();
   const [sel, setSel] = useState(() => new Set());
   const [running, setRunning] = useState({}); // host -> 'running' | 'failed'
@@ -176,6 +178,11 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const remove = async () => { for (const c of picked.filter(x => x.reg)) await onRemove(c.reg); setSel(new Set()); setConfirm(false); };
   const submitAdd = async (e) => { e.preventDefault(); if (await onAdd(url.trim(), name.trim())) { setUrl(''); setName(''); setAdding(false); } };
   const city = (c) => (c.maps?.address || '').split(',').slice(-3, -1).map(x => x.trim()).filter(Boolean).join(', ') || (c.maps?.address || '').split(',')[0];
+  // A figure that is a link: pressing it lands on the page that explains it, and a sentence says where.
+  const Go = ({ tip, onClick, children }) => (
+    <Tip text={tip} align="left"><button type="button" onClick={onClick} aria-label={tip} className="rounded px-1 -mx-1 cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 hover:underline decoration-dotted underline-offset-2 focus-visible:ring-2 focus-visible:ring-indigo-400/60 outline-none">{children}</button></Tip>
+  );
+  const num0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-US'));
   const Icon = ({ label, onClick, children, disabled, tone = 'text-slate-500 hover:text-indigo-700' }) => <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className={`p-1.5 cursor-pointer disabled:opacity-30 disabled:cursor-default ${tone}`}>{children}</button>;
 
   const cols = [
@@ -186,29 +193,34 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
         <div className="flex items-center gap-2.5">
           <Logo host={c.host} name={c.name} />
           <div className="min-w-0">
-            <button type="button" onClick={() => onDetail(c)} className="block max-w-full text-left font-semibold text-slate-900 hover:text-indigo-700 truncate cursor-pointer" title={c.name}>{c.name}{c.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</button>
-            {c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" className="text-12.5 text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.host}</span><ExternalLink size={10} className="shrink-0" /></a> : <span className="block text-12 text-slate-400">no website</span>}
-            <span className="flex items-center gap-1 text-12 text-slate-500 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" /><span className="truncate" title={c.maps?.address || ''}>{city(c) || 'location not known'}</span>{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span>
+            <button type="button" onClick={() => onDetail(c)} className="block max-w-full text-left font-semibold text-slate-900 hover:text-indigo-700 hover:underline truncate cursor-pointer" title={`Open the full profile of ${c.name}: rankings, strategy, Google Maps listing, site and links`}>{c.name}{c.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</button>
+            {c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" title={`Open ${c.host} in a new tab`} className="text-12.5 text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.host}</span><ExternalLink size={10} className="shrink-0" /></a> : <span className="block text-12 text-slate-400">no website</span>}
+            <span className="flex items-center gap-1 text-12 text-slate-500 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" />{c.maps?.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.name} ${c.maps.address}`)}`} target="_blank" rel="noreferrer" title={`${c.maps.address}. Open it on Google Maps in a new tab`} className="truncate hover:text-indigo-700 hover:underline">{city(c)}</a> : <span className="truncate">location not known</span>}{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span>
           </div>
         </div>) },
-    { id: 'da', header: 'DA', value: c => c.m.da ?? null, first: 'desc', tip: { what: 'Domain Authority, 0 to 100 (Moz).' }, className: 'px-3 py-2.5 text-center', thClass: 'px-3 py-3', cell: c => <span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(c.m.da)}`}>{c.m.da ?? '—'}</span> },
-    { id: 'kw', header: 'Ranking keywords', right: true, first: 'desc', value: c => c.m.keywords ?? null, tip: { what: 'How many keywords it ranks for in a ranked-keywords read, for the market below.' } },
-    { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: c => c.m.top3 ?? null, tip: { what: 'Keywords where it holds one of the first three positions.' } },
-    { id: 'top10', header: 'Top 10', right: true, first: 'desc', value: c => c.m.top10 ?? null, tip: { what: 'Keywords on page 1 of Google.' } },
-    { id: 'avg', header: 'Avg position', right: true, value: c => c.m.avg_position ?? null, cell: c => (c.m.avg_position == null ? '—' : `#${c.m.avg_position}`) },
-    { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: c => c.m.traffic ?? null, tip: { what: 'Estimated organic visits a month from the keywords it ranks for.' }, cell: c => kfmt(c.m.traffic) },
-    { id: 'rd', header: 'Ref. domains', right: true, first: 'desc', value: c => c.m.rd ?? null, cell: c => kfmt(c.m.rd), tip: { what: 'Websites linking to it (Moz).' } },
+    { id: 'da', header: 'DA', value: c => c.m.da ?? null, first: 'desc', tip: { what: 'Domain Authority, 0 to 100 (Moz).' }, className: 'px-3 py-2.5 text-center', thClass: 'px-3 py-3', cell: c => <Go tip={`Domain Authority of ${c.host || c.name}: ${c.m.da ?? 'not read yet'}. Open the backlink comparison for it`} onClick={() => onGo('backlinks', c.host)}><span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(c.m.da)}`}>{c.m.da ?? '—'}</span></Go> },
+    { id: 'kw', header: 'Ranking keywords', right: true, first: 'desc', value: c => c.m.keywords ?? null, tip: { what: 'How many keywords it ranks for in a ranked-keywords read, for the market below.' }, cell: c => <Go tip={`See the ${num0(c.m.keywords)} keywords ${c.name} ranks for, and where you stand against it`} onClick={() => onGo('keywords', c.host)}>{num0(c.m.keywords)}</Go> },
+    { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: c => c.m.top3 ?? null, tip: { what: 'Keywords where it holds one of the first three positions.' }, cell: c => <Go tip={`See the keywords where ${c.name} is in the top 3`} onClick={() => onGo('keywords', c.host, 'top3')}>{num0(c.m.top3)}</Go> },
+    { id: 'top10', header: 'Top 10', right: true, first: 'desc', value: c => c.m.top10 ?? null, tip: { what: 'Keywords on page 1 of Google.' }, cell: c => <Go tip={`See the keywords where ${c.name} is on page 1`} onClick={() => onGo('keywords', c.host, 'top10')}>{num0(c.m.top10)}</Go> },
+    { id: 'avg', header: 'Avg position', right: true, value: c => c.m.avg_position ?? null, cell: c => <Go tip={`Average position of ${c.name} across its ranked keywords. Open them`} onClick={() => onGo('keywords', c.host)}>{c.m.avg_position == null ? '—' : `#${c.m.avg_position}`}</Go> },
+    { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: c => c.m.traffic ?? null, tip: { what: 'Estimated organic visits a month from the keywords it ranks for.' }, cell: c => <Go tip={`Estimated monthly visits to ${c.name}. Open the traffic comparison`} onClick={() => onGo('traffic', c.host)}>{kfmt(c.m.traffic)}</Go> },
+    { id: 'rd', header: 'Ref. domains', right: true, first: 'desc', value: c => c.m.rd ?? null, cell: c => <Go tip={`Websites linking to ${c.name}. Open the backlink comparison`} onClick={() => onGo('backlinks', c.host)}>{kfmt(c.m.rd)}</Go>, tip: { what: 'Websites linking to it (Moz).' } },
     { id: 'match', header: 'Match', first: 'desc', value: c => c.maps?.relevance?.score ?? null, tip: { what: 'How well it matches your business on nine factors. Open the profile for the breakdown.' },
-      cell: c => (!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <span className="inline-flex items-center gap-1.5" title={c.maps.relevance.label_text}><b className="tabular-nums">{c.maps.relevance.score}</b><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span> : <span className="text-slate-300">—</span>) },
+      cell: c => (!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <Go tip={`${c.maps.relevance.label_text || 'Match'}, score ${c.maps.relevance.score}/100. Open the profile for the nine-factor breakdown`} onClick={() => onDetail(c)}><span className="inline-flex items-center gap-1.5"><b className="tabular-nums">{c.maps.relevance.score}</b><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span></Go> : <span className="text-slate-300">—</span>) },
     { id: 'status', header: 'Status', value: c => (STATUS[c.status] || STATUS.pending)[0], className: 'px-3 py-2.5 whitespace-nowrap',
-      cell: c => <span title={failedBy[c.host] || undefined}><Badge tone={failedBy[c.host] && c.status !== 'analyzed' ? 'amber' : (STATUS[c.status] || STATUS.pending)[1]}>{c.status === 'running' && <Loader2 size={11} className="animate-spin" />}{(STATUS[c.status] || STATUS.pending)[0]}</Badge></span> },
+      cell: c => {
+        const done = c.status === 'analyzed' || c.status === 'partial';
+        const busy = c.status === 'running' || c.status === 'queued';
+        const tip = failedBy[c.host] && !done ? `Last try failed: ${failedBy[c.host]}. Press to analyze again` : done ? `${c.name} is analyzed. Open its traffic comparison` : busy ? 'It is being read now' : c.host ? 'Not analyzed yet. Press to read its Domain Authority and ranked keywords now' : 'It has no website to analyze';
+        return <Go tip={tip} onClick={() => (done ? onGo('traffic', c.host) : busy || !c.host ? null : analyze([c]))}><Badge tone={failedBy[c.host] && c.status !== 'analyzed' ? 'amber' : (STATUS[c.status] || STATUS.pending)[1]}>{c.status === 'running' && <Loader2 size={11} className="animate-spin" />}{(STATUS[c.status] || STATUS.pending)[0]}</Badge></Go>;
+      } },
     { id: 'chosen', header: 'Selected', value: c => (c.chosen ? 'Yes' : 'No'), hide: true },
     { id: 'actions', header: 'Actions', right: true, csv: false, className: 'px-2 py-1.5 text-right whitespace-nowrap',
       cell: c => (
         <span className="inline-flex items-center">
           <Icon label={`View ${c.name}`} onClick={() => onDetail(c)}><Eye size={16} /></Icon>
           <Icon label="Analyze now: Domain Authority and ranked keywords" disabled={!c.host || c.status === 'running'} onClick={() => analyze([c])}><BarChart3 size={16} /></Icon>
-          <Icon label="Its keywords" onClick={() => onKeywords(c)}><Layers size={16} /></Icon>
+          <Icon label="Its keywords" onClick={() => onGo('keywords', c.host)}><Layers size={16} /></Icon>
           <Icon label={c.chosen ? 'Remove from selected competitors' : 'Select as a competitor'} onClick={() => choose([c], !c.chosen)} tone={c.chosen ? 'text-emerald-600 hover:text-emerald-800' : 'text-slate-500 hover:text-emerald-700'}><CheckCircle2 size={16} /></Icon>
           {c.reg && <Icon label="Remove this competitor" onClick={() => { setSel(new Set([c.key])); setConfirm(true); }} tone="text-slate-400 hover:text-rose-600"><Trash2 size={16} /></Icon>}
         </span>) },
@@ -276,9 +288,10 @@ function Bars({ rows, value, fmt = kfmt, color = '#6366f1' }) {
 const Panel = ({ title, sub, children, action }) => <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4"><div className="flex items-start gap-3 mb-3"><div><h3 className="text-15 font-semibold text-slate-900">{title}</h3>{sub && <p className="text-12.5 text-slate-500">{sub}</p>}</div>{action && <div className="ml-auto">{action}</div>}</div>{children}</div>;
 const unread = (analysis, rows) => rows.filter(c => c.host && !analysis.metrics[c.host]?.keywords).length;
 
-export function TrafficTab({ rows, analysis }) {
-  const own = analysis.own;
-  const list = rows.filter(c => c.host);
+export function TrafficTab({ rows, analysis, focus = '' }) {
+  const [fh, setFh] = useState(focus);
+  const own = fh ? null : analysis.own;
+  const list = rows.filter(c => c.host && (!fh || sameSite(c.host, fh)));
   const mk = (key) => [...(own ? [{ host: own.domain, name: own.domain, you: true, v: own[key] }] : []), ...list.map(c => ({ host: c.host, name: c.name, v: analysis.metrics[c.host]?.[key] ?? null }))].sort((a, c) => (c.v ?? -1) - (a.v ?? -1));
   const data = useMemo(() => [...(own ? [{ host: own.domain, name: own.domain, you: true, ...own }] : []), ...list.map(c => ({ host: c.host, name: c.name, ...(analysis.metrics[c.host] || {}) }))], [own, rows, analysis.metrics]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = unread(analysis, rows);
@@ -298,6 +311,7 @@ export function TrafficTab({ rows, analysis }) {
   ];
   return (
     <div className="space-y-4">
+      <FocusBar name={fh} what="its traffic, rankings and authority" onAll={() => setFh('')} />
       {n > 0 && <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-12.5 text-amber-900">{n} competitor{n === 1 ? ' has' : 's have'} not been analyzed yet, so {n === 1 ? 'its' : 'their'} traffic is “not read”. They are analyzed automatically; you can also select them on the Competitors tab and press Analyze selected.</div>}
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Estimated organic traffic" sub="Visits a month from the keywords each competitor ranks for. Yours is Google clicks in the last 28 days from Search Console."><Bars rows={mk('traffic')} /></Panel>
@@ -310,9 +324,10 @@ export function TrafficTab({ rows, analysis }) {
   );
 }
 
-export function BacklinkTab({ rows, analysis }) {
-  const own = analysis.own;
-  const data = useMemo(() => [...(own ? [{ host: own.domain, name: own.domain, you: true, ...own }] : []), ...rows.filter(c => c.host).map(c => ({ host: c.host, name: c.name, ...(analysis.metrics[c.host] || {}) }))], [own, rows, analysis.metrics]);
+export function BacklinkTab({ rows, analysis, focus = '' }) {
+  const [fh, setFh] = useState(focus);
+  const own = fh ? null : analysis.own;
+  const data = useMemo(() => [...(own ? [{ host: own.domain, name: own.domain, you: true, ...own }] : []), ...rows.filter(c => c.host && (!fh || sameSite(c.host, fh))).map(c => ({ host: c.host, name: c.name, ...(analysis.metrics[c.host] || {}) }))], [own, rows, analysis.metrics, fh]);
   const bar = (key) => data.map(r => ({ host: r.host, name: r.name, you: r.you, v: r[key] ?? null })).sort((a, c) => (c.v ?? -1) - (a.v ?? -1));
   const cols = [
     { id: 'site', header: 'Site', first: 'asc', value: r => r.host, cell: r => <span className="font-medium">{r.host}{r.you && <span className="ml-2 text-11 font-semibold text-emerald-700">You</span>}</span> },
@@ -329,6 +344,7 @@ export function BacklinkTab({ rows, analysis }) {
   ];
   return (
     <div className="space-y-4">
+      <FocusBar name={fh} what="its authority and backlinks" onAll={() => setFh('')} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Domain Authority" sub="How strong each site is, 0 to 100 (Moz, through Apify)."><Bars rows={bar('da')} fmt={num} color="#8b5cf6" /></Panel>
         <Panel title="Referring domains" sub="How many different websites link to each site (Moz)."><Bars rows={bar('rd')} fmt={num} color="#6366f1" /></Panel>
@@ -339,8 +355,10 @@ export function BacklinkTab({ rows, analysis }) {
   );
 }
 
-export function TopPagesTab({ b, rows }) {
-  const [list, setList] = useState(null);
+export function TopPagesTab({ b, rows, focus = '' }) {
+  const [all, setList] = useState(null);
+  const [fh, setFh] = useState(focus);
+  const list = all && (fh ? all.filter(p => sameSite(p.domain, fh)) : all);
   const domains = rows.map(c => c.host).filter(Boolean);
   useEffect(() => { let on = true; api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/pages`, { method: 'POST', body: { domains } }).then(r => on && setList(r.pages || [])).catch(() => on && setList([])); return () => { on = false; }; }, [b.id, domains.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!list) return <div className="flex items-center justify-center gap-2 py-14 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Loading…</div>;
@@ -357,7 +375,7 @@ export function TopPagesTab({ b, rows }) {
     { id: 'best', label: 'Best position', options: BANDS.filter(x => x[0] !== 'none'), test: (p, v) => band(p.best) === v },
     { id: 'traffic', label: 'Traffic', options: [['100', '100+ a month'], ['1000', '1,000+ a month']], test: (p, v) => p.traffic >= Number(v) },
   ];
-  return <DataTable columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />;
+  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} /><DataTable key={fh} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." /></>;
 }
 
 export { hostOf };

@@ -639,9 +639,9 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
   const upload = (file) => file && run('up', async () => {
     if (!/^image\/(jpeg|png)$/.test(file.type)) throw new Error('Use a JPG or PNG photo.');
     if (file.size > 25 * 1024 * 1024) throw new Error('Photos must be under 25 MB.');
-    const r = await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category: 'ADDITIONAL', data_base64: await readBase64(file), content_type: file.type } });
-    if (!r.googleUrl) throw new Error('Google has not returned the photo address yet. Pick it from Profile photos in a moment.');
-    setBroken(false); set({ image_url: r.googleUrl }); toast('Photo added to your Google profile and attached to this post');
+    // Kept for this post only: it is not added to the profile's Photos.
+    const r = await api(`/businesses/${b.id}/gbp/post-picture`, { method: 'POST', body: { data_base64: await readBase64(file), name: file.name } });
+    setBroken(false); set({ image_url: r.url }); toast('Picture attached to this post');
   });
   const makeCard = (style) => run('card', async () => {
     const r = await api(`/businesses/${b.id}/posts/image`, { method: 'POST', body: { title: edit.title || null, body: edit.body, post_type: edit.post_type, style: style || null, coupon_code: edit.coupon_code || null,
@@ -649,9 +649,8 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
     setCard(r);
   });
   const useCard = () => card && run('up', async () => {
-    const r = await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category: 'ADDITIONAL', data_base64: card.image_base64, content_type: 'image/jpeg' } });
-    if (!r.googleUrl) throw new Error('Google has not returned the picture address yet. Press Use this picture again in a moment.');
-    setBroken(false); set({ image_url: r.googleUrl }); setCard(null); toast('Picture added to your Google profile and attached to this post');
+    const r = await api(`/businesses/${b.id}/gbp/post-picture`, { method: 'POST', body: { data_base64: card.image_base64 } });
+    setBroken(false); set({ image_url: r.url }); setCard(null); toast('Picture attached to this post');
   });
   const compose = (tagsOnly) => run('ai', async () => {
     const r = await api(`/businesses/${b.id}/posts/compose`, { method: 'POST', body: { topic: tagsOnly ? (edit.body || topic).slice(0, 300) : topic, post_type: edit.post_type } });
@@ -668,7 +667,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
           <div className="text-13 font-semibold text-slate-800 mb-2">1 · Picture <span className="text-red-600" title="Required">*</span> <span className="font-normal text-12 text-slate-500">Every post needs a picture. 1200 × 900 px is Google's recommended size.</span></div>
           {img ? (
             <div className="flex items-center gap-3 p-2 rounded-lg ring-1 ring-slate-200">
-              <img src={img} alt="" className="w-20 h-20 rounded-md object-cover bg-slate-100" onError={() => setBroken(true)} />
+              <img src={img} alt="" referrerPolicy="no-referrer" className="w-20 h-20 rounded-md object-cover bg-slate-100" onError={() => setBroken(true)} />
               <div className="flex-1 min-w-0 text-12 text-slate-500 truncate">{edit.image_url}</div>
               <Button size="sm" onClick={() => set({ image_url: '' })}>Remove</Button>
             </div>
@@ -790,7 +789,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
         <div className="text-12 font-semibold uppercase tracking-wide text-slate-400">How it will look on Google</div>
         <div className="bg-white rounded-2xl ring-1 ring-slate-200 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2.5 p-3"><BusinessAvatar name={b.name} src={b.logo} size="w-9 h-9" /><div className="min-w-0"><div className="text-13 font-medium text-slate-900 truncate">{b.name}</div><div className="text-11.5 text-slate-500">Just now · {edit.post_type === 'Update' ? 'Update' : edit.post_type}</div></div></div>
-          {img ? <img src={img} alt="" className="w-full aspect-[4/3] object-cover bg-slate-100" onError={() => setBroken(true)} /> : <div className="w-full aspect-[4/3] bg-gradient-to-br from-sky-100 to-emerald-100 flex flex-col items-center justify-center gap-1 text-slate-400"><ImageIcon size={28} /><span className="text-12">Add a picture</span></div>}
+          {img ? <img src={img} alt="" referrerPolicy="no-referrer" className="w-full aspect-[4/3] object-cover bg-slate-100" onError={() => setBroken(true)} /> : <div className="w-full aspect-[4/3] bg-gradient-to-br from-sky-100 to-emerald-100 flex flex-col items-center justify-center gap-1 text-slate-400"><ImageIcon size={28} /><span className="text-12">Add a picture</span></div>}
           <div className="p-3.5">
             {edit.title && edit.post_type !== 'Update' && <div className="text-14 font-medium text-slate-900 mb-1">{edit.title}</div>}
             {edit.post_type !== 'Update' && (edit.starts_on || edit.ends_on) && <div className="text-12.5 text-slate-500 mb-1.5">{shortDay(edit.starts_on)}{edit.start_time && edit.post_type === 'Event' ? `, ${edit.start_time}` : ''}{edit.ends_on && edit.ends_on !== edit.starts_on ? ` – ${shortDay(edit.ends_on)}` : ''}{edit.end_time && edit.post_type === 'Event' ? `${edit.ends_on && edit.ends_on !== edit.starts_on ? ', ' : ' – '}${edit.end_time}` : ''}</div>}
@@ -878,7 +877,7 @@ function PostsTab({ b, toast }) {
         <ErrorNote>{!edit && error}</ErrorNote>
         {clicks.data && !clicks.data.available && <p className="px-5 pb-2 text-12 text-amber-800">{clicks.data.reason}</p>}
         {!posts.data ? <div className="px-5 pb-4"><SkList rows={4} thumb /></div> : (
-          <DataTable bare rows={tableRows} rowKey={r => r.key} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
+          <DataTable bare rows={tableRows} rowKey={r => r.key} initialSort={{ key: 'date', dir: 'desc' }} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
             headClass="bg-slate-100 text-slate-700" rowClass={r => (POST_LOOK[r.status] || POST_LOOK.draft)[1]}
             empty="No posts yet. Press New post."
             filters={[{ id: 'status', label: 'Status', options: [['live', 'Live'], ['scheduled', 'Scheduled'], ['draft', 'Draft'], ['failed', 'Failed']], test: (r, v) => r.status === v }]}
@@ -898,7 +897,7 @@ function PostsTab({ b, toast }) {
                 cell: r => (
                   <span className="inline-flex flex-wrap justify-end gap-1.5">
                     {r.url && <a href={r.url} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Open on Google: see the post as customers see it." /></a>}
-                    {r.live && <Act icon={Pencil} tone="indigo" tip="Edit: change this live post on Google." onClick={() => setLiveEdit(r.live)} />}
+                    {(r.live || (r.status === 'live' && r.local?.external_id)) && <Act icon={Pencil} tone="indigo" tip="Edit: change this live post on Google." onClick={() => setLiveEdit(r.live || { id: r.local.external_id, summary: r.local.body, cta: r.local.cta_type, cta_url: r.local.cta_url, title: r.local.title, type: String(r.local.post_type || 'STANDARD').toUpperCase() })} />}
                     {r.task && <Act icon={Pencil} tone="violet" tip={r.status === 'scheduled' ? 'Open: see or change the text, picture and time of this scheduled post.' : 'Edit and approve: change the text, picture or time, then approve it for its time or publish it.'} onClick={() => setReview(r.task)}>{r.status === 'scheduled' ? 'Open' : 'Edit & approve'}</Act>}
                     {r.local && r.status !== 'live' && linkedProfile && <Act tone="green" busy={busy === `p${r.local.id}`} tip={r.status === 'scheduled' ? 'Post now: send it at once instead of at the scheduled time.' : 'Post now: put it on Google at once.'} onClick={() => publish(r.local.id)}>Post now</Act>}
                     {r.local && r.status !== 'live' && linkedProfile && <Act tone="indigo" tip={r.status === 'scheduled' ? 'Change time: move the time it goes live.' : 'Schedule: choose when it goes live.'} onClick={() => setReschedule({ id: r.local.id, date: dayStr(1), time: '09:00' })}>{r.status === 'scheduled' ? 'Change time' : 'Schedule'}</Act>}

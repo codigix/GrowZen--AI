@@ -84,6 +84,19 @@ def picture_bytes(b: Business, p: Post) -> bytes:
     return post_image.for_business(b, title=p.title, body=p.body, post_type=p.post_type, coupon=p.coupon_code, starts_on=p.starts_on, ends_on=p.ends_on, start_time=p.start_time)
 
 
+def hosting_problem(db: Any, b: Business, image_url: str | None) -> str | None:
+    """Why a post with this picture could not be sent to Google right now (None when it can). Checked when a post is SCHEDULED, so it is refused then instead of failing at its time."""
+    if is_public_address(image_url) or _public_bases():
+        return None
+    from . import article_publishing as ap
+    target = ap.site_target(db, b)
+    if target is not None and target.method == "wordpress":
+        return None
+    return ("This post cannot be scheduled yet: Google downloads a post's picture from a public web address, and this server is only reachable on this computer "
+            "(PUBLIC_BASE_URL is not a public https address) and no WordPress website is connected to hold the picture. Set PUBLIC_BASE_URL to this server's public https address, "
+            "connect WordPress in Publishing Setup, or use a picture that is already on your website.")
+
+
 def source_url(db: Any, b: Business, p: Post) -> str:
     """The public address of the post's picture, for Google to fetch. Raises HostError, with what to do, when there is none."""
     if is_public_address(p.image_url):
