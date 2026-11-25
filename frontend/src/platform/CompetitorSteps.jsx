@@ -1,7 +1,8 @@
 import React from 'react';
-import { ArrowRight, Check, Loader2, MapPin, Plus, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, Plus, Search, Users } from 'lucide-react';
 import { Button, ErrorNote } from './SeoUi';
 import Select from '../components/Select';
+import { useCompetitorGap } from './CompetitorKeywordTabs';
 
 export const STEPS = [
   { id: 'find', n: 1, label: 'Find', what: 'Look up the businesses around your place' },
@@ -9,33 +10,6 @@ export const STEPS = [
   { id: 'analyze', n: 3, label: 'Analyze', what: 'Read their authority, keywords and traffic' },
   { id: 'opportunities', n: 4, label: 'Opportunities', what: 'Keywords to win, and how you compare' },
 ];
-
-/** The four steps across the top of the page. Each says where you are and what is done, and can be pressed to go there. `notes` is { stepId: 'short status' }. */
-export function Stepper({ step, onStep, notes = {}, done = {} }) {
-  const at = STEPS.findIndex(s => s.id === step);
-  return (
-    <nav aria-label="Competitor steps" className="rounded-xl bg-white ring-1 ring-slate-200 px-2 py-2">
-      <ol className="grid gap-1" style={{ gridTemplateColumns: `repeat(${STEPS.length}, minmax(0, 1fr))` }}>
-        {STEPS.map((s, i) => {
-          const on = s.id === step;
-          const ok = done[s.id] && !on;
-          return (
-            <li key={s.id}>
-              <button type="button" onClick={() => onStep(s.id)} aria-current={on ? 'step' : undefined} title={s.what}
-                className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left cursor-pointer transition-colors ${on ? 'bg-indigo-50 ring-1 ring-indigo-200' : 'hover:bg-slate-50'}`}>
-                <span className={`w-8 h-8 shrink-0 rounded-full inline-flex items-center justify-center text-13 font-bold ${on ? 'bg-indigo-600 text-white' : ok ? 'bg-emerald-100 text-emerald-700' : i < at ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-500'}`}>{ok ? <Check size={16} strokeWidth={3} /> : s.n}</span>
-                <span className="min-w-0">
-                  <span className={`block text-13.5 font-semibold ${on ? 'text-indigo-800' : 'text-slate-900'}`}>{s.label}</span>
-                  <span className="block text-12 text-slate-500 truncate">{notes[s.id] || s.what}</span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
-  );
-}
 
 const COUNTRIES = { IN: 'India', US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia', AE: 'United Arab Emirates', DE: 'Germany', FR: 'France', SG: 'Singapore' };
 const LANGS = { en: 'English', hi: 'Hindi', mr: 'Marathi', gu: 'Gujarati', ta: 'Tamil', te: 'Telugu', bn: 'Bengali', es: 'Spanish', fr: 'French', de: 'German', ar: 'Arabic' };
@@ -107,3 +81,52 @@ export function Searching({ text }) {
 }
 
 export { MapPin };
+
+/** The page you land on: four big cards, one per job. Each says where that job stands and has one button. There is nothing to click across the top. */
+export function HomeCards({ b, found, chosen, analyzed, avgDa, onOpen, onPanel }) {
+  const gap = useCompetitorGap(b);
+  const missing = gap.data?.counts?.missing;
+  const next = !found ? 'find' : !chosen ? 'shortlist' : analyzed < found ? 'analyze' : 'opportunities'; // the one card to highlight: what to do next
+  const cards = [
+    { id: 'find', n: 1, title: 'Find competitors', text: 'Look up the businesses Google Maps shows around your place, or add one by its website.',
+      stat: found ? `${found} found` : 'Not started', done: found > 0, button: found ? 'Find more' : 'Find competitors', primary: next === 'find' },
+    { id: 'shortlist', n: 2, title: 'Choose competitors', text: 'Pick the ones a customer would choose instead of you. Around 3 to 8 works best.',
+      stat: found ? `${chosen} chosen of ${found}` : 'Find competitors first', done: chosen > 0, button: 'Choose competitors', disabled: !found, primary: next === 'shortlist' },
+    { id: 'analyze', n: 3, title: 'Analyze', text: 'Their authority, keywords and estimated visitors in one table, with every column and filter.',
+      stat: found ? `${analyzed} of ${found} analyzed${avgDa != null ? ` · average authority ${avgDa}` : ''}` : 'Find competitors first', done: found > 0 && analyzed >= found, button: 'Open the table', disabled: !found, primary: next === 'analyze' },
+    { id: 'opportunities', n: 4, title: 'Opportunities', text: 'Keywords to win, their best pages, traffic and backlinks compared, the map, and new keyword ideas.',
+      stat: missing != null && analyzed ? `${missing.toLocaleString('en-US')} keywords to win` : analyzed ? 'Ready' : 'Analyze competitors first', done: false, button: 'See opportunities', disabled: !analyzed, primary: next === 'opportunities' },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-14 text-slate-700 max-w-2xl">Work through the four jobs in order, or open any of them. Your choices are kept, so you can come back at any time.</p>
+        <Button size="sm" icon={Users} className="ml-auto" onClick={onPanel} title="Add, choose and remove competitors">My competitors</Button>
+      </div>
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 440px), 1fr))' }}>
+        {cards.map(c => (
+          <div key={c.id} className={`rounded-2xl bg-white p-5 flex flex-col ring-1 ${c.primary ? 'ring-2 ring-indigo-400' : 'ring-slate-200'} ${c.disabled ? 'opacity-70' : ''}`}>
+            <div className="flex items-center gap-3">
+              <span className={`w-9 h-9 rounded-full inline-flex items-center justify-center text-14 font-bold ${c.done ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-50 text-indigo-700'}`}>{c.done ? <Check size={17} strokeWidth={3} /> : c.n}</span>
+              <h3 className="text-16 font-semibold text-slate-900">{c.title}</h3>
+            </div>
+            <p className="mt-3 text-13 text-slate-600 flex-1">{c.text}</p>
+            <div className="mt-4 text-13.5 font-semibold text-slate-900">{c.stat}</div>
+            <Button variant={c.primary ? 'primary' : 'secondary'} className="mt-3 self-start" disabled={c.disabled} onClick={() => onOpen(c.id)}>{c.button}<ArrowRight size={15} className="ml-1.5 inline" /></Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** On every page except the home: one Back button, and the name of where you are. */
+export function PageBar({ label, onHome, onPanel }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button icon={ArrowLeft} onClick={onHome}>Back to Competitors</Button>
+      <span className="text-13 text-slate-500">{label}</span>
+      <Button size="sm" icon={Users} className="ml-auto" onClick={onPanel} title="Add, choose and remove competitors">My competitors</Button>
+    </div>
+  );
+}

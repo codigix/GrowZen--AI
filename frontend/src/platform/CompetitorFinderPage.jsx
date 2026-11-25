@@ -17,7 +17,7 @@ import Select from '../components/Select';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
 import ResearchTab from './CompetitorResearch';
 import CompetitorMaps from './CompetitorMaps';
-import { Stepper, FindStep, STEPS, Heading2 } from './CompetitorSteps';
+import { HomeCards, PageBar, FindStep, STEPS, Heading2 } from './CompetitorSteps';
 import { ShortlistStep, OpportunitiesStep } from './CompetitorFlowSteps';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
@@ -1116,10 +1116,8 @@ function Research({ b }) {
   if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="space-y-4"><SkCard title="Competitor research" subtitle="Who ranks for your keywords on Google and Maps"><Sk h="h-9" w="w-2/3" /></SkCard><SkCard title="Competitors found" pad={false}><SkTable headers={["Competitor", "Type", "Keywords", "Best position"]} rows={6} bare /></SkCard></div>;
   const p = current?.result?.progress;
   const s = result?.summary;
-  const cur = stepRaw || (registered.length ? 'shortlist' : 'find');
+  const cur = stepRaw || 'home';
   const analyzedCount = poolRows.filter(c => statusOf(c) === 'analyzed').length;
-  const stepNotes = { find: registered.length ? `${registered.length} found` : '', shortlist: registered.length ? `${chosenTotal} chosen` : '', analyze: chosenTotal ? `${analyzedCount} of ${chosenTotal} analyzed` : '' };
-  const stepDone = { find: registered.length > 0, shortlist: chosenTotal > 0, analyze: chosenTotal > 0 && analyzedCount >= chosenTotal, opportunities: false };
   const t = cur === 'opportunities' ? (tab === 'competitors' ? 'gap' : tab) : 'competitors'; // the screen shown in steps 2 to 4 until each is rebuilt
 
   return (
@@ -1127,7 +1125,9 @@ function Research({ b }) {
       {toastNode}
 
 
-      <Stepper step={cur} onStep={setStepRaw} notes={stepNotes} done={stepDone} />
+      {cur === 'home'
+        ? <HomeCards b={b} found={poolRows.length} chosen={chosenTotal} analyzed={analyzedCount} avgDa={(() => { const d = poolRows.map(c => analysis.metrics[c.host]?.da).filter(v => v != null); return d.length ? Math.round(d.reduce((x, v) => x + v, 0) / d.length) : null; })()} onOpen={setStepRaw} onPanel={() => setPanel(true)} />
+        : <PageBar label={{ find: 'Find competitors', shortlist: 'Choose competitors', analyze: 'Analyze', opportunities: 'Opportunities' }[cur]} onHome={() => setStepRaw('home')} onPanel={() => setPanel(true)} />}
       {current?.status === 'failed' && <ErrorNote>{current.error || 'The research failed.'}</ErrorNote>}
       {isRunning(current) && <LiveResults progress={p} />}
 
@@ -1152,11 +1152,6 @@ function Research({ b }) {
           </div>
         </details>} />}
 
-      {cur !== 'find' && <div className="flex flex-wrap items-center gap-2 text-13 text-slate-600">
-        <span><b className="text-slate-900">{poolRows.length}</b> competitor{poolRows.length === 1 ? '' : 's'} · <b className="text-slate-900">{chosenTotal}</b> chosen</span>
-        <button type="button" onClick={() => setStepRaw('find')} className="ml-1 text-indigo-700 font-semibold hover:underline cursor-pointer">Find or add more</button>
-        <Button size="sm" icon={Users} className="ml-auto" onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors</Button>
-      </div>}
       {cur === 'shortlist' && <ShortlistStep rows={poolRows} isChosen={isChosenRow} onChoose={chooseCompetitor} onRemove={removeCompetitor} onNext={() => setStepRaw('analyze')} onFind={() => setStepRaw('find')} />}
       {cur === 'analyze' && <>
         <Heading2 title="Analyze your competitors" text="Their authority, keywords and estimated visitors, all in one table. Use Columns to show more, Filters to narrow the list, and the buttons on a row to analyze it or open its details." />

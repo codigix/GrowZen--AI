@@ -62,3 +62,9 @@ Rules from the owner: no tab bars anywhere (moving between views is done with bu
 - Auto-analyze again reads every competitor found, as before the redesign (an earlier version of the redesign limited it to the chosen ones).
 - Browser checks: 18 of 18 (full table and every column, filters, bulk actions, drawer, add-to-My-Keywords, old links).
 - Removed from the page and no longer used (still in the code): my trimmed Analyze table, the merged Keywords view and the competitor detail window. They can be deleted.
+
+## Layout change: home screen of four cards (owner's choice, replaces the step bar across the top)
+- /competitor-finder opens on a home screen with four big cards (Find competitors, Choose competitors, Analyze, Opportunities), each with its real status and one button; only the next thing to do is highlighted. No bar or tabs across the top.
+- Every other page has one "Back to Competitors" button and a "My competitors" button. Inside Opportunities, an "All opportunities" button goes back one level.
+- Old links (?tab=..., ?step=...) still open the right page directly.
+- 8 browser checks pass; the full tables, columns and filters are unchanged.
