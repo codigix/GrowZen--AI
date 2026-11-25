@@ -220,3 +220,23 @@ def test_apifys_own_limit_messages_pause_the_provider_instead_of_retrying_every_
     assert calls == ["a.example"]  # the first answer paused Apify: the other two were not sent
     u = client.get(f"{base}/usage").json()
     assert set(u["paused"]) == {"apify_moz", "apify_ranked"}
+
+
+def test_history_shows_an_earlier_read_for_a_competitor_analyzed_before_runs_were_kept(client):
+    from datetime import datetime, timezone
+    from app.backlinks.models import BiDomainMetric
+    from app.db import SessionLocal
+    from app.models import CompetitorKeyword
+    bid = _project(client)
+    base = KW.format(bid=bid)
+    assert client.get(f"{base}/history", params={"domain": "old.example"}).json()["runs"] == []  # never read: nothing is made up
+    db = SessionLocal()
+    now = datetime.now(timezone.utc)
+    db.add(BiDomainMetric(domain="old.example", da=37, pa=30, spam_score=1, linking_domains=210, source="apify", fetched_at=now))
+    db.add(CompetitorKeyword(business_id=bid, domain="old.example", keyword="saree rental", position=4, volume=300, traffic=20.0, url="https://old.example/s", read_at=now))
+    db.commit()
+    db.close()
+    runs = client.get(f"{base}/history", params={"domain": "old.example"}).json()["runs"]
+    assert len(runs) == 1 and runs[0]["earlier"] is True and runs[0]["trigger"] == "earlier" and runs[0]["status"] == "analyzed"
+    assert runs[0]["snapshot"]["da"] == 37 and runs[0]["snapshot"]["keywords"] == 1 and runs[0]["finished_at"]
+    assert client.get(f"{base}/history", params={"domain": "null"}).json()["runs"] == []

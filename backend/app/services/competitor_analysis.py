@@ -259,9 +259,20 @@ def analyze_one(db: Session, b: Business, domain: str, limit: int = 100, trigger
 def history(db: Session, b: Business, domain: str, limit: int = 20) -> list[dict[str, Any]]:
     """The earlier analyses of one competitor, newest first."""
     from ..models import CompetitorAnalysisRun  # noqa: PLC0415
-    q = select(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.domain == _host(domain)).order_by(CompetitorAnalysisRun.id.desc()).limit(limit)
-    return [{"id": r.id, "status": r.status, "trigger": r.trigger, "started_at": r.started_at.isoformat() if r.started_at else None, "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-             "parts": r.parts or {}, "missing": r.missing or [], "error": r.error, "snapshot": r.snapshot or {}} for r in db.scalars(q)]
+    d = _host(domain)
+    q = select(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.domain == d).order_by(CompetitorAnalysisRun.id.desc()).limit(limit)
+    out = [{"id": r.id, "status": r.status, "trigger": r.trigger, "started_at": r.started_at.isoformat() if r.started_at else None, "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "parts": r.parts or {}, "missing": r.missing or [], "error": r.error, "snapshot": r.snapshot or {}} for r in db.scalars(q)]
+    if not out and valid_domain(d):
+        # Analyzed before runs were kept: show what is stored, with its real read dates, as one earlier entry. Nothing is invented and nothing is written.
+        m = metrics(db, b, [d]).get(d) or {}
+        if m.get("status") in ("analyzed", "partial"):
+            when = max(filter(None, [m.get("kw_read_at"), m.get("site_read_at")]), default=None)
+            parts = {"authority": {"provider": "Moz via Apify", "status": "ok" if m.get("da") is not None else "failed"},
+                     "keywords": {"provider": "Apify ranked-keywords actor", "status": "ok" if m.get("keywords") is not None else "failed"}}
+            out = [{"id": None, "status": m["status"], "trigger": "earlier", "started_at": when, "finished_at": when, "parts": parts, "missing": [k for k, v in parts.items() if v["status"] != "ok"], "error": None,
+                    "snapshot": {k: m.get(k) for k in ("da", "pa", "spam", "rd", "keywords", "traffic", "top3", "top10", "avg_position")}, "earlier": True}]
+    return out
 
 
 def usage(db: Session, b: Business, limit: int = 50) -> dict[str, Any]:

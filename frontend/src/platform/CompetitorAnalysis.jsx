@@ -395,8 +395,8 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           : hist?.error ? <ErrorNote>{hist.error}</ErrorNote>
           : !hist?.runs.length ? <p className="text-13 text-slate-500">Not analyzed yet. Each analysis is kept here; a refresh adds a new line and never replaces an old one.</p>
           : <ul className="space-y-2">{hist.runs.map(r => (
-            <li key={r.id} className="rounded-lg ring-1 ring-slate-200 px-3 py-2 text-12.5">
-              <div className="flex flex-wrap items-center gap-2"><Badge tone={(STATUS[r.status] || STATUS.pending)[1]}>{(STATUS[r.status] || [r.status])[0]}</Badge><span className="text-slate-600">{fdate(r.finished_at || r.started_at)}</span><span className="text-slate-400">{r.trigger === 'auto' ? 'automatic' : 'by hand'}</span></div>
+            <li key={r.id ?? 'earlier'} className="rounded-lg ring-1 ring-slate-200 px-3 py-2 text-12.5">
+              <div className="flex flex-wrap items-center gap-2"><Badge tone={(STATUS[r.status] || STATUS.pending)[1]}>{(STATUS[r.status] || [r.status])[0]}</Badge><span className="text-slate-600">{fdate(r.finished_at || r.started_at)}</span><span className="text-slate-400">{r.earlier ? 'read before history was kept' : r.trigger === 'auto' ? 'automatic' : 'by hand'}</span></div>
               <div className="mt-1 text-slate-600">{Object.entries(r.parts || {}).map(([k, v]) => `${k === 'authority' ? 'Domain Authority' : 'Ranked keywords'}: ${v.status === 'ok' ? 'read' : 'not read'} (${v.provider})`).join(' · ') || '—'}</div>
               {r.error && <div className="mt-1 text-amber-700">{r.error}</div>}
               {r.snapshot && Object.values(r.snapshot).some(v => v != null) && <div className="mt-1 text-slate-500">DA {r.snapshot.da ?? '—'} · keywords {num(r.snapshot.keywords)} · top 10 {num(r.snapshot.top10)} · traffic {kfmt(r.snapshot.traffic)} · ref. domains {kfmt(r.snapshot.rd)}</div>}
