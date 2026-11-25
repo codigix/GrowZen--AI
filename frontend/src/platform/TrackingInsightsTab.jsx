@@ -17,7 +17,7 @@ const LIKELY = { High: 'bg-emerald-100 text-emerald-800', Medium: 'bg-amber-100 
 const FEATURE_COLOR = { Ads: '#f59e0b', 'People also ask': '#8b5cf6', 'Local pack': '#14b8a6', 'Knowledge panel': '#2563eb', Videos: '#ef4444', Shopping: '#ec4899', Discussions: '#64748b', 'AI overview': '#0ea5e9' };
 const shortDay = (d) => new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-function Change({ now, before, unit = '', good = 'up' }) {
+export function Change({ now, before, unit = '', good = 'up' }) {
   if (before == null || now == null) return <span className="text-12 text-slate-400">no earlier check</span>;
   const d = Math.round((now - before) * 10) / 10;
   if (d === 0) return <span className="inline-flex items-center gap-0.5 text-12.5 text-slate-500"><Minus size={12} />no change</span>;
@@ -25,7 +25,7 @@ function Change({ now, before, unit = '', good = 'up' }) {
   return <span className={`inline-flex items-center gap-0.5 text-12.5 font-semibold ${better ? 'text-emerald-600' : 'text-rose-600'}`}>{d > 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{d > 0 ? '+' : ''}{d}{unit}</span>;
 }
 
-const Tile = ({ label, value, change, tip }) => <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3" title={tip}><div className="text-13 text-slate-500">{label}</div><div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{value}</div><div className="mt-0.5">{change}</div></div>;
+export const Tile = ({ label, value, change, tip }) => <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3" title={tip}><div className="text-13 text-slate-500">{label}</div><div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{value}</div><div className="mt-0.5">{change}</div></div>;
 const Panel = ({ title, tip, children, className = '' }) => <div className={`rounded-xl bg-white ring-1 ring-slate-200 p-4 ${className}`}><h3 className="text-15 font-semibold text-slate-900 flex items-center gap-1.5">{title}{tip && <span title={tip} className="text-slate-400 cursor-help"><Info size={13} /></span>}</h3>{children}</div>;
 
 export default function TrackingInsightsTab({ b, keyword, setTab }) {

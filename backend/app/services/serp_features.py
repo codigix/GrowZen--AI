@@ -156,3 +156,77 @@ def insights(db: Session, b: Business, keyword: str | None = None) -> dict[str, 
             "intents": [{"intent": i, "count": c, "pct": round(100 * c / n, 1)} for i, c in intents.most_common()] if n else [],
             "landscape": land, "opportunities": opp, "trend": trend, "feature_types": sum(1 for f in rep["features"] if f["count"]),
             "average_position": round(sum(ranked) / len(ranked), 1) if ranked else None, "not_ranking": n - len(ranked), "have_prev": have_prev}
+
+
+def competitors(db: Session, b: Business, keyword: str | None = None, days: int = 90) -> dict[str, Any]:
+    """Who ranks on the tracked searches next to the project, from the stored reads of Google's top 10: per site its estimated visibility (share of clicks by position), average position, estimated
+    traffic, searches in the top 3 and top 10, and the same for each day read. Your own site is counted from its checked position. Estimates use an average click curve; the positions are Google's."""
+    from ..competitors import hygiene  # noqa: PLC0415
+    from . import gsc  # noqa: PLC0415
+    kws = {k.keyword: k for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)))}
+    one = " ".join((keyword or "").lower().split()) or None
+    scope = {one} if one else set(kws)
+    since = date.today() - timedelta(days=max(7, min(days, 365)))
+    logs = [r for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= since).order_by(KeywordRankLog.day)) if r.keyword in scope and r.serp_extra]
+    own = gsc.host_of(b.website) or "your site"
+    own = own[4:] if own.startswith("www.") else own
+    rivals = {x.replace("www.", "") for x in hygiene.saved_competitor_domains(db, b, limit=20)}
+
+    def positions(r: KeywordRankLog) -> dict[str, int]:
+        out = {str(x.get("d") or "").replace("www.", ""): int(x["p"]) for x in (r.serp or []) if x.get("d") and x.get("p")}
+        out.pop(own, None)  # the live top 10 can hold your own page too: your own position is the checked one below
+        if r.rank:
+            out[own] = int(r.rank)
+        return out
+
+    by_day: dict[str, list[tuple[str, dict[str, int]]]] = {}
+    latest: dict[str, tuple[str, dict[str, int]]] = {}
+    for r in logs:
+        row = (r.keyword, positions(r))
+        by_day.setdefault(r.day.isoformat(), []).append(row)
+        latest[r.keyword] = row
+
+    def stats(rows: list[tuple[str, dict[str, int]]]) -> dict[str, dict[str, Any]]:
+        n = len(rows)
+        agg: dict[str, dict[str, Any]] = {}
+        for kw, pos in rows:
+            vol = (kws.get(kw).volume if kws.get(kw) else 0) or 0
+            for d, p in pos.items():
+                a = agg.setdefault(d, {"vis": 0.0, "traffic": 0.0, "pos": [], "top3": 0, "top10": 0, "kw": 0})
+                c = organic._ctr(p)
+                a["vis"] += c
+                a["traffic"] += c * vol
+                a["pos"].append(p)
+                a["kw"] += 1
+                a["top3"] += 1 if p <= 3 else 0
+                a["top10"] += 1 if p <= 10 else 0
+        for a in agg.values():
+            a["visibility"] = round(100 * a["vis"] / n, 1) if n else None
+            a["average"] = round(sum(a["pos"]) / len(a["pos"]), 1) if a["pos"] else None
+            a["traffic"] = round(a["traffic"])
+        return agg
+
+    now = stats(list(latest.values()))
+    total_vis = sum(a["vis"] for a in now.values()) or 1.0
+    total_tr = sum(a["traffic"] for a in now.values()) or 1
+    order = sorted(now, key=lambda d: -now[d]["vis"])
+    rest = [d for d in order if d != own]
+    shown = ([own] if own in now else []) + rest[:4]
+    days_sorted = sorted(by_day)
+    per_day = {d: stats(by_day[d]) for d in days_sorted}
+    series = []
+    for d in days_sorted:
+        row: dict[str, Any] = {"day": d}
+        for dom in shown:
+            a = per_day[d].get(dom)
+            row[dom] = {"visibility": a["visibility"] if a else 0, "average": a["average"] if a else None, "traffic": a["traffic"] if a else 0}
+        series.append(row)
+    table = []
+    for dom in ([own] if own in now else []) + rest[:12]:
+        a = now[dom]
+        table.append({"domain": dom, "you": dom == own, "competitor": dom in rivals, "visibility": a["visibility"], "average": a["average"], "traffic": a["traffic"], "top3": a["top3"], "top10": a["top10"], "keywords": a["kw"],
+                      "trend": [{"day": d, "v": (per_day[d].get(dom) or {}).get("visibility", 0)} for d in days_sorted]})
+    share = [{"domain": d, "you": d == own, "share": round(100 * now[d]["vis"] / total_vis, 1)} for d in shown]
+    share.append({"domain": "Others", "you": False, "share": round(max(0.0, 100 - sum(x["share"] for x in share)), 1)})
+    voice = [{"domain": d, "keywords": now[d]["top10"], "share": round(100 * now[d]["traffic"] / total_tr, 1), "competitor": d in rivals} for d in rest[:6]]
+    return {"scope": one or "all", "read": len(latest), "own": own, "domains": shown, "series": series, "table": table, "share": share, "voice": voice, "days_read": len(days_sorted)}
