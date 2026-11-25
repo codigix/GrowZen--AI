@@ -9,7 +9,7 @@ import { api } from './seoApi';
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : num(n));
 const hostOf = (u) => { try { return new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
-const STATUS = { analyzed: ['Analyzed', 'green'], partial: ['Partly read', 'amber'], pending: ['Pending', 'gray'], running: ['Analyzing…', 'blue'], failed: ['Failed', 'red'] };
+const STATUS = { analyzed: ['Analyzed', 'green'], partial: ['Partly read', 'amber'], pending: ['Pending', 'gray'], queued: ['Waiting', 'gray'], running: ['Analyzing…', 'blue'], failed: ['Failed', 'red'] };
 const daTone = (v) => (v == null ? 'bg-slate-100 text-slate-400' : v >= 60 ? 'bg-emerald-100 text-emerald-800' : v >= 30 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800');
 const COST = (n) => (0.021 + 0.003 * n).toFixed(2);
 
@@ -17,13 +17,78 @@ const COST = (n) => (0.021 + 0.003 * n).toFixed(2);
 export function useAnalysis(b, domains) {
   const [data, setData] = useState({ metrics: {}, own: null });
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const key = domains.slice().sort().join('|');
   const load = useCallback(async () => {
     setLoading(true);
-    try { setData(await api(`/businesses/${b.id}/keyword-workspace/competitor-analysis`, { method: 'POST', body: { domains } })); } catch { /* the table still shows without the figures */ } finally { setLoading(false); }
+    try { setData(await api(`/businesses/${b.id}/keyword-workspace/competitor-analysis`, { method: 'POST', body: { domains } })); } catch { /* the table still shows without the figures */ } finally { setLoading(false); setLoaded(true); }
   }, [b.id, key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
-  return { ...data, loading, reload: load };
+  return { ...data, loading, loaded, reload: load };
+}
+
+const AUTO_KEY = 'bevisibe.auto-analyze';
+const readAuto = () => { try { return localStorage.getItem(AUTO_KEY) !== 'off'; } catch { return true; } };
+
+/** Analyze the competitors that were not analyzed yet, by itself: the server reads them one after another in the background, and the table refreshes as each finishes.
+ *  A competitor tried in the last day is not tried again, and at most ten start at once. */
+export function useAutoAnalysis(b, analysis, pending) {
+  const [on, setOn] = useState(readAuto);
+  const [prog, setProg] = useState({ running: false, total: 0, done: 0, current: null, queue: [], failed: {} });
+  const tried = useRef(new Set());
+  const done = useRef(0);
+  const key = pending.join('|');
+  const base = `/businesses/${b.id}/keyword-workspace/competitor-analysis`;
+  const toggle = (v) => { setOn(v); try { localStorage.setItem(AUTO_KEY, v ? 'on' : 'off'); } catch { /* not remembered */ } };
+
+  // pick up a run that is already going (another visit, another tab)
+  useEffect(() => { api(`${base}/progress`).then(setProg).catch(() => {}); }, [base]);
+  // start one when something is pending
+  useEffect(() => {
+    if (!on || !analysis.loaded || !pending.length || prog.running) return;
+    const fresh = pending.filter(d => !tried.current.has(d));
+    if (!fresh.length) return;
+    fresh.forEach(d => tried.current.add(d));
+    api(`${base}/auto`, { method: 'POST', body: { domains: fresh } }).then(setProg).catch(() => {});
+  }, [on, analysis.loaded, key, prog.running]); // eslint-disable-line react-hooks/exhaustive-deps
+  // follow it, and show each result as it arrives
+  useEffect(() => {
+    if (!prog.running) { if (done.current) { done.current = 0; analysis.reload(); } return undefined; }
+    const t = setInterval(async () => {
+      const p = await api(`${base}/progress`).catch(() => null);
+      if (!p) return;
+      if (p.done !== done.current) { done.current = p.done; analysis.reload(); }
+      setProg(p);
+    }, 2500);
+    return () => clearInterval(t);
+  }, [prog.running, base]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stop = () => api(`${base}/stop`, { method: 'POST' }).then(setProg).catch(() => {});
+  return { on, toggle, prog, stop };
+}
+
+/** The line above the table: what the automatic analysis is doing. */
+export function AutoBar({ auto }) {
+  const { on, toggle, prog, stop } = auto;
+  const failed = Object.entries(prog.failed || {});
+  return (
+    <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+      {prog.running ? (
+        <div className="flex items-center gap-3 flex-1 min-w-[260px]">
+          <Loader2 size={16} className="animate-spin text-indigo-600 shrink-0" />
+          <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Analyzing competitors <span className="font-normal text-slate-500">{prog.done} of {prog.total} · now {prog.current}</span></div>
+            <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.max(4, (prog.done / Math.max(1, prog.total)) * 100)}%` }} /></div></div>
+          <Button size="sm" onClick={stop}>Stop</Button>
+        </div>
+      ) : (
+        <div className="flex-1 min-w-[260px] text-12.5 text-slate-600">{on ? 'Competitors that were not analyzed are analyzed automatically: their Domain Authority and the keywords they rank for. Nothing about their websites is audited.' : 'Automatic analysis is off. Use “Analyze selected” on the rows you want.'}
+          {failed.length > 0 && <span className="block text-amber-700 mt-0.5" title={failed.map(([d, m]) => `${d}: ${m}`).join('\n')}>{failed.length} could not be fully read: {failed[0][0]}: {failed[0][1]}{failed.length > 1 ? ` (+${failed.length - 1})` : ''}</span>}</div>
+      )}
+      <label className="inline-flex items-center gap-2 text-12.5 text-slate-700 cursor-pointer select-none" title="Each competitor read costs about $0.04 at Apify">
+        <button type="button" role="switch" aria-checked={on} onClick={() => toggle(!on)} className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${on ? 'bg-indigo-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></button>
+        Auto-analyze
+      </label>
+    </div>
+  );
 }
 
 function Logo({ host, name }) {
@@ -56,7 +121,7 @@ export function AnalysisStats({ rows, status, isChosen, metrics }) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------- the table
-export function CompetitorsPanel({ b, rows, scope, setScope, nearCount, allCount, radius, placeName, isChosen, metrics, reload, onChoose, onRemove, onAdd, onDetail, onKeywords, addBusy, addError, onFindMaps, findBusy }) {
+export function CompetitorsPanel({ b, auto, rows, scope, setScope, nearCount, allCount, radius, placeName, isChosen, metrics, reload, onChoose, onRemove, onAdd, onDetail, onKeywords, addBusy, addError, onFindMaps, findBusy }) {
   const [toast, toastNode] = useToast();
   const [q, setQ] = useState('');
   const [statusF, setStatusF] = useState('');
@@ -77,7 +142,9 @@ export function CompetitorsPanel({ b, rows, scope, setScope, nearCount, allCount
     return () => document.removeEventListener('mousedown', on);
   }, [menu]);
 
-  const st = (c) => running[c.host] || metrics[c.host]?.status || 'pending';
+  const queue = auto?.prog?.queue || [];
+  const failedBy = auto?.prog?.failed || {};
+  const st = (c) => running[c.host] || (auto?.prog?.running && auto.prog.current === c.host ? 'running' : auto?.prog?.running && queue.includes(c.host) ? 'queued' : metrics[c.host]?.status || 'pending');
   const m = (c) => metrics[c.host] || {};
   const value = {
     match: (c) => c.maps?.relevance?.score ?? -1, da: (c) => m(c).da ?? -1, keywords: (c) => m(c).keywords ?? -1, traffic: (c) => m(c).traffic ?? -1,
@@ -167,7 +234,7 @@ export function CompetitorsPanel({ b, rows, scope, setScope, nearCount, allCount
                     <td className="px-3 py-3 text-right tabular-nums">{kfmt(x.traffic)}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{kfmt(x.rd)}</td>
                     <td className="px-3 py-3">{c.maps?.relevance ? <span className="inline-flex items-center gap-1.5" title={c.maps.relevance.label_text}><span className="font-semibold tabular-nums">{c.maps.relevance.score}</span><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span> : <span className="text-slate-300">—</span>}</td>
-                    <td className="px-3 py-3 whitespace-nowrap"><Badge tone={tone}>{s === 'running' && <Loader2 size={11} className="animate-spin" />}{sl}</Badge></td>
+                    <td className="px-3 py-3 whitespace-nowrap" title={failedBy[c.host] || undefined}><Badge tone={failedBy[c.host] && s !== 'analyzed' ? 'amber' : tone}>{s === 'running' && <Loader2 size={11} className="animate-spin" />}{sl}</Badge></td>
                     <td className="px-3 py-3 pr-4 text-right whitespace-nowrap relative" data-menu>
                       <button type="button" aria-label={`View ${c.name}`} title="View its profile" onClick={() => onDetail(c)} className="p-1.5 text-slate-500 hover:text-indigo-700 cursor-pointer"><Eye size={16} /></button>
                       <button type="button" aria-label={`More actions for ${c.name}`} aria-expanded={menu === c.key} onClick={() => setMenu(menu === c.key ? null : c.key)} className="p-1.5 text-slate-500 hover:text-slate-900 cursor-pointer"><MoreHorizontal size={16} /></button>

@@ -295,3 +295,22 @@ def competitor_analyze(body: AnalyzeIn, b: Business = Depends(get_business), db:
 def competitor_pages(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     from ..services import competitor_analysis as ca  # noqa: PLC0415
     return {"pages": ca.pages(db, b, body.domains)}
+
+
+@router.post("/competitor-analysis/auto")
+def competitor_auto(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Start analyzing, in the background, the listed competitors that were not analyzed yet (Domain Authority and ranked keywords). Nothing about their websites is audited."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.start_auto(db, b, body.domains)
+
+
+@router.get("/competitor-analysis/progress")
+def competitor_auto_progress(b: Business = Depends(get_business)):
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.progress(b.id)
+
+
+@router.post("/competitor-analysis/stop")
+def competitor_auto_stop(b: Business = Depends(get_business)):
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.stop_auto(b.id)

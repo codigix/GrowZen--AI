@@ -101,3 +101,71 @@ def own(db: Session, b: Business) -> dict[str, Any] | None:
     m.update({"domain": host, "keywords": len(ranked), "top3": sum(1 for r in ranked if r <= 3), "top10": sum(1 for r in ranked if r <= 10),
               "avg_position": round(sum(ranked) / len(ranked), 1) if ranked else None, "traffic": _gsc_clicks(db, b), "traffic_note": "Google clicks, last 28 days (Search Console)", "kw_read_at": None})
     return m
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------- automatic analysis
+import threading  # noqa: E402
+import time  # noqa: E402
+
+_progress: dict[int, dict[str, Any]] = {}
+_tried: dict[tuple[int, str], float] = {}  # (business, domain) -> when it was last tried: a competitor is not read again automatically within a day
+_lock = threading.Lock()
+MAX_AUTO = 10
+RETRY_AFTER = 24 * 3600
+
+
+def progress(business_id: int) -> dict[str, Any]:
+    p = _progress.get(business_id)
+    return dict(p) if p else {"running": False, "total": 0, "done": 0, "current": None, "queue": [], "failed": {}, "finished_at": None}
+
+
+def start_auto(db: Session, b: Business, domains: list[str], limit: int = 100) -> dict[str, Any]:
+    """Analyze the competitors that were not analyzed yet, one after another in the background, so nobody has to press anything. A competitor read within the last day is skipped,
+    and at most MAX_AUTO are started at once. Progress is kept for the page to follow."""
+    with _lock:
+        cur = _progress.get(b.id)
+        if cur and cur.get("running"):
+            return dict(cur)
+        now = time.time()
+        known = metrics(db, b, domains)
+        todo = [d for d in dict.fromkeys(_host(x) for x in domains if x) if known.get(d, {}).get("status") != "analyzed" and now - _tried.get((b.id, d), 0) > RETRY_AFTER][:MAX_AUTO]
+        if not todo:
+            return progress(b.id) | {"running": False}
+        _progress[b.id] = {"running": True, "total": len(todo), "done": 0, "current": todo[0], "queue": list(todo), "failed": {}, "finished_at": None, "stop": False}
+    threading.Thread(target=_work, args=(b.id, todo, limit), daemon=True, name=f"competitor-analysis-{b.id}").start()
+    return progress(b.id)
+
+
+def stop_auto(business_id: int) -> dict[str, Any]:
+    with _lock:
+        if business_id in _progress:
+            _progress[business_id]["stop"] = True
+    return progress(business_id)
+
+
+def _work(business_id: int, todo: list[str], limit: int) -> None:
+    from ..db import SessionLocal  # noqa: PLC0415
+    db = SessionLocal()
+    try:
+        b = db.get(Business, business_id)
+        for d in todo:
+            p = _progress[business_id]
+            if p.get("stop") or b is None:
+                break
+            p["current"] = d
+            try:
+                r = analyze_one(db, b, d, limit)
+                if r["notes"] and r["metrics"]["status"] == "pending":
+                    p["failed"][d] = r["notes"][0]
+            except Exception as exc:  # noqa: BLE001 -- one competitor failing must not stop the rest
+                db.rollback()
+                p["failed"][d] = str(exc)[:160]
+            _tried[(business_id, d)] = time.time()
+            p["done"] += 1
+            p["queue"] = [x for x in p["queue"] if x != d]
+    finally:
+        db.close()
+        with _lock:
+            p = _progress.get(business_id)
+            if p:
+                p.update({"running": False, "current": None, "queue": [], "finished_at": time.time()})

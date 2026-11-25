@@ -10,7 +10,7 @@ import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
-import { AnalysisStats, BacklinkTab, CompetitorsPanel, TopPagesTab, TrafficTab, useAnalysis } from './CompetitorAnalysis';
+import { AnalysisStats, AutoBar, BacklinkTab, CompetitorsPanel, TopPagesTab, TrafficTab, useAnalysis, useAutoAnalysis } from './CompetitorAnalysis';
 import PlacePicker from './PlacePicker';
 import Select from '../components/Select';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
@@ -1142,6 +1142,9 @@ function Research({ b }) {
   const poolRows = scope === 'near' ? nearRows : tableRows;
   const analysis = useAnalysis(b, tableRows.map(c => c.host).filter(Boolean));
   const statusOf = (c) => analysis.metrics[c.host]?.status || 'pending';
+  // the competitors around the place that are not analyzed yet are analyzed by themselves
+  const pendingHosts = poolRows.filter(c => c.host && statusOf(c) !== 'analyzed').map(c => c.host);
+  const auto = useAutoAnalysis(b, analysis, pendingHosts);
 
   if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="space-y-4"><SkCard title="Competitor research" subtitle="Who ranks for your keywords on Google and Maps"><Sk h="h-9" w="w-2/3" /></SkCard><SkCard title="Competitors found" pad={false}><SkTable headers={["Competitor", "Type", "Keywords", "Best position"]} rows={6} bare /></SkCard></div>;
   const p = current?.result?.progress;
@@ -1201,6 +1204,7 @@ function Research({ b }) {
       {!result && !isRunning(current) && <Card title="Research your competitors" subtitle="Add the searches your customers type, then run it. The Maps competitors are registered for site audits at the same time."><SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start'} error={error} setupInfo={state.setup} hasRun={false} /></Card>}
 
       <AnalysisStats rows={poolRows} status={statusOf} isChosen={isChosenRow} metrics={analysis.metrics} />
+      <AutoBar auto={auto} />
       {(result || registered.length > 0) && (
         <div className={isRunning(current) ? 'space-y-3 opacity-60 pointer-events-none select-none' : 'space-y-3'} aria-busy={isRunning(current)}>
           <div>
@@ -1214,7 +1218,7 @@ function Research({ b }) {
               ...(result ? [{ id: 'maps', label: 'Google Maps', count: result.local_competitors.length }, { id: 'research', label: 'Research' }] : [])
             ]} />
             {tab === 'competitors' && <>
-              <CompetitorsPanel b={b} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
+              <CompetitorsPanel b={b} auto={auto} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
                 isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onKeywords={() => setTab('keywords')}
                 addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
               <ErrorNote>{mapsError}</ErrorNote>
