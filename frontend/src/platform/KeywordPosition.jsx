@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ArrowDown, ArrowUp, CheckCircle2, ExternalLink, Loader2, RefreshCw, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CheckCircle2, ChevronDown, ExternalLink, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 
@@ -30,6 +30,9 @@ function Tile({ label, value, sub, series, color = '#2563eb', tip }) {
 function Trend({ series, range, setRange }) {
   const cut = new Date(Date.now() - range * 864e5).toISOString().slice(0, 10);
   const data = series.filter(s => s.day >= cut && s.rank).map(s => ({ ...s, label: s.day }));
+  const low = Math.max(0, ...data.map(x => x.rank));
+  const top = Math.max(10, Math.ceil((low + 1) / 5) * 5);
+  const ticks = [1, ...Array.from({ length: top / 5 }, (_, i) => (i + 1) * 5)];
   return (
     <Card title="Ranking Trend" action={<div className="flex gap-1">{RANGES.map(([l, d]) => <button key={l} type="button" aria-pressed={range === d} onClick={() => setRange(d)} className={`px-2.5 h-7 rounded text-12.5 font-medium cursor-pointer ${range === d ? 'bg-indigo-50 text-indigo-700 underline underline-offset-4' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>}>
       {data.length === 0 ? <p className="text-13 text-slate-500 py-10 text-center">No position has been read for this keyword in this period yet. Press Update report.</p> : (
@@ -39,14 +42,48 @@ function Trend({ series, range, setRange }) {
               <defs><linearGradient id="kpg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563eb" stopOpacity={0.25} /><stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} /></linearGradient></defs>
               <CartesianGrid stroke="#e5e7eb" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} minTickGap={30} />
-              <YAxis reversed domain={[1, (m) => Math.max(10, Math.ceil(m / 10) * 10)]} tick={{ fontSize: 11, fill: '#64748b' }} width={32} allowDecimals={false} />
+              <YAxis reversed domain={[1, top]} ticks={ticks} interval={0} tick={{ fontSize: 11, fill: '#64748b' }} width={32} allowDecimals={false} />
               <Tooltip formatter={(v) => [`#${v}`, 'Position']} labelFormatter={d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-              <Area type="monotone" dataKey="rank" stroke="#2563eb" strokeWidth={2} fill="url(#kpg)" dot={{ r: 3 }} isAnimationActive={false} />
+              <Area type="monotone" dataKey="rank" stroke="#2563eb" strokeWidth={2} fill="url(#kpg)" dot={{ r: 4, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       )}
     </Card>
+  );
+}
+
+const DEVICES = [['desktop', 'Desktop'], ['mobile', 'Mobile'], ['tablet', 'Tablet']];
+const Lbl = ({ children }) => <div className="text-13 font-semibold text-slate-800 mb-1">{children}</div>;
+const selCls = 'h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-3 text-13 text-slate-800 cursor-pointer';
+
+/** The place Google is asked from: search Google Maps places inside the project's country, or go back to the project's own area. */
+function LocationPick({ b, value, country, custom, onPick }) {
+  const [typed, setTyped] = useState('');
+  const [found, setFound] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState('');
+  const search = (v) => {
+    setTyped(v); setErr('');
+    if (v.trim().length < 2) { setFound([]); return; }
+    api(`/businesses/${b.id}/keyword-workspace/area-search?q=${encodeURIComponent(v.trim())}&country=${country || 'IN'}`).then(r => setFound(r.results || [])).catch(e => setErr(e.message || 'The map service did not answer.'));
+  };
+  const choose = (v) => { setOpen(false); setTyped(''); setFound([]); onPick(v); };
+  return (
+    <div className="relative">
+      <button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)} className={`${selCls} w-full min-w-[220px] max-w-[320px] flex items-center gap-2 text-left`}><span className="truncate flex-1">{value || 'Choose a location'}</span><ChevronDown size={14} className="text-slate-400 shrink-0" /></button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-[340px] rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
+          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input autoFocus value={typed} onChange={e => search(e.target.value)} placeholder="Search a city or area" aria-label="Search a location" className="h-9 w-full rounded ring-1 ring-inset ring-slate-300 pl-8 pr-2 text-13" /></div>
+          {err && <div className="mt-1 text-12 text-rose-600">{err}</div>}
+          <ul role="listbox" className="mt-1 max-h-60 overflow-y-auto">
+            {found.map(x => <li key={x.label}><button type="button" role="option" onClick={() => choose(x.label)} className="w-full text-left px-2 py-1.5 rounded text-13 hover:bg-slate-50 cursor-pointer">{x.label}</button></li>)}
+            {typed.trim().length >= 2 && !found.length && !err && <li className="px-2 py-1.5 text-12.5 text-slate-500">No place found.</li>}
+          </ul>
+          {custom && <button type="button" onClick={() => choose('')} className="mt-1 w-full text-left px-2 py-1.5 rounded text-13 text-indigo-600 hover:bg-indigo-50 cursor-pointer">Use the project's own area again</button>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -66,6 +103,12 @@ export default function KeywordPosition({ b, keyword }) {
   const series = d?.series || [];
   const inRange = useMemo(() => series.filter(x => x.day >= new Date(Date.now() - range * 864e5).toISOString().slice(0, 10)), [series, range]);
 
+  const T = d?.targeting || {};
+  const setTarget = (patch) => run('target', async () => {
+    await api(`/businesses/${b.id}/seo/track-targeting`, { method: 'PUT', body: { location: 'location' in patch ? patch.location : (T.custom ? T.location : ''), device: patch.device || T.device || 'desktop', language: patch.language || T.language || 'en' } });
+    await rep.reload(true); serp.reload(true);
+    toast('Targeting saved: the competitors and SERP features are read for it');
+  });
   const update = () => run('update', async () => {
     await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: [keyword] }, timeout: 120000 });
     await rep.reload(true); serp.reload(true);
@@ -76,6 +119,7 @@ export default function KeywordPosition({ b, keyword }) {
   const mine = organic.find(o => o.mine);
   const features = Object.entries(serp.data?.features || {});
   const P = d?.project || {};
+  const devPos = (d?.devices || {})[T.device || 'desktop']?.position;
   const st = P.status;
   const rivals = (P.competitors || []).map(x => x.replace(/^www\./, ''));
   const rivalRows = rivals.map(dom => ({ dom, hit: organic.find(o => (o.site || '').replace(/^www\./, '') === dom) }));
@@ -85,7 +129,7 @@ export default function KeywordPosition({ b, keyword }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-13 text-slate-600">
-        <span>Targeting: <b className="text-blue-700">{d?.location || b.country || '—'}</b></span><span>Search engine: <b className="text-slate-800">Google</b></span>
+        <span>Targeting: <b className="text-blue-700">{T.location || '—'}</b> · <b className="text-slate-800">{(DEVICES.find(x => x[0] === T.device) || DEVICES[0])[1]}</b> · <b className="text-slate-800">{(T.languages || {})[(T.language || 'en').slice(0, 2)] || 'English'}</b></span><span>Search engine: <b className="text-slate-800">Google</b></span>
         <span>Last update: <b className="text-slate-800">{d?.last_update ? new Date(d.last_update).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not read yet'}</b></span>
       </div>
 
@@ -97,10 +141,14 @@ export default function KeywordPosition({ b, keyword }) {
           </div>
         </label>
         <div><div className="text-13 font-semibold text-slate-800 mb-1">Search engine</div><div className="h-10 px-3 inline-flex items-center rounded-lg ring-1 ring-inset ring-slate-300 text-13">Google</div></div>
-        <div><div className="text-13 font-semibold text-slate-800 mb-1">Location</div><div className="h-10 px-3 inline-flex items-center rounded-lg ring-1 ring-inset ring-slate-300 text-13">{d?.location || b.city || b.country || '—'}</div></div>
+        <div><Lbl>Location</Lbl><LocationPick b={b} value={T.location} country={T.country} custom={T.custom} onPick={(v) => setTarget({ location: v })} /></div>
+        <div><Lbl>Device</Lbl><select aria-label="Device" value={T.device || 'desktop'} onChange={e => setTarget({ device: e.target.value })} className={selCls}>{DEVICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+        <div><Lbl>Language</Lbl><select aria-label="Language" value={(T.language || 'en').slice(0, 2)} onChange={e => setTarget({ language: e.target.value })} className={selCls}>{Object.entries(T.languages || { en: 'English' }).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
         <Button variant="primary" icon={RefreshCw} busy={busy === 'update'} onClick={update}>Update report</Button>
       </div>
       {error && <ErrorNote>{error}</ErrorNote>}
+      {serp.data?.location && serp.data.location_applied === false && <p className="text-12.5 text-amber-700">Google's results could not be read for “{serp.data.location}” right now, so the competitors shown are for the whole country.</p>}
+      <p className="text-12 text-slate-500">Your own position comes from Search Console (your whole country, split by device). The location and language change the competitors and SERP features read from Google.</p>
       {rep.error && <ErrorNote>{rep.error.message}</ErrorNote>}
 
       <div className="flex gap-6 border-b border-slate-200" role="tablist">{TABS.map(t => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`-mb-px pb-2.5 text-14 font-medium border-b-2 cursor-pointer ${tab === t ? 'border-indigo-600 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t}</button>)}</div>
@@ -137,7 +185,7 @@ export default function KeywordPosition({ b, keyword }) {
                 ) : <p className="text-13 text-slate-500">No status yet: press Update report to read the position.</p>}
               </Card>
               <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
-                <Tile label="Position" value={s.current ? s.current : '—'} sub={<Delta now={s.current} before={s.previous} />} series={inRange.filter(x => x.rank).map(x => -x.rank)} tip="Average position on Google over the last 28 days, from Search Console" />
+                <Tile label={`Position · ${(DEVICES.find(x => x[0] === T.device) || DEVICES[0])[1]}`} value={devPos ? Math.round(devPos) : s.current ? s.current : '—'} sub={<Delta now={s.current} before={s.previous} />} series={inRange.filter(x => x.rank).map(x => -x.rank)} tip="Average position on Google over the last 28 days, from Search Console" />
                 <Tile label="Search Volume" value={kfmt(d.volume)} sub={null} tip="Monthly searches, Google Keyword Planner" color="#64748b" />
                 <Tile label="Visibility" value={d.visibility != null ? `${d.visibility}%` : '—'} series={inRange.map(x => x.visibility)} color="#059669" tip="Estimate: share of searches that click a result at this position, from a published average click curve" />
                 <Tile label="Estimated Traffic" value={d.traffic != null ? kfmt(d.traffic) : '—'} series={inRange.map(x => x.traffic || 0)} color="#7c3aed" tip="Estimate: monthly searches times the click share at this position" />
