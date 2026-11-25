@@ -253,6 +253,7 @@ export function KeywordGapTab({ b, focus = '' }) {
   const c = g.counts;
   const send = () => wsRun('ws', async () => { const list = viewRef.current.filter(r => r.fit === 'yes' || r.fit === 'maybe'); const r = await api(`/businesses/${b.id}/keyword-workspace/add`, { method: 'POST', body: { ideas: list.slice(0, 300).map(i => ({ keyword: i.keyword, volume: i.volume, detail: `Keyword gap: ${i.best?.domain || 'competitor'} ranks #${i.best?.position ?? '?'}` })), label: 'Keyword gap' } }); toast(r.added ? `${r.added} keywords sent to Find Keywords` : 'Already in Find Keywords'); });
   const hasData = g.competitors.some(x => x.keywords || x.from_google);
+  const stale = c.missing === undefined && (c.gap !== undefined || c.behind !== undefined); // the server still sends the old status names: it is running code from before this page was updated
 
   const cols = [
     { id: 'keyword', header: 'Keyword', first: 'asc', value: r => r.keyword, cell: r => <span className="font-medium text-slate-900">{r.keyword}</span>, className: 'px-3 py-2.5 min-w-[190px]' },
@@ -290,6 +291,7 @@ export function KeywordGapTab({ b, focus = '' }) {
         ))}
         <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 px-4 py-3"><div className="text-13 text-emerald-800">Worth targeting</div><div className="text-28 font-bold text-emerald-900 tabular-nums leading-tight">{c.useful_gaps}</div><div className="text-12 text-emerald-800">gaps that fit your business</div></div>
       </div>
+      {stale && <div role="alert" className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-13 text-amber-900"><b>The backend is running old code.</b> It still answers with the old gap names (Gap, Behind, Ahead), so the cards and table cannot fill in. Stop every backend process on port 8000, start the backend again, and reload this page.</div>}
       {!hasData && <Readers gap={g} onRead={read} busy={busy} />}
       {error && <ErrorNote>{error}</ErrorNote>}
       {!hasData ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-8 text-center text-13 text-slate-500">No competitor rankings are kept yet. They are read automatically on the Competitors tab, or open <b>SERP Features</b> in Position Tracking to read Google's top 10 on your tracked searches. Then the gap appears here.</div> : (
