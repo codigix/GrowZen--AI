@@ -17,8 +17,8 @@ import Select from '../components/Select';
 import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
 import ResearchTab from './CompetitorResearch';
 import CompetitorMaps from './CompetitorMaps';
-import { Stepper, FindStep, STEPS } from './CompetitorSteps';
-import { ShortlistStep, AnalyzeStep, OpportunitiesStep } from './CompetitorFlowSteps';
+import { Stepper, FindStep, STEPS, Heading2 } from './CompetitorSteps';
+import { ShortlistStep, OpportunitiesStep } from './CompetitorFlowSteps';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 
@@ -830,8 +830,8 @@ function Research({ b }) {
   const [focus, setFocus] = useState({ host: '', band: '' }); // the competitor (and ranking band) a table cell sent you to
   const [stepRaw, setStepRaw] = useState(() => (STEPS.some(x => x.id === params.get('step')) ? params.get('step') : params.get('tab') ? (params.get('tab') === 'competitors' ? 'shortlist' : 'opportunities') : null));
   const [findNote, setFindNote] = useState('');
-  const VIEW_OF_TAB = { gap: 'keywords', keywords: 'keywords', traffic: 'traffic', pages: 'pages', backlinks: 'backlinks', maps: 'maps', research: 'find' };
-  const [view, setView] = useState(() => (['keywords', 'pages', 'traffic', 'backlinks', 'maps', 'find'].includes(params.get('view')) ? params.get('view') : VIEW_OF_TAB[params.get('tab')] || ''));
+  const VIEW_OF_TAB = { gap: 'keywords', keywords: 'allkeywords', traffic: 'traffic', pages: 'pages', backlinks: 'backlinks', maps: 'maps', research: 'find' };
+  const [view, setView] = useState(() => (['keywords', 'allkeywords', 'pages', 'traffic', 'backlinks', 'maps', 'find'].includes(params.get('view')) ? params.get('view') : VIEW_OF_TAB[params.get('tab')] || ''));
   const goTo = (t, host = '', band = '') => { setFocus({ host, band }); setTab(t); if (t !== 'competitors') setView(VIEW_OF_TAB[t] || ''); setStepRaw(t === 'competitors' ? 'shortlist' : 'opportunities'); };
   const [settings, setSettings] = useState(false);
   const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
@@ -1110,14 +1110,14 @@ function Research({ b }) {
   const analysis = useAnalysis(b, tableRows.map(c => c.host).filter(Boolean));
   const statusOf = (c) => analysis.metrics[c.host]?.status || 'pending';
   // the competitors around the place that are not analyzed yet are analyzed by themselves
-  const pendingHosts = poolRows.filter(c => isChosenRow(c) && c.host && statusOf(c) !== 'analyzed').map(c => c.host);
+  const pendingHosts = poolRows.filter(c => c.host && statusOf(c) !== 'analyzed').map(c => c.host);
   const auto = useAutoAnalysis(b, analysis, pendingHosts);
 
   if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="space-y-4"><SkCard title="Competitor research" subtitle="Who ranks for your keywords on Google and Maps"><Sk h="h-9" w="w-2/3" /></SkCard><SkCard title="Competitors found" pad={false}><SkTable headers={["Competitor", "Type", "Keywords", "Best position"]} rows={6} bare /></SkCard></div>;
   const p = current?.result?.progress;
   const s = result?.summary;
   const cur = stepRaw || (registered.length ? 'shortlist' : 'find');
-  const analyzedCount = poolRows.filter(c => isChosenRow(c) && statusOf(c) === 'analyzed').length;
+  const analyzedCount = poolRows.filter(c => statusOf(c) === 'analyzed').length;
   const stepNotes = { find: registered.length ? `${registered.length} found` : '', shortlist: registered.length ? `${chosenTotal} chosen` : '', analyze: chosenTotal ? `${analyzedCount} of ${chosenTotal} analyzed` : '' };
   const stepDone = { find: registered.length > 0, shortlist: chosenTotal > 0, analyze: chosenTotal > 0 && analyzedCount >= chosenTotal, opportunities: false };
   const t = cur === 'opportunities' ? (tab === 'competitors' ? 'gap' : tab) : 'competitors'; // the screen shown in steps 2 to 4 until each is rebuilt
@@ -1158,8 +1158,16 @@ function Research({ b }) {
         <Button size="sm" icon={Users} className="ml-auto" onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors</Button>
       </div>}
       {cur === 'shortlist' && <ShortlistStep rows={poolRows} isChosen={isChosenRow} onChoose={chooseCompetitor} onRemove={removeCompetitor} onNext={() => setStepRaw('analyze')} onFind={() => setStepRaw('find')} />}
-      {cur === 'analyze' && <AnalyzeStep b={b} rows={poolRows} isChosen={isChosenRow} metrics={analysis.metrics} auto={auto} reload={analysis.reload} onShortlist={() => setStepRaw('shortlist')}
-        onNext={() => { setView(''); setStepRaw('opportunities'); }} onProfile={setDetail} onKind={async (id, kind) => { try { await api(`/competitors/${id}/kind`, { method: 'PATCH', body: { kind: kind || null } }); await loadRegistered(); } catch (e) { toast(e.message); } }} />}
+      {cur === 'analyze' && <>
+        <Heading2 title="Analyze your competitors" text="Their authority, keywords and estimated visitors, all in one table. Use Columns to show more, Filters to narrow the list, and the buttons on a row to analyze it or open its details." />
+        <AnalysisStats rows={poolRows} status={statusOf} isChosen={isChosenRow} metrics={analysis.metrics} />
+        <AutoBar auto={auto} />
+        <CompetitorsPanel b={b} auto={auto} rating={rating} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
+          isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onGo={goTo}
+          addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
+        <ErrorNote>{mapsError}</ErrorNote>
+        <div className="flex justify-end"><Button variant="primary" onClick={() => { setView(''); setStepRaw('opportunities'); }}>See opportunities</Button></div>
+      </>}
       {cur === 'opportunities' && <OpportunitiesStep b={b} rows={poolRows} isChosen={isChosenRow} analysis={analysis} view={view} setView={setView} onAnalyze={() => setStepRaw('analyze')} />}
       </div>
       <Drawer open={panel} onClose={() => setPanel(false)} width="max-w-md" title="My competitors" subtitle="Choose 3 to 5 that really compete with you. Only the chosen ones are watched.">

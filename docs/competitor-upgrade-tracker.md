@@ -54,11 +54,11 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 - The frontend's .env points API calls at http://localhost:8000. A browser test must start Vite with `VITE_API_URL=/api/v1` and `BACKEND_URL=<test backend>` or it talks to the real backend.
 
 ## Redesign: 4-step guided flow (agreed with the owner)
-Rules from the owner: no tab bars anywhere (moving between views is done with buttons only), and no unnecessary filters.
-- Step bar + Step 1 Find: DONE.
-- Step 2 Shortlist: DONE. A plain list with a Choose / Chosen button per business, one search box, "Choose the likely direct competitors", remove with confirmation.
-- Step 3 Analyze: DONE. Table of the chosen competitors only: Authority, Keywords, Visitors a month, Status, and an Analyze / Refresh and Details button per row. Details window holds everything else (other numbers, match, direct/indirect buttons, earlier analyses). Auto-analyze now reads only CHOSEN competitors.
-- Step 4 Opportunities: DONE. Six big buttons (Keywords to win, Their best pages, Traffic compared, Backlinks compared, On Google Maps, Find new keywords), each opens one view with an "All opportunities" back button. Keyword gap and Competitor keywords are merged into one Keywords view: three buttons, one "only what fits my business" switch, one competitor dropdown, one search box, 7 columns.
-- Filters removed from the traffic, backlink, top-pages and maps tables; the Maps and Research switches are now buttons.
-- 22-step browser check of the whole flow: all pass.
-- Old components (CompetitorsPanel, KeywordGapTab, CompetitorKeywordsTab, the Research tab sections for opportunities and competitors) are no longer used by the page and can be deleted once the owner is happy with the new flow.
+Rules from the owner: no tab bars anywhere (moving between views is done with buttons only); the tables keep ALL their columns, filters, exports and actions (nothing erased): only the layout changes.
+- Step bar, Step 1 Find (simple form, More options folded), Step 2 Shortlist (plain list with Choose / Chosen buttons): DONE.
+- Step 3 Analyze: the full original competitor table with all its columns, the four summary cards, the auto-analyze bar, Columns menu, CSV export and bulk actions. Filters are folded behind one Filters button.
+- Step 4 Opportunities: seven big buttons (Keywords to win = the full keyword gap, All competitor keywords = the full competitor keyword table, Their best pages, Traffic compared, Backlinks compared, On Google Maps, Find new keywords), each with an "All opportunities" back button. Every table keeps all its columns and filters; filters are folded behind a Filters button and the range filters behind a "Ranges and page" button.
+- DataTable has a new optional prop, collapseFilters (default off), so no other page in the app changes.
+- Auto-analyze again reads every competitor found, as before the redesign (an earlier version of the redesign limited it to the chosen ones).
+- Browser checks: 18 of 18 (full table and every column, filters, bulk actions, drawer, add-to-My-Keywords, old links).
+- Removed from the page and no longer used (still in the code): my trimmed Analyze table, the merged Keywords view and the competitor detail window. They can be deleted.

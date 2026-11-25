@@ -98,6 +98,10 @@ export function FindStep({ b, placeNode, radiusKm, setRadiusKm, opts, setOpts, o
   );
 }
 
+export function Heading2({ title, text }) {
+  return <div><h2 className="text-18 font-bold text-slate-900">{title}</h2>{text && <p className="mt-0.5 text-13 text-slate-600 max-w-3xl">{text}</p>}</div>;
+}
+
 export function Searching({ text }) {
   return <div className="rounded-xl bg-white ring-1 ring-slate-200 px-5 py-4 flex items-center gap-3 text-13 text-slate-700"><Loader2 size={16} className="animate-spin text-indigo-600" />{text}</div>;
 }
