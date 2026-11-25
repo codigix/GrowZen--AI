@@ -194,7 +194,7 @@ export default function App() {
         <Route path="domain-overview" element={<DomainOverviewPage />} />
         <Route path="keyword-management/magic" element={<KeywordHubPage />} />
         {['ai', 'discover', 'planner', 'explorer'].map(t => <Route key={t} path={`keyword-management/${t}`} element={<KeepSearch to="/keyword-management/workspace" />} />)}
-        <Route path="keyword-management/magic2" element={<KeepSearch to="/keyword-management/magic?tab=topics" />} />
+        <Route path="keyword-management/magic2" element={<KeywordMagicTool2Page />} />
         <Route path="keyword-management/prepare" element={<PrepareKeywordsPage />} />
         <Route path="competitor-keywords" element={<CompetitorKeywordsPage />} />
         <Route path="keyword-overview/ideas" element={<KeepSearch to="/keyword-management/magic?tab=ideas" />} />
