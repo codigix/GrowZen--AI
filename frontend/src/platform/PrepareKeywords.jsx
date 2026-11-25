@@ -106,7 +106,7 @@ function Body({ b }) {
     const res = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body });
     await api(`/businesses/${b.id}/keyword-workspace/mark-picked`, { method: 'POST', body: { keywords: chosen.map(r => r.origin).concat(chosen.map(r => r.keyword)) } }).catch(() => null);
     api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: chosen.slice(0, 25).map(r => r.keyword) }, timeout: 120000 }).catch(() => null); // where the site stands now (Search Console), so Track Results has a first reading
-    toast(`${res.added} new keyword${res.added === 1 ? '' : 's'} added to My Keywords`);
+    toast(`${res.added} new keyword${res.added === 1 ? '' : 's'} added to My Keywords${res.existing?.length ? `. ${res.existing.length} already there${res.updated ? ` (${res.updated} got a new source)` : ''}, not duplicated` : ''}`);
     navigate('/keyword-management/tracked', { state: { added: chosen.map(r => r.keyword), newCount: res.added } });
   });
 

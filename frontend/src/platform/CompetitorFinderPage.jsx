@@ -420,8 +420,9 @@ export function ListingComparison({ c, bid }) {
     if (!pick.length || !bid) return;
     setSaving(true); setSaveError('');
     try {
-      await api(`/businesses/${bid}/keywords`, { method: 'POST', body: pick.map(k => ({ keyword: k, source: { kind: 'competitor_compare', label: `${c.competitor.name} Google listing`, side: 'competitor', from: c.competitor.name, pages: [], searches: null, at: new Date().toISOString().slice(0, 10) } })) });
+      const res = await api(`/businesses/${bid}/keywords`, { method: 'POST', body: pick.map(k => ({ keyword: k, source: { kind: 'competitor_compare', label: `${c.competitor.name} Google listing`, side: 'competitor', from: c.competitor.name, pages: [], searches: null, at: new Date().toISOString().slice(0, 10) } })) });
       setAdded(a => [...a, ...pick]); setPick([]);
+      if (res?.existing?.length) setSaveError(`${res.existing.length} of them were already in My keywords, so they were not saved twice${res.updated ? `; ${res.updated} got this competitor as a new source` : ''}.`);
     } catch (e) { setSaveError(e.message || 'The keywords could not be added.'); } finally { setSaving(false); }
   };
   const Chips = ({ items, tone, empty }) => (items && items.length ? <div className="flex flex-wrap gap-1.5">{items.map(x => <span key={x} className={`px-2.5 py-1 rounded-full text-12.5 border ${tone === 'rose' ? 'bg-rose-50 text-rose-800 border-rose-200' : tone === 'green' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>{x}</span>)}</div> : <p className="text-13 text-slate-500">{empty}</p>);

@@ -33,6 +33,45 @@ SOURCES = {
     "brief": "Business summary",
     "ai": "AI suggestions",
 }
+GROUPS = {"competitor_keywords": "Competitor Keywords", "competitor_gap": "Competitor Gap", "keyword_research": "Keyword Research", "manual": "Manual Entry"}
+
+
+def group_of(kind: str | None, label: str | None = None) -> str:
+    """Which of the four places a keyword came from: competitor keywords, the competitor gap, keyword research, or typed in by hand."""
+    text = f"{kind or ''} {label or ''}".lower()
+    if "gap" in text:
+        return "competitor_gap"
+    if "competitor" in text:
+        return "competitor_keywords"
+    if "by hand" in text or "manual" in text or "typed" in text:
+        return "manual"
+    return "keyword_research"
+
+
+def merge_sources(k: Keyword, sources: list[dict[str, Any]], competitors: list[str]) -> bool:
+    """Add where a keyword was found again to the keyword it already is, so the same keyword is never saved twice and keeps every place it came from. True when something new was added."""
+    src = dict(k.source or {})
+    have = list(src.get("sources") or [])
+    if not have and src.get("kind"):
+        have = [{"kind": src.get("kind"), "label": src.get("label"), "detail": src.get("from") or "", "group": group_of(src.get("kind"), src.get("label"))}]
+    changed = False
+    for x in sources:
+        item = {"kind": x.get("kind") or x.get("type"), "label": x.get("label"), "detail": x.get("detail") or "", "group": group_of(x.get("kind"), x.get("label"))}
+        if not any(h.get("kind") == item["kind"] and h.get("label") == item["label"] for h in have):
+            have.append(item)
+            changed = True
+    comps = list(src.get("competitors") or [])
+    for c in competitors:
+        if c and c not in comps:
+            comps.append(c)
+            changed = True
+    if changed:
+        src["sources"], src["competitors"] = have, comps
+        src["groups"] = sorted({h.get("group") for h in have if h.get("group")})
+        k.source = src  # assigned again so the JSON change is saved
+    return changed
+
+
 FACTS = {"search_console", "profile"}  # what the owner's own Google searches and services say: facts about the business, never judged by wording
 OWN = {"website", "search_console", "profile"}  # places that show what you already say or rank for
 _SMALL = frozenset({"in", "for", "of", "the", "a", "an", "to", "and", "best", "top"})
@@ -560,21 +599,25 @@ def refresh_performance(db: Session, b: Business) -> dict[str, Any]:
 
 # ----------------------------------------------------------------------------------------------------------------------------- choosing
 def pick(db: Session, b: Business, ids: list[int]) -> dict[str, Any]:
-    """Save the chosen keywords to the project's keyword list with where each came from."""
-    added = 0
+    """Save the chosen keywords to the project's keyword list with where each came from. A keyword that is already saved is not saved again: the new place it was found is added to it."""
+    added, existing, merged = 0, [], 0
     for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.id.in_(ids))):
         first = (r.sources or [{}])[0]
         src = {"kind": first.get("kind") or "workspace", "label": first.get("label") or "Keyword workspace", "from": "keyword_workspace", "searches": r.volume, "at": date.today().isoformat(),
-               "pages": [], "sources": [{"kind": s.get("kind"), "label": s.get("label"), "detail": s.get("detail")} for s in r.sources or []], "competitors": r.competitors or []}
+               "pages": [], "sources": [{"kind": s.get("kind"), "label": s.get("label"), "detail": s.get("detail"), "group": group_of(s.get("kind"), s.get("label"))} for s in r.sources or []], "competitors": r.competitors or []}
+        src["groups"] = sorted({x["group"] for x in src["sources"]})
         k = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == r.keyword))
         if k is None:
             k = Keyword(business_id=b.id, keyword=r.keyword, volume=r.volume, difficulty=r.difficulty, cpc=r.cpc, intent=r.intent or intent_of(r.keyword), tracked=True, source=src,
                         priority="High" if score_of(r, tag_of(r)) >= 70 else "Medium")
             db.add(k)
             added += 1
+        else:
+            existing.append(r.keyword)
+            merged += 1 if merge_sources(k, src["sources"], src["competitors"]) else 0
         r.picked, r.dismissed = True, False
     db.commit()
-    return {"picked": added}
+    return {"picked": added, "existing": existing, "updated": merged}
 
 
 def dismiss(db: Session, b: Business, ids: list[int], on: bool = True) -> int:
