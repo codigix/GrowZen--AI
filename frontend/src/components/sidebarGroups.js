@@ -109,12 +109,18 @@ export const SIDEBAR_SECTIONS = [
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { title: '1 · Website audit ', items: [page('/website-audit', { label: 'Website audit' }), link('/page-indexing', 'Page Indexing')] },
       { title: '2 · Competitor Research', items: [page('/competitor-finder'), go('/competitor-watch', 'Competitor Watch', 'traffic'), link('/competitor-keywords', 'Competitor Keywords'), link('/organic-rankings/page', 'Organic Rankings')] },
-      { title: '3 · Find Keywords', items: [{ to: '/keyword-management/magic', label: 'Keyword Magic Tool', also: ['/keyword-overview'] }, { to: '/keyword-management/magic2', label: 'Keyword Magic Tool 2.0', badge: 'New' }, { to: '/keyword-management/workspace', label: 'Find Keywords', also: ['/keyword-management/ai', '/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] }] },
-      { title: '4 · Prepare & Choose', items: [link('/keyword-management/prepare', 'Prepare Keywords'), page('/keyword-management/tracked', { label: 'My Keywords' }), link('/keyword-management/strategy', 'Keyword Strategy Builder'), link('/keyword-management/topics', 'Keyword Topics')] },
-      { title: '5 · Map to Pages', items: [{ to: '/keyword-management/mapping', label: 'Keyword Mapping', also: ['/keyword-management/use'] }] },
-      { title: '6 · Write & Update', items: [go('/ai-content-generation/blog', 'Write content (Blogs)', 'Blogs'), link('/fix-plan', 'Fix Plan')] },
-      { title: '7 · Track Results', items: [page('/rank-tracking/landscape', { label: 'Position Tracking', also: ['/rank-tracking'] }), link('/keyword-management/status', 'Keyword Status'), link('/search-insights', 'Search & Visitor Insights'), go('/traffic', 'Traffic & search performance', 'traffic')] },
-      { title: '8 · Backlinks', items: [{ to: '/backlinks/overview', label: 'Backlinks', also: ['/backlinks/links', '/backlinks/graph', '/backlinks/anchors', '/backlinks/pages', '/backlinks/outbound', '/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/audit', 'Backlink Audit'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/gap', 'Competitor Gap'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks'), page('/backlink-checker')] },
+      { title: '3 · Keywords', items: [
+        { to: '/keyword-management/workspace', label: 'Find Keywords', also: ['/keyword-management/ai', '/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] },
+        { to: '/keyword-management/magic', label: 'Keyword Magic Tool', also: ['/keyword-overview'] },
+        { to: '/keyword-management/magic2', label: 'Keyword Magic Tool 2.0', badge: 'New' },
+        link('/keyword-management/prepare', 'Prepare Keywords'),
+        link('/keyword-management/strategy', 'Keyword Strategy Builder'),
+        page('/keyword-management/tracked', { label: 'My Keywords' }),
+        link('/keyword-management/topics', 'Keyword Topics'),
+        { to: '/keyword-management/mapping', label: 'Keyword Mapping', also: ['/keyword-management/use'] }] },
+      { title: '4 · Write & Update', items: [go('/ai-content-generation/blog', 'Write content (Blogs)', 'Blogs'), link('/fix-plan', 'Fix Plan')] },
+      { title: '5 · Track Results', items: [page('/rank-tracking/landscape', { label: 'Position Tracking', also: ['/rank-tracking'] }), link('/keyword-management/status', 'Keyword Status'), link('/search-insights', 'Search & Visitor Insights'), go('/traffic', 'Traffic & search performance', 'traffic')] },
+      { title: '6 · Backlinks', items: [{ to: '/backlinks/overview', label: 'Backlinks', also: ['/backlinks/links', '/backlinks/graph', '/backlinks/anchors', '/backlinks/pages', '/backlinks/outbound', '/backlinks/sites'] }, link('/backlinks/domains', 'Referring Domains'), link('/backlinks/audit', 'Backlink Audit'), link('/backlinks/opportunities', 'Link Opportunities'), link('/backlinks/gap', 'Competitor Gap'), page('/off-page-seo/outreach'), link('/off-page-seo/tasks', 'Link Building Tasks'), page('/backlink-checker')] },
     ]
   },
   {
