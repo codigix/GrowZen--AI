@@ -90,3 +90,69 @@ def report(db: Session, b: Business, keyword: str | None, days: int = 90) -> dic
     return {"scope": one or "all", "tracked": tracked, "read": n_read, "with_features": with_any, "with_pct": round(100 * with_any / n_read, 1) if n_read else None,
             "visibility": vis, "top3": sum(1 for r in ranks if r and r <= 3), "top10": sum(1 for r in ranks if r and r <= 10), "top100": sum(1 for r in ranks if r and r <= 100),
             "features": detail, "series": any_series, "last_read": max((r.serp_extra.get("read_at") for r in latest.values()), default=None), "days_read": len(by_day)}
+
+
+def insights(db: Session, b: Business, keyword: str | None = None) -> dict[str, Any]:
+    """Tracking insights for the tracked keywords: intent mix, who is visible on the same searches (from the stored reads of Google's results), what changed since the last check,
+    which SERP features the searches show, and the visibility over the days checked. Every figure is counted from stored reads; the visibility is an estimate from an average click curve."""
+    from collections import Counter  # noqa: PLC0415
+
+    from ..competitors import hygiene  # noqa: PLC0415
+    from . import gsc  # noqa: PLC0415
+    kws = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+    n = len(kws)
+    one = " ".join((keyword or "").lower().split()) or None
+    ranks = [k.rank for k in kws]
+    prevs = [k.prev_rank for k in kws]
+    have_prev = any(p for p in prevs)
+    vis = lambda rs: round(100 * sum(organic._ctr(r) for r in rs if r) / len(rs), 1) if rs else None  # noqa: E731
+    count = lambda rs, top: sum(1 for r in rs if r and r <= top)  # noqa: E731
+    intents = Counter((k.intent or "unknown") for k in kws)
+    since = date.today() - timedelta(days=90)
+    logs = [r for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= since).order_by(KeywordRankLog.day)) if r.keyword in {k.keyword for k in kws}]
+    latest: dict[str, KeywordRankLog] = {}
+    for r in logs:
+        if r.serp_extra:
+            latest[r.keyword] = r
+    read = len(latest)
+    own = gsc.host_of(b.website) or ""
+    own = own[4:] if own.startswith("www.") else own
+    rivals = {x.replace("www.", "") for x in hygiene.saved_competitor_domains(db, b, limit=20)}
+    dom: dict[str, float] = {}
+    for r in latest.values():
+        for row in (r.serp or []):
+            d = str(row.get("d") or "").replace("www.", "")
+            if d and row.get("p"):
+                dom[d] = dom.get(d, 0.0) + organic._ctr(row["p"])
+    own_rank = {k.keyword: k.rank for k in kws}
+    own_vis = round(100 * sum(organic._ctr(own_rank.get(kw)) for kw in latest) / read, 1) if read else None
+    land = [{"domain": d, "visibility": round(100 * v / read, 1), "competitor": d in rivals, "you": False} for d, v in dom.items() if d != own] if read else []
+    land.sort(key=lambda x: -x["visibility"])
+    land = land[:5]
+    if own_vis is not None:
+        land.append({"domain": own or "your site", "visibility": own_vis, "competitor": False, "you": True})
+        land.sort(key=lambda x: -x["visibility"])
+    rep = report(db, b, None, 90)
+    opp = []
+    for f in rep["features"]:
+        if not f["count"]:
+            continue
+        pct = f["presence"] or 0
+        mine = None
+        if f["feature"] == "Local pack":
+            mine = sum(1 for r in latest.values() if r.maps_rank) if read else None
+        opp.append({"feature": f["feature"], "likelihood": "High" if pct >= 50 else "Medium" if pct >= 25 else "Low", "presence": pct, "count": f["count"],
+                    "yours": None if mine is None else {"yes": mine, "of": read}})
+    by_day: dict[str, list[float]] = {}
+    for r in logs:
+        by_day.setdefault(r.day.isoformat(), []).append(organic._ctr(r.rank))
+    trend = [{"day": d, "visibility": round(100 * sum(v) / len(v), 1), "keywords": len(v)} for d, v in sorted(by_day.items())]
+    ranked = [r for r in ranks if r]
+    mine_kw = next((k for k in kws if k.keyword == one), None)
+    return {"tracked": n, "read": read, "keyword": one, "keyword_intent": mine_kw.intent if mine_kw else None,
+            "visibility": vis(ranks), "visibility_prev": vis(prevs) if have_prev else None,
+            "top3": count(ranks, 3), "top3_prev": count(prevs, 3) if have_prev else None, "top10": count(ranks, 10), "top10_prev": count(prevs, 10) if have_prev else None,
+            "top100": count(ranks, 100), "top100_prev": count(prevs, 100) if have_prev else None,
+            "intents": [{"intent": i, "count": c, "pct": round(100 * c / n, 1)} for i, c in intents.most_common()] if n else [],
+            "landscape": land, "opportunities": opp, "trend": trend, "feature_types": sum(1 for f in rep["features"] if f["count"]),
+            "average_position": round(sum(ranked) / len(ranked), 1) if ranked else None, "not_ranking": n - len(ranked), "have_prev": have_prev}

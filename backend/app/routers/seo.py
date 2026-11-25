@@ -221,6 +221,12 @@ def serp_features_report(keyword: str | None = Query(default=None, max_length=25
     return sf.report(db, b, keyword, days)
 
 
+@router.get("/tracking-insights")
+def tracking_insights(keyword: str | None = Query(default=None, max_length=255), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import serp_features as sf  # noqa: PLC0415
+    return sf.insights(db, b, keyword)
+
+
 @router.get("/keyword-position/serp")
 def keyword_position_serp(keyword: str = Query(min_length=2, max_length=255), b: Business = Depends(get_business)):
     """What Google shows for the keyword right now (competitors, features, our result). Read live, not kept."""
