@@ -82,7 +82,11 @@ def _centre(b: Business, location: str | None) -> tuple[float, float] | None:
     """The map point of the chosen place, so competitors are found around it. The business's own area keeps the business's own pin; any other place is looked up on the map."""
     if not location:
         return None
-    low = location.lower()
+    low = location.lower().strip()
+    from ..services import countries, market  # noqa: PLC0415
+    code = market.serp_country(b)
+    if low in {countries.name(code).lower(), code.lower(), "india" if code.upper() == "IN" else ""}:
+        return None  # a whole country has no centre that means anything: the business's own pin is used
     own = [x.lower() for x in (b.city, (b.area or "").split(",")[0]) if x]
     if any(x and x in low for x in own) and getattr(b, "lat", None) is not None:
         return None

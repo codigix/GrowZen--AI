@@ -181,7 +181,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const cols = [
     { id: 'sel', header: <input type="checkbox" aria-label="Select every row shown" checked={allOn} onChange={e => setSel(s => { const n = new Set(s); view.forEach(c => (e.target.checked ? n.add(c.key) : n.delete(c.key))); return n; })} className="accent-indigo-600" />, csv: false,
       cell: c => <input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.key)} onChange={() => toggle(c.key)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
-    { id: 'name', header: 'Competitor', first: 'asc', value: c => c.name, className: 'px-3 py-2.5 min-w-[280px] max-w-[360px]', tip: { what: 'The competitor, its website and where it is. The distance is from the place you are searching.' },
+    { id: 'name', header: 'Competitor', first: 'asc', value: c => [c.name, c.host, city(c)].filter(Boolean).join(' · '), className: 'px-3 py-2.5 min-w-[280px] max-w-[360px]', tip: { what: 'The competitor, its website and where it is. The distance is from the place you are searching.' },
       cell: c => (
         <div className="flex items-center gap-2.5">
           <Logo host={c.host} name={c.name} />
@@ -191,9 +191,6 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
             <span className="flex items-center gap-1 text-12 text-slate-500 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" /><span className="truncate" title={c.maps?.address || ''}>{city(c) || 'location not known'}</span>{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span>
           </div>
         </div>) },
-    { id: 'domain', header: 'Domain', value: c => c.host, hide: true },
-    { id: 'location', header: 'Location', value: c => city(c), hide: true },
-    { id: 'dist', header: 'Distance (m)', right: true, value: c => c.maps?.distance_m ?? null, hide: true },
     { id: 'da', header: 'DA', value: c => c.m.da ?? null, first: 'desc', tip: { what: 'Domain Authority, 0 to 100 (Moz).' }, className: 'px-3 py-2.5 text-center', thClass: 'px-3 py-3', cell: c => <span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(c.m.da)}`}>{c.m.da ?? '—'}</span> },
     { id: 'kw', header: 'Ranking keywords', right: true, first: 'desc', value: c => c.m.keywords ?? null, tip: { what: 'How many keywords it ranks for in a ranked-keywords read, for the market below.' } },
     { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: c => c.m.top3 ?? null, tip: { what: 'Keywords where it holds one of the first three positions.' } },
