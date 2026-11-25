@@ -31,7 +31,7 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 | H | 5 | Competitor keywords: pick several competitors, position/volume/KD ranges, ranking-page filter, ticked + all-filtered Add to My Keywords, detail drawer, Last updated, CPC | DONE | built, not clicked through in a browser yet. SERP features column shows Not available (no source). Drawer has no SERP overview (not kept) |
 | I | 5/13 | Save to My Keywords without duplicates: existing keywords are named in the answer and get the new source | DONE | bulk send and filtered-send already existed; per-row Add button still TODO |
 | J | 12/13 | One keyword keeps every source (Competitor Keywords / Competitor Gap / Keyword Research / Manual Entry) | DONE | stored as a list inside keyword.source, not a separate table |
-| K | 6 | Keyword Gap: Missing / Weak / Strong / Shared, opportunity score with formula | PARTIAL | none |
+| K | 6 | Keyword Gap: Missing / Weak / Shared / Strong / Only you, Opportunity score with documented formula, a position column per competitor, Opportunity-type filter | DONE | formula in `opportunity()` and the column tooltip. Device type and target-location inputs still TODO (same market only). Not clicked through in a browser |
 | L | 7 | Traffic: estimated vs verified label, distribution, top keywords | PARTIAL | none |
 | M | 8 | Top pages: page detail, content opportunities | PARTIAL | none |
 | N | 9 | Backlinks: new/lost, follow/nofollow, anchor text | TODO | provider decision |

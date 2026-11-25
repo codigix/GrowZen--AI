@@ -58,6 +58,32 @@ def _context(db: Session, b: Business) -> tuple[set[str], set[str], set[str]]:
     return vocab, places, have
 
 
+SHARED_WITHIN = 3  # both rank and are this many positions apart or fewer: "shared"
+
+INTENT_POINTS = {"transactional": 15, "commercial": 12, "local": 12, "informational": 6, "navigational": 2}
+
+
+def opportunity(r: dict[str, Any]) -> tuple[int, dict[str, int]]:
+    """The keyword opportunity score, 0 to 100: how worth going after a keyword looks to you. It is OUR way of ranking your to-do list. It is not a Google ranking factor and does not
+    predict a position. Five parts, each only from figures that were read (a missing figure gets a neutral middle value, never an invented one):
+        searches  30   log scale: 10,000 searches a month and more give all 30
+        ease      25   (100 - keyword difficulty) / 100 x 25; 12 when the difficulty is not known
+        intent    15   transactional 15, commercial or local 12, informational 6, navigational 2, unknown 7
+        distance  20   you do not rank: 20; you rank below them: 2 points per position behind (at most 20); shared: 4; ahead: 0
+        fit       10   useful for your business 10, maybe 5, otherwise 0"""
+    import math  # noqa: PLC0415
+    vol = r.get("volume")
+    searches = round(min(1.0, math.log10(vol + 1) / 4) * 30) if vol else 0
+    kd = r.get("difficulty")
+    ease = round((100 - max(0, min(100, kd))) / 100 * 25) if kd is not None else 12
+    intent = INTENT_POINTS.get(r.get("intent") or "", 7)
+    st, diff = r.get("status"), r.get("difference") or 0
+    distance = 20 if st == "missing" else min(20, max(0, diff) * 2) if st == "weak" else 4 if st == "shared" else 0
+    fit = {"yes": 10, "maybe": 5}.get(r.get("fit"), 0)
+    parts = {"searches": searches, "ease": ease, "intent": intent, "distance": distance, "fit": fit}
+    return sum(parts.values()), parts
+
+
 def _row(db_ctx: tuple[set[str], set[str], set[str]], b: Business, domain: str, kw: str, **extra: Any) -> dict[str, Any]:
     vocab, places, have = db_ctx
     v = verdict(b, vocab, places, kw, _brand_words(domain), have, extra.get("volume")) if len(vocab) >= 3 else {"fit": "maybe", "why": "Too little is known about your business to judge; add services to your profile."}
@@ -174,7 +200,9 @@ def _own_positions(db: Session, b: Business, keywords: list[str]) -> dict[str, i
 
 def gap(db: Session, b: Business) -> dict[str, Any]:
     """The keyword gap against the competitors: for each keyword a competitor ranks for (from its kept ranked-keywords read, and from Google's top 10 on your tracked searches) where you stand.
-    gap = they rank and you do not; behind = both rank and they are higher; ahead = both rank and you are higher. Each row says whether the keyword is useful for the business."""
+    missing = they rank and you do not; weak = both rank and they are more than SHARED_WITHIN positions above you; strong = both rank and you are more than that above them;
+    shared = both rank within SHARED_WITHIN positions of each other; only_you = only you rank. Each row says whether the keyword is useful for the business, and carries an opportunity score
+    (see opportunity())."""
     from ..competitors import hygiene  # noqa: PLC0415
     from ..models import CompetitorKeyword, KeywordRankLog  # noqa: PLC0415
     domains = [d.replace("www.", "") for d in hygiene.saved_competitor_domains(db, b, limit=12)]
@@ -214,15 +242,16 @@ def gap(db: Session, b: Business) -> dict[str, Any]:
         mine = own.get(kw)
         if best is None:
             continue
-        status = "gap" if not mine else ("behind" if mine > best["position"] else "ahead")
+        status = "missing" if not mine else ("weak" if mine - best["position"] > SHARED_WITHIN else "strong" if best["position"] - mine > SHARED_WITHIN else "shared")
         v = _row(ctx, b, best["domain"], kw, volume=e.get("volume"))
         rows.append({"keyword": kw, "volume": e.get("volume"), "intent": e.get("intent"), "difficulty": e.get("difficulty"), "cpc": e.get("cpc"), "competitors": comps, "best": best, "yours": mine,
                      "status": status, "difference": (mine - best["position"]) if mine else None, "fit": v["fit"], "why": v["why"]})
+        rows[-1]["score"], rows[-1]["score_parts"] = opportunity(rows[-1])
     for kw, t in tracked.items():
         if t.rank and kw not in by:
-            rows.append({"keyword": kw, "volume": t.volume, "intent": t.intent, "difficulty": t.difficulty, "cpc": t.cpc, "competitors": [], "best": None, "yours": t.rank, "status": "only_you", "difference": None, "fit": "have", "why": "Only you rank for it among the competitors read."})
-    order = {"gap": 0, "behind": 1, "ahead": 2, "only_you": 3}
-    rows.sort(key=lambda r: (order[r["status"]], {"yes": 0, "maybe": 1, "have": 2, "no": 3}[r["fit"]], -(r["volume"] or 0)))
+            rows.append({"keyword": kw, "volume": t.volume, "intent": t.intent, "difficulty": t.difficulty, "cpc": t.cpc, "competitors": [], "best": None, "yours": t.rank, "status": "only_you", "difference": None, "fit": "have", "why": "Only you rank for it among the competitors read.", "score": None, "score_parts": None})
+    order = {"missing": 0, "weak": 1, "shared": 2, "strong": 3, "only_you": 4}
+    rows.sort(key=lambda r: (order[r["status"]], -(r["score"] or 0), {"yes": 0, "maybe": 1, "have": 2, "no": 3}[r["fit"]], -(r["volume"] or 0)))
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in order}
-    counts["useful_gaps"] = sum(1 for r in rows if r["status"] == "gap" and r["fit"] in ("yes", "maybe"))
+    counts["useful_gaps"] = sum(1 for r in rows if r["status"] == "missing" and r["fit"] in ("yes", "maybe"))
     return {"competitors": list(reads.values()), "rows": rows[:2000], "counts": counts, "total": len(rows), "country": market.serp_country(b), "own_read": bool(own and any(own.values()))}

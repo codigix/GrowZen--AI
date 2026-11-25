@@ -9,7 +9,8 @@ import { api, useApi } from './seoApi';
 import { BANDS, band } from './CompetitorTables';
 
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
-const STATUS = { gap: ['Gap', 'red', 'They rank, you do not'], behind: ['Behind', 'amber', 'Both rank, they are higher'], ahead: ['Ahead', 'green', 'Both rank, you are higher'], only_you: ['Only you', 'blue', 'You rank, the competitors read do not'] };
+const STATUS = { missing: ['Missing', 'red', 'A competitor ranks and you do not'], weak: ['Weak', 'amber', 'Both rank and they are more than 3 positions above you'], shared: ['Shared', 'blue', 'Both rank, within 3 positions of each other'], strong: ['Strong', 'green', 'Both rank and you are more than 3 positions above them'], only_you: ['Only you', 'gray', 'You rank, the competitors read do not'] };
+const SCORE_HELP = 'Opportunity score, 0 to 100, our own way of ordering your to-do list (not a Google ranking factor). Searches 30 (log scale, 10,000+ = full), ease 25 (100 minus difficulty), intent 15 (transactional 15, commercial or local 12, informational 6, navigational 2), distance 20 (missing 20, weak 2 per position behind, shared 4, strong 0), fit 10 (useful 10, maybe 5).';
 const FIT = { yes: ['Useful', 'green'], maybe: ['Maybe', 'amber'], have: ['You have it', 'blue'], no: ['Not useful', 'red'] };
 const COST = (n) => (0.021 + 0.003 * n).toFixed(2);
 const short = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '');
@@ -240,7 +241,7 @@ function TopicList({ b, rows }) {
 export function KeywordGapTab({ b, focus = '' }) {
   const gap = useCompetitorGap(b);
   const { busy, error, read, toastNode } = useReader(b, gap);
-  const [status, setStatus] = useState('gap');
+  const [status, setStatus] = useState('missing');
   const [fh, setFh] = useState(focus);
   const viewRef = useRef([]); // the rows the table shows now (kept in a ref: the table reports them on every render)
   const [wsBusy, , wsRun] = useAction();
@@ -258,18 +259,22 @@ export function KeywordGapTab({ b, focus = '' }) {
     { id: 'status', header: 'Gap', value: r => STATUS[r.status][0], cell: r => <Badge tone={STATUS[r.status][1]} title={STATUS[r.status][2]}>{STATUS[r.status][0]}</Badge> },
     { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume ?? null, cell: r => num(r.volume) },
     { id: 'kd', header: 'KD', right: true, value: r => r.difficulty ?? null },
+    { id: 'score', header: 'Opportunity', right: true, first: 'desc', value: r => r.score ?? null, tip: { what: SCORE_HELP },
+      cell: r => (r.score == null ? <span className="text-slate-300">—</span> : <span title={r.score_parts ? `Searches ${r.score_parts.searches}/30 · Ease ${r.score_parts.ease}/25 · Intent ${r.score_parts.intent}/15 · Distance ${r.score_parts.distance}/20 · Fit ${r.score_parts.fit}/10` : ''} className={`inline-flex min-w-[34px] justify-center px-2 py-0.5 rounded-md text-13 font-bold ${r.score >= 70 ? 'bg-emerald-100 text-emerald-800' : r.score >= 45 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>{r.score}</span>) },
     { id: 'cpc', header: 'CPC', right: true, value: r => r.cpc ?? null, cell: r => (r.cpc == null ? '—' : `$${Number(r.cpc).toFixed(2)}`), hide: true },
+    ...g.competitors.filter(x => x.keywords || x.from_google).slice(0, 6).map((x, i) => ({ id: `pos:${x.domain}`, header: x.domain, right: true, hide: i > 1, value: r => r.competitors.find(y => y.domain === x.domain)?.position ?? null, cell: r => { const p = r.competitors.find(y => y.domain === x.domain)?.position; return p ? `#${p}` : <span className="text-slate-300">—</span>; }, tip: { what: `Where ${x.domain} ranks for the keyword.` } })),
     { id: 'intent', header: 'Intent', value: r => r.intent || '', cell: r => (r.intent ? <span className="text-12 capitalize text-slate-600">{r.intent}</span> : <span className="text-slate-300">—</span>) },
     { id: 'who', header: 'Who ranks', value: r => r.competitors.map(x => x.domain).join(', '), className: 'px-3 py-2.5 max-w-[240px]', cell: r => <span className="block truncate" title={r.competitors.map(x => `${x.domain} #${x.position ?? '—'}`).join(', ')}>{r.competitors.slice(0, 2).map(x => `${x.domain} #${x.position ?? '—'}`).join(', ')}{r.competitors.length > 2 ? ` +${r.competitors.length - 2}` : ''}</span> },
     { id: 'ncomp', header: 'Competitors', right: true, first: 'desc', value: r => r.competitors.length, hide: true },
     { id: 'best', header: 'Their best', right: true, value: r => r.best?.position ?? null, cell: r => (r.best ? <b>#{r.best.position}</b> : '—') },
-    { id: 'yours', header: 'You', right: true, value: r => r.yours ?? null, cell: r => (r.yours ? `#${r.yours}` : <span className="text-slate-400">Not ranking</span>) },
+    { id: 'yours', header: 'Our position', right: true, value: r => r.yours ?? null, cell: r => (r.yours ? `#${r.yours}` : <span className="text-slate-400">Not ranking</span>) },
     { id: 'diff', header: 'Difference', right: true, value: r => r.difference ?? null, cell: r => (r.difference == null ? '—' : <span className={r.difference > 0 ? 'text-rose-600 font-semibold' : 'text-emerald-600 font-semibold'}>{r.difference > 0 ? `${r.difference} behind` : `${Math.abs(r.difference)} ahead`}</span>) },
     { id: 'fit', header: 'Useful for you?', value: r => FIT[r.fit]?.[0] || '', className: 'px-3 py-2.5 max-w-[240px]', cell: r => <span><Badge tone={FIT[r.fit][1]}>{FIT[r.fit][0]}</Badge><span className="block text-11.5 text-slate-500 mt-0.5 truncate" title={r.why}>{r.why}</span></span> },
     { id: 'go', header: '', csv: false, right: true, className: 'px-3 py-2.5 text-right whitespace-nowrap', cell: r => ((r.fit === 'yes' || r.fit === 'maybe') ? <Link className="text-12.5 font-semibold text-indigo-600 hover:underline" to={`/keyword-management/prepare?k=${encodeURIComponent(r.keyword)}`}>Prepare</Link> : null) },
   ];
   const filters = [
     { id: 'fit', label: 'Useful', options: [['worth', 'Useful or maybe'], ['yes', 'Useful'], ['maybe', 'Maybe'], ['no', 'Not useful'], ['have', 'You have it']], test: (r, v) => (v === 'worth' ? r.fit === 'yes' || r.fit === 'maybe' : r.fit === v) },
+    { id: 'type', label: 'Opportunity type', options: Object.entries(STATUS).map(([k, v]) => [k, v[0]]), test: (r, v) => r.status === v },
     { id: 'comp', label: 'Competitor', options: g.competitors.map(x => [x.domain, x.domain]), test: (r, v) => r.competitors.some(x => x.domain === v) },
     { id: 'pos', label: 'Their best', options: BANDS.filter(x => x[0] !== 'none'), test: (r, v) => band(r.best?.position) === v },
     { id: 'volume', label: 'Searches', options: VOLUME, test: (r, v) => (r.volume || 0) >= Number(v) },
@@ -280,7 +285,7 @@ export function KeywordGapTab({ b, focus = '' }) {
     <div className="space-y-4">
       <FocusBar name={only} what="the keywords it ranks for that you can still win" onAll={() => setFh('')} />
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-        {[['gap', 'Gap', c.gap, 'They rank, you do not'], ['behind', 'Behind', c.behind, 'They are higher'], ['ahead', 'Ahead', c.ahead, 'You are higher'], ['only_you', 'Only you', c.only_you, 'No competitor read ranks']].map(([k, l, n, s]) => (
+        {[['missing', 'Missing', c.missing, 'They rank, you do not'], ['weak', 'Weak', c.weak, 'They are 4+ positions higher'], ['shared', 'Shared', c.shared, 'Both rank, within 3 positions'], ['strong', 'Strong', c.strong, 'You are 4+ positions higher'], ['only_you', 'Only you', c.only_you, 'No competitor read ranks']].map(([k, l, n, s]) => (
           <button key={k} type="button" aria-pressed={status === k} onClick={() => setStatus(status === k ? '' : k)} className={`text-left rounded-xl bg-white ring-1 px-4 py-3 cursor-pointer ${status === k ? 'ring-2 ring-indigo-500' : 'ring-slate-200 hover:bg-slate-50'}`}><div className="text-13 text-slate-500">{l}</div><div className="text-28 font-bold text-slate-900 tabular-nums leading-tight">{n}</div><div className="text-12 text-slate-500">{s}</div></button>
         ))}
         <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 px-4 py-3"><div className="text-13 text-emerald-800">Worth targeting</div><div className="text-28 font-bold text-emerald-900 tabular-nums leading-tight">{c.useful_gaps}</div><div className="text-12 text-emerald-800">gaps that fit your business</div></div>
