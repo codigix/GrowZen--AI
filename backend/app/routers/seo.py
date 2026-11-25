@@ -158,7 +158,17 @@ def _bucket(row: dict) -> str:
 @router.get("/keyword-position")
 def keyword_position(keyword: str = Query(min_length=2, max_length=255), days: int = 365, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """One tracked keyword: position history, summary, visibility and estimated traffic (from the stored Search Console checks)."""
-    return organic.one(db, b, keyword, days)
+    out = organic.one(db, b, keyword, days)
+    if not out["tracked"]:
+        return out
+    from ..competitors import hygiene  # noqa: PLC0415
+    from ..services import keyword_status as ks  # noqa: PLC0415
+    kw = out["keyword"]
+    item = next((x for x in ks.status(db, b)["items"] if x["keyword"] == kw), None)
+    used = ks.pages_for_keywords(db, b)
+    row = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
+    out["project"] = {"role": row.role if row else None, "priority": row.priority if row else None, "status": item, "pages": (used.get("pages") or {}).get(kw, []), "crawled": used.get("crawled"), "competitors": hygiene.saved_competitor_domains(db, b, limit=12)}
+    return out
 
 
 @router.get("/keyword-position/serp")
