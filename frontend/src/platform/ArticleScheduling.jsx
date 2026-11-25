@@ -53,25 +53,45 @@ const isFuture = (date, time, tz) => {
 /** Keep a valid future date/time as it is; anything already passed becomes the next available slot. */
 const validWhen = (date, time, tz) => (isFuture(date, time, tz) ? { date, time } : nextSlot(tz));
 
-/** Schedule / reschedule (mode "schedule") or publish right away (mode "publish") one article. */
-export function ScheduleModal({ b, article, mode = 'schedule', onClose, onDone, toast }) {
+/**
+ * Schedule / reschedule (mode "schedule") or publish right away (mode "publish") one article.
+ * `article` may be left out (e.g. clicking an empty day on the calendar): the dialog then asks which draft to
+ * schedule first, and `presetDate` ("YYYY-MM-DD") fills in the day that was clicked.
+ */
+export function ScheduleModal({ b, article, presetDate, mode = 'schedule', onClose, onDone, toast }) {
   const [dest, setDest] = useState(null);  // { destinations, timezone }
   const [loadErr, setLoadErr] = useState('');
-  const current = article?.schedule;
+  const [picked, setPicked] = useState(null);  // the article chosen in the "which draft?" list, when `article` was not given
+  const art = article || picked;
+  const current = art?.schedule;
   const [form, setForm] = useState({ date: '', time: '10:00', destination: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
     api(`/businesses/${b.id}/articles/destinations`).then(d => {
       setDest(d);
-      // the saved schedule when it is still ahead, otherwise the next available 15-minute slot
-      const when = current ? validWhen(current.date, current.time, d.timezone) : nextSlot(d.timezone);
+      // the saved schedule when it is still ahead; a day clicked on the calendar; otherwise the next available slot
+      const when = current ? validWhen(current.date, current.time, d.timezone)
+        : presetDate ? { date: presetDate, time: nextSlot(d.timezone).date === presetDate ? nextSlot(d.timezone).time : '10:00' }
+        : nextSlot(d.timezone);
       setForm({
         ...when,
         destination: (current && d.destinations.some(x => x.id === current.destination) ? current.destination : d.destinations[0]?.id) || ''
       });
     }).catch(e => setLoadErr(e.message || String(e)));
   }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "which draft?" picker: only fetched when the dialog was opened without one (a day clicked on the calendar)
+  const [drafts, setDrafts] = useState(null);
+  const [draftsErr, setDraftsErr] = useState('');
+  const [q, setQ] = useState('');
+  useEffect(() => {
+    if (article) return;
+    api(`/businesses/${b.id}/articles`).then(r => setDrafts((r.articles || [])
+      .filter(x => x.status === 'completed' && (!x.publishing_status || x.publishing_status === 'draft' || x.publishing_status === 'failed'))))
+      .catch(e => setDraftsErr(e.message || String(e)));
+  }, [b.id, article]);
+  const shownDrafts = (drafts || []).filter(x => !q.trim() || (x.title || x.keyword || '').toLowerCase().includes(q.trim().toLowerCase()));
 
   const tz = dest?.timezone || 'Asia/Kolkata';
   const now = nowIn(tz);
@@ -88,6 +108,7 @@ export function ScheduleModal({ b, article, mode = 'schedule', onClose, onDone, 
   };
 
   const submit = async () => {
+    if (!art) return;
     setError('');
     let body = form;
     if (mode === 'schedule' && !isFuture(form.date, form.time, tz)) {
@@ -99,19 +120,19 @@ export function ScheduleModal({ b, article, mode = 'schedule', onClose, onDone, 
       let r;
       if (mode === 'schedule') {
         try {
-          r = await api(`/businesses/${b.id}/articles/${article.id}/schedule`, { method: 'PUT', body });
+          r = await api(`/businesses/${b.id}/articles/${art.id}/schedule`, { method: 'PUT', body });
         } catch (e) {
           if (!/future/i.test(e.message || '')) throw e;
           body = { ...body, ...nextSlot(tz) };  // the server's clock says it just passed: move to the next slot once
           setForm(f => ({ ...f, ...nextSlot(tz) }));
-          r = await api(`/businesses/${b.id}/articles/${article.id}/schedule`, { method: 'PUT', body });
+          r = await api(`/businesses/${b.id}/articles/${art.id}/schedule`, { method: 'PUT', body });
         }
         toast?.(`Scheduled for ${scheduleText(r.article.schedule)}.`);
       } else if (form.destination === 'react') {
-        r = await api(`/businesses/${b.id}/articles/${article.id}/publish-react`, { method: 'POST', body: { mode: 'publish' } });
+        r = await api(`/businesses/${b.id}/articles/${art.id}/publish-react`, { method: 'POST', body: { mode: 'publish' } });
         toast?.('Published on the React.js website.');
       } else {
-        r = await api(`/businesses/${b.id}/articles/${article.id}/publish`, { method: 'POST', body: { mode: 'publish' } });
+        r = await api(`/businesses/${b.id}/articles/${art.id}/publish`, { method: 'POST', body: { mode: 'publish' } });
         toast?.('Published on your website.');
       }
       onDone?.(r.article);
@@ -119,43 +140,77 @@ export function ScheduleModal({ b, article, mode = 'schedule', onClose, onDone, 
     } catch (e) { setError(e.message || String(e)); } finally { setBusy(false); }
   };
 
-  const title = mode === 'publish' ? 'Publish now' : current && ['scheduled', 'failed'].includes(article.publishing_status) ? 'Reschedule article' : 'Schedule article';
+  const title = mode === 'publish' ? 'Publish now' : current && ['scheduled', 'failed'].includes(art?.publishing_status) ? 'Reschedule article'
+    : !article ? 'Schedule a blog post' : 'Schedule article';
   return (
     <Modal open title={title} onClose={onClose} footer={
       <>
         <Button onClick={onClose}>Cancel</Button>
         <Button variant="primary" icon={mode === 'publish' ? Send : CalendarDays} busy={busy}
-          disabled={!dest || !form.destination || (mode === 'schedule' && (!form.date || !form.time))} onClick={submit}>
+          disabled={!art || !dest || !form.destination || (mode === 'schedule' && (!form.date || !form.time))} onClick={submit}>
           {mode === 'publish' ? 'Publish now' : 'Save schedule'}
         </Button>
       </>
     }>
       <div className="space-y-3 text-[12.5px]">
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-          <div className="font-semibold text-slate-900">{article.title || article.keyword}</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">{mode === 'publish'
-            ? 'The article goes live on the website right away, with its featured image and SEO fields.'
-            : 'GrowZen keeps the article and publishes it automatically at this time. Nothing is sent to the website before then.'}</div>
-        </div>
-        {loadErr && <p className="text-rose-700">{loadErr}</p>}
-        {!dest && !loadErr && <div className="flex items-center gap-2 text-slate-500"><Loader2 size={13} className="animate-spin" /> Loading destinations…</div>}
-        {dest && !dest.destinations.length && (
-          <p className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">No website is connected to this account. Connect WordPress or the React.js website first (open the article → Publish &amp; Schedule).</p>
-        )}
-        {dest && dest.destinations.length > 0 && (
+        {!article && !picked && (
           <>
-            <Field label="Publishing destination" hint={chosen?.target ? `Target: ${chosen.target.replace(/^https?:\/\//, '')}` : undefined}>
-              <Select className={inputCls} value={form.destination} onChange={set('destination')}>
-                {dest.destinations.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-              </Select>
-            </Field>
-            {mode === 'schedule' && (
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Publication date"><input type="date" className={inputCls} min={now.date} value={form.date} onChange={setWhen('date')} /></Field>
-                <Field label={`Publication time (${tzShort(tz)})`}><TimeAmPm value={form.time} onChange={v => setWhen('time')({ target: { value: v } })} /></Field>
-              </div>
+            <p className="text-slate-600">{presetDate ? `Pick a draft to schedule for ${fmtDay(presetDate)}:` : 'Pick a draft to schedule:'}</p>
+            <label className="relative block">
+              <input className={inputCls} value={q} onChange={e => setQ(e.target.value)} placeholder="Search title or keyword" aria-label="Search drafts" />
+            </label>
+            {draftsErr && <p className="text-rose-700">{draftsErr}</p>}
+            {!drafts && !draftsErr && <div className="flex items-center gap-2 text-slate-500"><Loader2 size={13} className="animate-spin" /> Loading your articles…</div>}
+            {drafts && drafts.length === 0 && (
+              <p className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">No draft articles to schedule yet. Write one first on the AI Blog &amp; Article Writer tab.</p>
             )}
-            {mode === 'schedule' && <p className="flex items-center gap-1.5 text-[11px] text-slate-500"><Clock size={12} /> Times are in {tz}{tz === 'Asia/Kolkata' ? ' (India Standard Time)' : ''}.</p>}
+            {drafts && drafts.length > 0 && (
+              <ul className="max-h-[260px] overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-200">
+                {shownDrafts.length === 0 && <li className="px-3 py-3 text-slate-400 text-center">No match</li>}
+                {shownDrafts.map(x => (
+                  <li key={x.id}>
+                    <button type="button" onClick={() => setPicked(x)} className="w-full text-left px-3 py-2.5 hover:bg-indigo-50 cursor-pointer flex items-center gap-2">
+                      <span className="flex-1 min-w-0 truncate font-semibold text-slate-800">{x.title || x.keyword}</span>
+                      {x.publishing_status === 'failed' && <Badge tone="red">Failed</Badge>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+        {art && (
+          <>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-slate-900 truncate">{art.title || art.keyword}</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">{mode === 'publish'
+                  ? 'The article goes live on the website right away, with its featured image and SEO fields.'
+                  : 'GrowZen keeps the article and publishes it automatically at this time. Nothing is sent to the website before then.'}</div>
+              </div>
+              {!article && <button type="button" onClick={() => setPicked(null)} className="shrink-0 text-indigo-600 hover:underline cursor-pointer">Change</button>}
+            </div>
+            {loadErr && <p className="text-rose-700">{loadErr}</p>}
+            {!dest && !loadErr && <div className="flex items-center gap-2 text-slate-500"><Loader2 size={13} className="animate-spin" /> Loading destinations…</div>}
+            {dest && !dest.destinations.length && (
+              <p className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">No website is connected to this account. Connect WordPress or the React.js website first (open the article → Publish &amp; Schedule).</p>
+            )}
+            {dest && dest.destinations.length > 0 && (
+              <>
+                <Field label="Publishing destination" hint={chosen?.target ? `Target: ${chosen.target.replace(/^https?:\/\//, '')}` : undefined}>
+                  <Select className={inputCls} value={form.destination} onChange={set('destination')}>
+                    {dest.destinations.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                  </Select>
+                </Field>
+                {mode === 'schedule' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Publication date"><input type="date" className={inputCls} min={now.date} value={form.date} onChange={setWhen('date')} /></Field>
+                    <Field label={`Publication time (${tzShort(tz)})`}><TimeAmPm value={form.time} onChange={v => setWhen('time')({ target: { value: v } })} /></Field>
+                  </div>
+                )}
+                {mode === 'schedule' && <p className="flex items-center gap-1.5 text-[11px] text-slate-500"><Clock size={12} /> Times are in {tz}{tz === 'Asia/Kolkata' ? ' (India Standard Time)' : ''}.</p>}
+              </>
+            )}
           </>
         )}
         {error && <p className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800">{error}</p>}
@@ -239,26 +294,38 @@ export function PublishingCalendar({ b, onOpenArticle, toast }) {
             const isToday = valid && today.date === `${month}-${String(day).padStart(2, '0')}`;
             return (
               <div key={i} className={`min-h-[92px] rounded-xl border p-1.5 sm:p-2 ${valid ? `bg-slate-50 ${isToday ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-slate-200'}` : 'border-transparent opacity-0'}`}>
-                {valid && (
-                  <>
-                    <div className={`text-[11px] font-mono font-bold mb-1 ${isToday ? 'text-indigo-700' : 'text-slate-500'}`}>{day}</div>
-                    <div className="space-y-1">
-                      {(byDay[day] || []).map(e => (
-                        <button key={e.id} type="button" onClick={() => setOpen(e)} title={`${e.title} · ${PUB_STATUS[e.publishing_status]?.[0]} · ${e.time}`}
-                          className={`w-full text-left px-1.5 py-0.5 rounded border text-[10px] truncate font-medium cursor-pointer transition-colors ${CHIP[e.publishing_status] || CHIP.scheduled}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full inline-block mr-1 ${DOT[e.publishing_status]}`} />
-                          <span className="font-mono">{e.time}</span> {e.title}
+                {valid && (() => {
+                  const dateStr = `${month}-${String(day).padStart(2, '0')}`;
+                  const schedulable = dateStr >= today.date;  // today or a future day, this month or any month reached with the arrows
+                  return (
+                    <>
+                      {schedulable ? (
+                        <button type="button" onClick={() => setEditing({ article: null, mode: 'schedule', presetDate: dateStr })}
+                          title="Schedule a blog post for this day" aria-label={`Schedule a blog post for ${dateStr}`}
+                          className={`w-full text-left text-[11px] font-mono font-bold mb-1 rounded px-1 -mx-1 cursor-pointer hover:bg-indigo-100 hover:text-indigo-700 transition-colors ${isToday ? 'text-indigo-700' : 'text-slate-500'}`}>
+                          {day}
                         </button>
-                      ))}
-                    </div>
-                  </>
-                )}
+                      ) : (
+                        <div className={`text-[11px] font-mono font-bold mb-1 ${isToday ? 'text-indigo-700' : 'text-slate-500'}`}>{day}</div>
+                      )}
+                      <div className="space-y-1">
+                        {(byDay[day] || []).map(e => (
+                          <button key={e.id} type="button" onClick={() => setOpen(e)} title={`${e.title} · ${PUB_STATUS[e.publishing_status]?.[0]} · ${e.time}`}
+                            className={`w-full text-left px-1.5 py-0.5 rounded border text-[10px] truncate font-medium cursor-pointer transition-colors ${CHIP[e.publishing_status] || CHIP.scheduled}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full inline-block mr-1 ${DOT[e.publishing_status]}`} />
+                            <span className="font-mono">{e.time}</span> {e.title}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             );
           })}
         </div>
         {data && !data.entries.length && (
-          <p className="mt-3 text-center text-[12px] text-slate-500">Nothing scheduled this month. Schedule a draft from <b>Generated articles</b> on the AI Blog &amp; Article Writer tab.</p>
+          <p className="mt-3 text-center text-[12px] text-slate-500">Nothing scheduled this month. Click any day above to schedule a draft for it.</p>
         )}
       </Card>
 
@@ -297,7 +364,7 @@ export function PublishingCalendar({ b, onOpenArticle, toast }) {
           </div>
         </Modal>
       )}
-      {editing && <ScheduleModal b={b} article={editing.article} mode={editing.mode} toast={toast} onClose={() => setEditing(null)} onDone={() => load(true)} />}
+      {editing && <ScheduleModal b={b} article={editing.article} presetDate={editing.presetDate} mode={editing.mode} toast={toast} onClose={() => setEditing(null)} onDone={() => load(true)} />}
     </div>
   );
 }

@@ -774,8 +774,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const [kwBusyP, setKwBusyP] = useState(false);
   const [chunkBusy, setChunkBusy] = useState(false);
   const syncingTo = useRef(null); // a saved body the draft is being loaded from (null once the draft shows it)
+  const syncedKey = useRef('');  // the saved content the editor was last filled from
   useEffect(() => {
     if (selectedArticle) {
+      // a background refresh (scheduled posts are re-read every 30 s) brings the same saved content again: the edits typed since
+      // then (slug, title, text...) must stay, so the editor is only refilled when the SAVED content really changed
+      const key = JSON.stringify([selectedArticle.id, selectedArticle.body, selectedArticle.keyword, selectedArticle.slug, selectedArticle.secondary_keywords, selectedArticle.title, selectedArticle.meta_description]);
+      if (key === syncedKey.current) return;
+      syncedKey.current = key;
       if ((selectedArticle.body || '') !== draft) syncingTo.current = selectedArticle.body || '';
       setDraft(selectedArticle.body || '');
       setMeta({
@@ -973,6 +979,20 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const brand = brandOf(b.name); // the short name readers know: it is written into the article and highlighted like the keywords
   const slugNow = slugify(meta.slug, 100) || slugify(meta.keyword);
   const fullUrl = urlBase?.base ? `${urlBase.base}${slugNow}${urlBase.trailing_slash ? '/' : ''}` : '';
+  // is this web address already used by another blog or by a post on the website? (a message only: nothing is blocked)
+  const [slugUsed, setSlugUsed] = useState(null);  // { slug, by } when taken
+  const slugArticleId = selectedArticle?.id;
+  useEffect(() => {
+    setSlugUsed(null);
+    if (!slugArticleId || !slugNow) return undefined;
+    let live = true;
+    const t = setTimeout(() => {
+      api(`/businesses/${b.id}/articles/${slugArticleId}/slug-check?slug=${encodeURIComponent(slugNow)}`)
+        .then(r => { if (live) setSlugUsed(r.used ? { slug: r.slug, by: r.by } : null); })
+        .catch(() => { /* the check is only a hint */ });
+    }, 500);
+    return () => { live = false; clearTimeout(t); };
+  }, [b.id, slugArticleId, slugNow]);
   const keywordWords = slugify(meta.keyword).split('-').filter(Boolean);
   const slugHasKeyword = keywordWords.length > 0 && keywordWords.every(w => slugNow.split('-').includes(w));
   const previewHtml = React.useMemo(() => (mark ? highlightHtml(draft, meta.keyword, secondaryNow, { flag: true, brand }) : draft), [draft, mark, meta.keyword, meta.secondary, brand]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1388,9 +1408,9 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   <Field label="Primary keyword" hint="Must appear in the title, meta description and introduction"><input className={inputCls} value={meta.keyword} onChange={e => setMeta(m => ({ ...m, keyword: e.target.value }))} /></Field>
                   <Field label="Secondary keywords" hint="Comma separated; each should appear in the article"><input className={inputCls} value={meta.secondary} onChange={e => setMeta(m => ({ ...m, secondary: e.target.value }))} /></Field>
                 </div>
-                <Field label="Web address (slug)" hint={meta.slug.trim() ? 'Your own words. Click “Use the primary keyword” to follow the keyword again.' : 'Follows the primary keyword: change the keyword and this changes with it. Type here to set your own.'}>
+                <Field label="Web address (slug)" hint={slugUsed ? undefined : meta.slug.trim() ? 'Your own words. Click “Use the primary keyword” to follow the keyword again.' : 'Follows the primary keyword: change the keyword and this changes with it. Type here to set your own.'}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center min-w-0 flex-1 rounded-lg border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                    <div className={`flex items-center min-w-0 flex-1 rounded-lg border bg-white overflow-hidden focus-within:ring-2 ${slugUsed ? 'border-rose-400 focus-within:ring-rose-300' : 'border-slate-300 focus-within:ring-indigo-500'}`}>
                       <span className="px-2.5 py-2 bg-slate-50 text-[12px] text-slate-500 border-r border-slate-200 whitespace-nowrap max-w-[55%] truncate" title={urlBase?.base}>{urlBase?.base ? urlBase.base.replace(/^https?:\/\//, '') : '/'}</span>
                       <input className="flex-1 min-w-0 px-2.5 py-2 text-[13px] font-mono outline-none" value={meta.slug.trim() ? meta.slug : slugify(meta.keyword)} aria-label="Web address slug" maxLength={100}
                         onChange={e => setMeta(m => ({ ...m, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-\s]+/g, '').replace(/\s+/g, '-') }))}
@@ -1400,6 +1420,12 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     {meta.slug.trim() && slugify(meta.slug, 100) !== slugify(meta.keyword) && <Button size="sm" onClick={() => setMeta(m => ({ ...m, slug: '' }))}>Use the primary keyword</Button>}
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${slugHasKeyword ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>{slugHasKeyword ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}{slugHasKeyword ? 'Has the primary keyword' : 'Without the primary keyword'}</span>
                   </div>
+                  {slugUsed && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-rose-700" role="alert">
+                      <AlertTriangle size={13} className="shrink-0" />
+                      <span><span className="font-mono">{slugUsed.slug}</span> is already taken ({slugUsed.by}). Try another web address.</span>
+                    </div>
+                  )}
                   {fullUrl && <div className="mt-1 text-[11.5px] text-slate-500 break-all">Full address: <span className="font-mono">{fullUrl}</span></div>}
                 </Field>
                 {(() => {

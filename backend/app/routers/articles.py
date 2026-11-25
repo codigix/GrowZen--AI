@@ -297,6 +297,38 @@ def duplicates(article_id: int, b: Business = Depends(get_business), db: Session
     return {"same_title": same_title, "same_image": same_image}
 
 
+@router.get("/{article_id}/slug-check")
+def slug_check(article_id: int, slug: str = "", b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Is this web address already taken: by another blog of this project, or by a post on the connected React.js website?
+    Read only (the editor shows a warning; nothing is blocked or changed here)."""
+    from urllib.parse import urlparse
+    from ..models import ReactSiteConnection
+    from ..services import react_site as rs
+    a = _get(db, b, article_id)
+    s = svc.slugify(slug or "", 100) or svc.slugify(a.keyword or "", 100)
+    if not s:
+        return {"slug": "", "used": False}
+    for o in db.scalars(select(Article).where(Article.business_id == b.id, Article.id != a.id)):
+        used = {(svc.explicit_slug(o) or "").lower()}
+        for u in (o.wp_url, o.react_url):
+            if u:
+                used.add((urlparse(u).path.rstrip("/").rsplit("/", 1)[-1] or "").lower())
+        if s in used:
+            return {"slug": s, "used": True, "by": f"another article: “{o.title or o.keyword}”"}
+    conn = db.scalar(select(ReactSiteConnection).where(ReactSiteConnection.business_id == b.id))
+    checked_site = False
+    if conn and conn.status == "connected":
+        try:
+            posts = rs.list_posts(conn)
+            checked_site = bool(posts)
+            for x in posts:
+                if str(x.get("slug") or "").lower() == s and (rs._id_of(x) or "") != str(a.react_post_id or ""):
+                    return {"slug": s, "used": True, "by": "a post already on your website", "checked_site": True}
+        except Exception:  # noqa: BLE001 - a website that cannot be read never blocks the editor
+            log.warning("Slug check could not read the website's posts for article %s", a.id)
+    return {"slug": s, "used": False, "checked_site": checked_site}
+
+
 class RegenerateIn(BaseModel):
     part: Literal["full", "intro", "section", "conclusion", "faqs", "title", "meta", "h1", "slug"]
     section_id: str | None = Field(default=None, max_length=20)  # for "section": an id from /regenerate/sections
