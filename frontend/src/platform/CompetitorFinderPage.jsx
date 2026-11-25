@@ -18,6 +18,7 @@ import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
 import ResearchTab from './CompetitorResearch';
 import CompetitorMaps from './CompetitorMaps';
 import { Stepper, FindStep, STEPS } from './CompetitorSteps';
+import { ShortlistStep, AnalyzeStep, OpportunitiesStep } from './CompetitorFlowSteps';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 
@@ -829,7 +830,9 @@ function Research({ b }) {
   const [focus, setFocus] = useState({ host: '', band: '' }); // the competitor (and ranking band) a table cell sent you to
   const [stepRaw, setStepRaw] = useState(() => (STEPS.some(x => x.id === params.get('step')) ? params.get('step') : params.get('tab') ? (params.get('tab') === 'competitors' ? 'shortlist' : 'opportunities') : null));
   const [findNote, setFindNote] = useState('');
-  const goTo = (t, host = '', band = '') => { setFocus({ host, band }); setTab(t); setStepRaw(t === 'competitors' ? 'shortlist' : 'opportunities'); };
+  const VIEW_OF_TAB = { gap: 'keywords', keywords: 'keywords', traffic: 'traffic', pages: 'pages', backlinks: 'backlinks', maps: 'maps', research: 'find' };
+  const [view, setView] = useState(() => (['keywords', 'pages', 'traffic', 'backlinks', 'maps', 'find'].includes(params.get('view')) ? params.get('view') : VIEW_OF_TAB[params.get('tab')] || ''));
+  const goTo = (t, host = '', band = '') => { setFocus({ host, band }); setTab(t); if (t !== 'competitors') setView(VIEW_OF_TAB[t] || ''); setStepRaw(t === 'competitors' ? 'shortlist' : 'opportunities'); };
   const [settings, setSettings] = useState(false);
   const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
   const [radiusKm, setRadiusKm] = useState('5'); // how far around the place a competitor may be
@@ -1107,16 +1110,16 @@ function Research({ b }) {
   const analysis = useAnalysis(b, tableRows.map(c => c.host).filter(Boolean));
   const statusOf = (c) => analysis.metrics[c.host]?.status || 'pending';
   // the competitors around the place that are not analyzed yet are analyzed by themselves
-  const pendingHosts = poolRows.filter(c => c.host && statusOf(c) !== 'analyzed').map(c => c.host);
+  const pendingHosts = poolRows.filter(c => isChosenRow(c) && c.host && statusOf(c) !== 'analyzed').map(c => c.host);
   const auto = useAutoAnalysis(b, analysis, pendingHosts);
 
   if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="space-y-4"><SkCard title="Competitor research" subtitle="Who ranks for your keywords on Google and Maps"><Sk h="h-9" w="w-2/3" /></SkCard><SkCard title="Competitors found" pad={false}><SkTable headers={["Competitor", "Type", "Keywords", "Best position"]} rows={6} bare /></SkCard></div>;
   const p = current?.result?.progress;
   const s = result?.summary;
   const cur = stepRaw || (registered.length ? 'shortlist' : 'find');
-  const analyzedCount = poolRows.filter(c => statusOf(c) === 'analyzed').length;
-  const stepNotes = { find: registered.length ? `${registered.length} found` : '', shortlist: registered.length ? `${chosenTotal} chosen` : '', analyze: chosenTotal ? `${analyzedCount} of ${poolRows.length} analyzed` : '' };
-  const stepDone = { find: registered.length > 0, shortlist: chosenTotal > 0, analyze: poolRows.length > 0 && analyzedCount >= Math.min(poolRows.length, Math.max(1, chosenTotal)), opportunities: false };
+  const analyzedCount = poolRows.filter(c => isChosenRow(c) && statusOf(c) === 'analyzed').length;
+  const stepNotes = { find: registered.length ? `${registered.length} found` : '', shortlist: registered.length ? `${chosenTotal} chosen` : '', analyze: chosenTotal ? `${analyzedCount} of ${chosenTotal} analyzed` : '' };
+  const stepDone = { find: registered.length > 0, shortlist: chosenTotal > 0, analyze: chosenTotal > 0 && analyzedCount >= chosenTotal, opportunities: false };
   const t = cur === 'opportunities' ? (tab === 'competitors' ? 'gap' : tab) : 'competitors'; // the screen shown in steps 2 to 4 until each is rebuilt
 
   return (
@@ -1154,44 +1157,10 @@ function Research({ b }) {
         <button type="button" onClick={() => setStepRaw('find')} className="ml-1 text-indigo-700 font-semibold hover:underline cursor-pointer">Find or add more</button>
         <Button size="sm" icon={Users} className="ml-auto" onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors</Button>
       </div>}
-      {cur !== 'find' && <>
-      <AnalysisStats rows={poolRows} status={statusOf} isChosen={isChosenRow} metrics={analysis.metrics} />
-      <AutoBar auto={auto} />
-      {(result || registered.length > 0) && (
-        <div className={isRunning(current) ? 'space-y-3 opacity-60 pointer-events-none select-none' : 'space-y-3'} aria-busy={isRunning(current)}>
-          <div>
-            {cur === 'opportunities' && <Tabs value={t} onChange={(t) => goTo(t)} tabs={[
-              { id: 'competitors', label: 'Competitors', count: poolRows.length },
-              { id: 'gap', label: 'Keyword gap' },
-              { id: 'keywords', label: 'Competitor keywords' },
-              { id: 'traffic', label: 'Traffic comparison' },
-              { id: 'pages', label: 'Top pages' },
-              { id: 'backlinks', label: 'Backlink comparison' },
-              { id: 'maps', label: 'Google Maps', count: tableRows.filter(c => c.maps).length },
-              { id: 'research', label: 'Research' }
-            ].filter(x => x.id !== 'competitors')} />}
-            {t === 'competitors' && <>
-              <CompetitorsPanel b={b} auto={auto} rating={rating} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
-                isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onGo={goTo}
-                addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
-              <ErrorNote>{mapsError}</ErrorNote>
-            </>}
-            {t === 'gap' && <KeywordGapTab key={focus.host} b={b} focus={focus.host} />}
-            {t === 'keywords' && <CompetitorKeywordsTab key={`${focus.host}|${focus.band}`} b={b} focus={focus.host} band={focus.band} />}
-            {t === 'traffic' && <TrafficTab key={focus.host} b={b} rows={poolRows} analysis={analysis} focus={focus.host} />}
-            {t === 'pages' && <TopPagesTab key={focus.host} b={b} rows={poolRows} focus={focus.host} />}
-            {t === 'backlinks' && <BacklinkTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
-            {t === 'maps' && <CompetitorMaps key={b.id} b={b} rows={tableRows} legacy={result ? <MapsTab r={result} kit={null} /> : null} />}
-            {t === 'research' && <ResearchTab key={b.id} b={b} legacy={result ? (
-              <div className="space-y-3">
-                  <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden bg-white" role="group" aria-label="Research">{[['overview', 'Overview'], ['rankings', 'Rankings on your keywords']].map(([k, l]) => <button key={k} type="button" aria-pressed={researchView === k} onClick={() => setResearchView(k)} className={`h-9 px-3.5 text-13 font-medium cursor-pointer ${researchView === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>
-                  {researchView === 'overview' ? <Overview r={result} goto={(id) => (id === 'keywords' ? setResearchView('rankings') : setTab(id === 'competitors' ? 'competitors' : id))} /> : <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
-                </div>
-            ) : null} />}
-          </div>
-        </div>
-      )}
-      </>}
+      {cur === 'shortlist' && <ShortlistStep rows={poolRows} isChosen={isChosenRow} onChoose={chooseCompetitor} onRemove={removeCompetitor} onNext={() => setStepRaw('analyze')} onFind={() => setStepRaw('find')} />}
+      {cur === 'analyze' && <AnalyzeStep b={b} rows={poolRows} isChosen={isChosenRow} metrics={analysis.metrics} auto={auto} reload={analysis.reload} onShortlist={() => setStepRaw('shortlist')}
+        onNext={() => { setView(''); setStepRaw('opportunities'); }} onProfile={setDetail} onKind={async (id, kind) => { try { await api(`/competitors/${id}/kind`, { method: 'PATCH', body: { kind: kind || null } }); await loadRegistered(); } catch (e) { toast(e.message); } }} />}
+      {cur === 'opportunities' && <OpportunitiesStep b={b} rows={poolRows} isChosen={isChosenRow} analysis={analysis} view={view} setView={setView} onAnalyze={() => setStepRaw('analyze')} />}
       </div>
       <Drawer open={panel} onClose={() => setPanel(false)} width="max-w-md" title="My competitors" subtitle="Choose 3 to 5 that really compete with you. Only the chosen ones are watched.">
         <MyCompetitors list={registered} auditMap={{}} onAdd={addManual} onFind={findOnMaps} onAudit={() => {}} onRemove={removeCompetitor} onChoose={chooseCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} findError={mapsError} running={isRunning(current)} />

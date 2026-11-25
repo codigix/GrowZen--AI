@@ -54,8 +54,11 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 - The frontend's .env points API calls at http://localhost:8000. A browser test must start Vite with `VITE_API_URL=/api/v1` and `BACKEND_URL=<test backend>` or it talks to the real backend.
 
 ## Redesign: 4-step guided flow (agreed with the owner)
-Decisions: 4 steps (Find, Shortlist, Analyze, Opportunities); simple 6-column competitor table; Competitor keywords + Keyword gap + Research opportunities merged into one Keywords page; one step at a time, each checked in a browser and approved before the next.
-- Step bar + Step 1 Find: DONE (8 browser checks). Steps 2 to 4 still show the earlier screens under the step bar.
-- Step 2 Shortlist (choose competitors, 3 columns): TODO
-- Step 3 Analyze (simple 6-column table with Domain Authority, keywords, traffic, status; side panel per competitor): TODO
-- Step 4 Opportunities (one merged Keywords page; Insights for traffic, pages, backlinks, maps): TODO
+Rules from the owner: no tab bars anywhere (moving between views is done with buttons only), and no unnecessary filters.
+- Step bar + Step 1 Find: DONE.
+- Step 2 Shortlist: DONE. A plain list with a Choose / Chosen button per business, one search box, "Choose the likely direct competitors", remove with confirmation.
+- Step 3 Analyze: DONE. Table of the chosen competitors only: Authority, Keywords, Visitors a month, Status, and an Analyze / Refresh and Details button per row. Details window holds everything else (other numbers, match, direct/indirect buttons, earlier analyses). Auto-analyze now reads only CHOSEN competitors.
+- Step 4 Opportunities: DONE. Six big buttons (Keywords to win, Their best pages, Traffic compared, Backlinks compared, On Google Maps, Find new keywords), each opens one view with an "All opportunities" back button. Keyword gap and Competitor keywords are merged into one Keywords view: three buttons, one "only what fits my business" switch, one competitor dropdown, one search box, 7 columns.
+- Filters removed from the traffic, backlink, top-pages and maps tables; the Maps and Research switches are now buttons.
+- 22-step browser check of the whole flow: all pass.
+- Old components (CompetitorsPanel, KeywordGapTab, CompetitorKeywordsTab, the Research tab sections for opportunities and competitors) are no longer used by the page and can be deleted once the owner is happy with the new flow.

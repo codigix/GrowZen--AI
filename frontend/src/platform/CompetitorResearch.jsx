@@ -14,7 +14,7 @@ const norm = (k) => String(k || '').toLowerCase().split(/\s+/).filter(Boolean).j
 const SECTIONS = [['discovery', 'Keyword Discovery'], ['competitors', 'Competitor Research'], ['location', 'Location-Based Keywords'], ['opportunities', 'Keyword Opportunities']];
 
 /** Save keywords to My Keywords. The same keyword from another place is not duplicated: it keeps every place it came from, and the message says how many already existed. */
-async function saveToMy(b, list, toast, label, kind = 'google_ideas', extra = {}) {
+export async function saveToMy(b, list, toast, label, kind = 'google_ideas', extra = {}) {
   if (!list.length) { toast('Nothing to add: tick some rows first.'); return false; }
   try {
     const body = list.slice(0, 300).map(r => ({ keyword: r.keyword, volume: r.volume ?? undefined, difficulty: r.difficulty ?? r.kd ?? undefined, cpc: r.cpc ?? undefined, intent: r.intent || undefined,
@@ -203,8 +203,9 @@ function Opportunities({ b, disc }) {
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------- the tab
-export default function ResearchTab({ b, legacy = null, legacyCount = 0 }) {
-  const [section, setSection] = useState('discovery');
+export default function ResearchTab({ b, legacy = null, section: forced = null, hideNav = false }) {
+  const [sec, setSection] = useState('discovery');
+  const section = forced || sec;
   const [ctx, setCtx] = useState(null);
   const [disc, setDisc] = useState(null);
   const [err, setErr] = useState('');
@@ -212,9 +213,9 @@ export default function ResearchTab({ b, legacy = null, legacyCount = 0 }) {
   const secs = legacy ? [...SECTIONS, ['run', 'Research run']] : SECTIONS;
   return (
     <div className="space-y-3">
-      <div className="inline-flex flex-wrap rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden bg-white" role="group" aria-label="Research sections">
+      {!hideNav && <div className="inline-flex flex-wrap rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden bg-white" role="group" aria-label="Research sections">
         {secs.map(([k, l]) => <button key={k} type="button" aria-pressed={section === k} onClick={() => setSection(k)} className={`h-9 px-3.5 text-13 font-medium cursor-pointer ${section === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}
-      </div>
+      </div>}
       {err && <ErrorNote>{err}</ErrorNote>}
       {section === 'discovery' && <Discovery b={b} ctx={ctx} disc={disc} setDisc={setDisc} />}
       {section === 'competitors' && <div className="space-y-2"><p className="text-12.5 text-slate-600">Pick one or several competitors, read their ranked keywords, narrow them by position, searches, difficulty, intent or page, and save the ones you want. Rankings are for the project's market.</p><CompetitorKeywordsTab b={b} /></div>}

@@ -505,7 +505,7 @@ export function TrafficTab({ b, rows, analysis, focus = '' }) {
           ) : <p className="text-13 text-slate-500">No keywords read yet. Analyze a competitor on the Competitors tab.</p>; })()}
         </Panel>
       </div>
-      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="traffic-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
+      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={[]} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="traffic-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
     </div>
   );
 }
@@ -535,7 +535,7 @@ export function BacklinkTab({ rows, analysis, focus = '' }) {
         <Panel title="Domain Authority" sub="How strong each site is, 0 to 100 (Moz, through Apify)."><Bars rows={bar('da')} fmt={num} color="#8b5cf6" /></Panel>
         <Panel title="Referring domains" sub="How many different websites link to each site (Moz)."><Bars rows={bar('rd')} fmt={num} color="#6366f1" /></Panel>
       </div>
-      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} initialSort={{ key: 'da', dir: 'desc' }} exportName="backlink-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
+      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={[]} initialSort={{ key: 'da', dir: 'desc' }} exportName="backlink-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
       <p className="text-12 text-slate-500">The links themselves, the sites that link to a competitor and not to you, are on the <Link className="text-indigo-600 underline" to="/backlinks/overview">Backlinks</Link> page (Compare).</p>
     </div>
   );
@@ -608,7 +608,7 @@ export function TopPagesTab({ b, rows, focus = '' }) {
     { id: 'traffic', label: 'Traffic', options: [['100', '100+ a month'], ['1000', '1,000+ a month']], test: (p, v) => p.traffic >= Number(v) },
     { id: 'opp', label: 'Opportunity', options: [['yes', 'Has keywords you do not rank for']], test: (p, v) => (p.list || []).some(k => !k.yours) },
   ];
-  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} /><DataTable key={fh} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />
+  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} /><DataTable key={fh} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={[]} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />
     {open && <PageDrawer b={b} pg={open} all={all} onClose={() => setOpen(null)} />}</>;
 }
 
