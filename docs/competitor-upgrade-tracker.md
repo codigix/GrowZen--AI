@@ -32,8 +32,8 @@ Status: DONE = built and tested. PARTIAL = part of it works. TODO = not started.
 | I | 5/13 | Save to My Keywords without duplicates: existing keywords are named in the answer and get the new source | DONE | bulk send and filtered-send already existed; per-row Add button still TODO |
 | J | 12/13 | One keyword keeps every source (Competitor Keywords / Competitor Gap / Keyword Research / Manual Entry) | DONE | stored as a list inside keyword.source, not a separate table |
 | K | 6 | Keyword Gap: Missing / Weak / Shared / Strong / Only you, Opportunity score with documented formula, a position column per competitor, Opportunity-type filter | DONE | formula in `opportunity()` and the column tooltip. Device type and target-location inputs still TODO (same market only). Not clicked through in a browser |
-| L | 7 | Traffic: estimated vs verified label, distribution, top keywords | PARTIAL | none |
-| M | 8 | Top pages: page detail, content opportunities | PARTIAL | none |
+| L | 7 | Traffic: Estimated vs Verified labels, share-of-traffic bar, top traffic keywords per competitor, trend from real analysis runs only (needs 2+ runs), comparison charts | DONE | no fabricated history. Built, not clicked through in a browser |
+| M | 8 | Top pages: URL, est. traffic, ranking keywords, top keyword + position, page drawer (keywords with your position, page-level opportunities, related terms, content opportunities + add to My Keywords) | DONE | page title and page-level backlinks show Not available: no connected provider reads them |
 | N | 9 | Backlinks: new/lost, follow/nofollow, anchor text | TODO | provider decision |
 | O | 10 | Google Maps tab: local rank tracking separate from discovery | PARTIAL | none |
 | P | 11 | Research tab: discovery, competitor research, location keywords, opportunities | PARTIAL | none |

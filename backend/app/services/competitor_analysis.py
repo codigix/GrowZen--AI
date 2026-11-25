@@ -267,25 +267,64 @@ def usage(db: Session, b: Business, limit: int = 50) -> dict[str, Any]:
             "latest": [{"provider": r.provider, "target": r.target, "ok": r.ok, "detail": r.detail, "cost": r.cost, "at": r.at.isoformat() if r.at else None} for r in last]}
 
 
+PAGE_KEYWORDS = 15  # keywords kept in the detail of each page
+
+
 def pages(db: Session, b: Business, domains: list[str], limit: int = 200) -> list[dict[str, Any]]:
-    """The pages that bring each competitor its organic traffic, from the kept keyword reads: per page the keywords it ranks for, their estimated traffic, its best position and its top keyword."""
+    """The pages that bring each competitor its organic traffic, from the kept keyword reads: per page the keywords it ranks for, their estimated traffic, its best position and its top keyword (the
+    most searched one) with that keyword's position, and the page's best keywords with where YOU stand on each. The page's title and its backlinks are not read by any provider here, so they are not given."""
+    from . import competitor_keyword_report as ck  # noqa: PLC0415
     domains = list(dict.fromkeys(_host(d) for d in domains if d))
     agg: dict[tuple[str, str], dict[str, Any]] = {}
     for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain.in_(domains or [""]))):
         if not r.url:
             continue
-        e = agg.setdefault((r.domain, r.url), {"domain": r.domain, "url": r.url, "keywords": 0, "traffic": 0.0, "best": None, "top_keyword": None, "top_volume": -1})
+        e = agg.setdefault((r.domain, r.url), {"domain": r.domain, "url": r.url, "keywords": 0, "traffic": 0.0, "best": None, "top_keyword": None, "top_volume": -1, "top_position": None, "list": []})
         e["keywords"] += 1
         e["traffic"] += r.traffic or 0
         if r.position and (e["best"] is None or r.position < e["best"]):
             e["best"] = r.position
         if (r.volume or 0) > e["top_volume"]:
-            e["top_keyword"], e["top_volume"] = r.keyword, r.volume or 0
+            e["top_keyword"], e["top_volume"], e["top_position"] = r.keyword, r.volume or 0, r.position
+        e["list"].append({"keyword": r.keyword, "position": r.position, "volume": r.volume, "difficulty": r.difficulty, "cpc": r.cpc, "intent": r.intent, "traffic": round(r.traffic or 0, 1)})
     out = sorted(agg.values(), key=lambda e: (-e["traffic"], -e["keywords"]))[:limit]
+    for e in out:
+        e["list"] = sorted(e["list"], key=lambda k: (-(k["traffic"] or 0), -(k["volume"] or 0)))[:PAGE_KEYWORDS]
+    wanted = list({k["keyword"] for e in out for k in e["list"]})
+    mine = ck._own_positions(db, b, wanted) if wanted else {}
     for e in out:
         e["traffic"] = round(e["traffic"])
         e.pop("top_volume", None)
+        for k in e["list"]:
+            k["yours"] = mine.get(k["keyword"])
+        e["title"] = None  # not read by any provider here
+        e["backlinks"] = None  # page-level backlinks are not read either
     return out
+
+
+def top_keywords(db: Session, b: Business, domains: list[str], per_domain: int = 8) -> dict[str, list[dict[str, Any]]]:
+    """For each competitor, the keywords that bring it the most estimated visits, from its kept ranked keywords."""
+    domains = list(dict.fromkeys(_host(d) for d in domains if d))
+    by: dict[str, list[CompetitorKeyword]] = {}
+    for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain.in_(domains or [""]))):
+        by.setdefault(r.domain, []).append(r)
+    return {d: [{"keyword": r.keyword, "position": r.position, "volume": r.volume, "traffic": round(r.traffic or 0, 1), "url": r.url}
+                for r in sorted(rs, key=lambda r: -(r.traffic or 0))[:per_domain]] for d, rs in by.items()}
+
+
+def trend(db: Session, b: Business, domains: list[str], limit: int = 24) -> dict[str, list[dict[str, Any]]]:
+    """Each competitor's figures at the end of every analysis run that read them (traffic and keywords). That is the only history there is: nothing is filled in between runs, and a competitor
+    analyzed once has one point. Oldest first."""
+    from ..models import CompetitorAnalysisRun  # noqa: PLC0415
+    domains = list(dict.fromkeys(_host(d) for d in domains if d))
+    out: dict[str, list[dict[str, Any]]] = {}
+    q = select(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.domain.in_(domains or [""])).order_by(CompetitorAnalysisRun.id)
+    for r in db.scalars(q):
+        snap = r.snapshot or {}
+        if snap.get("traffic") is None and snap.get("keywords") is None:
+            continue
+        out.setdefault(r.domain, []).append({"at": (r.finished_at or r.started_at).isoformat(), "traffic": snap.get("traffic"), "keywords": snap.get("keywords"), "top10": snap.get("top10")})
+    return {d: v[-limit:] for d, v in out.items()}
 
 
 def own(db: Session, b: Business) -> dict[str, Any] | None:

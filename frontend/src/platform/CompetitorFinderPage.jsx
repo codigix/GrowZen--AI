@@ -1196,7 +1196,7 @@ function Research({ b }) {
             </>}
             {tab === 'gap' && <KeywordGapTab key={focus.host} b={b} focus={focus.host} />}
             {tab === 'keywords' && <CompetitorKeywordsTab key={`${focus.host}|${focus.band}`} b={b} focus={focus.host} band={focus.band} />}
-            {tab === 'traffic' && <TrafficTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
+            {tab === 'traffic' && <TrafficTab key={focus.host} b={b} rows={poolRows} analysis={analysis} focus={focus.host} />}
             {tab === 'pages' && <TopPagesTab key={focus.host} b={b} rows={poolRows} focus={focus.host} />}
             {tab === 'backlinks' && <BacklinkTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
             {tab === 'maps' && result && <MapsTab r={result} kit={null} />}

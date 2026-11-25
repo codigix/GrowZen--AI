@@ -319,6 +319,20 @@ def competitor_config_put(body: dict, b: Business = Depends(get_business), db: S
     return ca.set_config(db, b, body)
 
 
+@router.post("/competitor-analysis/top-keywords")
+def competitor_top_keywords(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The keywords that bring each competitor the most estimated visits."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"keywords": ca.top_keywords(db, b, body.domains)}
+
+
+@router.post("/competitor-analysis/trend")
+def competitor_trend(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Each competitor's traffic and keyword counts at the end of each analysis run (the only history kept)."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"trend": ca.trend(db, b, body.domains)}
+
+
 @router.post("/competitor-analysis/pages")
 def competitor_pages(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     from ..services import competitor_analysis as ca  # noqa: PLC0415

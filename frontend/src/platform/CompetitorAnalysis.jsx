@@ -423,16 +423,54 @@ function Bars({ rows, value, fmt = kfmt, color = '#6366f1' }) {
 const Panel = ({ title, sub, children, action }) => <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4"><div className="flex items-start gap-3 mb-3"><div><h3 className="text-15 font-semibold text-slate-900">{title}</h3>{sub && <p className="text-12.5 text-slate-500">{sub}</p>}</div>{action && <div className="ml-auto">{action}</div>}</div>{children}</div>;
 const unread = (analysis, rows) => rows.filter(c => c.host && !analysis.metrics[c.host]?.keywords).length;
 
-export function TrafficTab({ rows, analysis, focus = '' }) {
+const PALETTE = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#ef4444'];
+
+/** One line per competitor: its estimated traffic at the end of each analysis run. Only real runs are points. */
+function TrendChart({ trend, hosts }) {
+  const series = hosts.map((h, i) => ({ h, color: PALETTE[i % PALETTE.length], pts: (trend[h] || []).filter(p => p.traffic != null) })).filter(x => x.pts.length);
+  const many = series.filter(x => x.pts.length >= 2);
+  if (!many.length) return <p className="text-13 text-slate-500">{series.length ? 'Each competitor has been analyzed once, so there is no trend yet. A line appears after its second analysis.' : 'No traffic has been read yet.'} Nothing is filled in between analyses.</p>;
+  const all = many.flatMap(x => x.pts);
+  const t0 = Math.min(...all.map(p => +new Date(p.at))), t1 = Math.max(...all.map(p => +new Date(p.at))), vmax = Math.max(1, ...all.map(p => p.traffic));
+  const X = (t) => 40 + (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0)) * 540, Y = (v) => 150 - (v / vmax) * 130;
+  return (
+    <div>
+      <svg viewBox="0 0 600 175" className="w-full h-44" role="img" aria-label="Estimated organic traffic at each analysis">
+        <line x1="40" y1="150" x2="580" y2="150" stroke="#e2e8f0" /><line x1="40" y1="20" x2="40" y2="150" stroke="#e2e8f0" />
+        <text x="36" y="24" fontSize="10" textAnchor="end" fill="#64748b">{kfmt(vmax)}</text><text x="36" y="150" fontSize="10" textAnchor="end" fill="#64748b">0</text>
+        <text x="40" y="168" fontSize="10" fill="#64748b">{new Date(t0).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</text><text x="580" y="168" fontSize="10" textAnchor="end" fill="#64748b">{new Date(t1).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</text>
+        {many.map(x => <g key={x.h}><polyline fill="none" stroke={x.color} strokeWidth="2" points={x.pts.map(p => `${X(+new Date(p.at))},${Y(p.traffic)}`).join(' ')} />{x.pts.map((p, i) => <circle key={i} cx={X(+new Date(p.at))} cy={Y(p.traffic)} r="3" fill={x.color}><title>{`${x.h}: ${kfmt(p.traffic)} on ${fdate(p.at)}`}</title></circle>)}</g>)}
+      </svg>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-12 text-slate-600">{many.map(x => <span key={x.h} className="inline-flex items-center gap-1.5"><span className="w-3 h-0.5 rounded" style={{ background: x.color }} />{x.h}</span>)}</div>
+    </div>
+  );
+}
+
+export function TrafficTab({ b, rows, analysis, focus = '' }) {
   const [fh, setFh] = useState(focus);
+  const [topKw, setTopKw] = useState(null);
+  const [trend, setTrend] = useState(null);
+  const [kwOf, setKwOf] = useState('');
+  const doms = rows.filter(c => c.host && (!focus || sameSite(c.host, focus))).map(c => c.host);
+  useEffect(() => {
+    if (!b || !doms.length) return undefined;
+    let on = true;
+    const base = `/businesses/${b.id}/keyword-workspace/competitor-analysis`;
+    api(`${base}/top-keywords`, { method: 'POST', body: { domains: doms } }).then(r => on && setTopKw(r.keywords || {})).catch(() => on && setTopKw({}));
+    api(`${base}/trend`, { method: 'POST', body: { domains: doms } }).then(r => on && setTrend(r.trend || {})).catch(() => on && setTrend({}));
+    return () => { on = false; };
+  }, [b?.id, doms.join('|'), analysis.metrics]); // eslint-disable-line react-hooks/exhaustive-deps
   const own = fh ? null : analysis.own;
   const list = rows.filter(c => c.host && (!fh || sameSite(c.host, fh)));
   const mk = (key) => [...(own ? [{ host: own.domain, name: own.domain, you: true, v: own[key] }] : []), ...list.map(c => ({ host: c.host, name: c.name, v: analysis.metrics[c.host]?.[key] ?? null }))].sort((a, c) => (c.v ?? -1) - (a.v ?? -1));
   const data = useMemo(() => [...(own ? [{ host: own.domain, name: own.domain, you: true, ...own }] : []), ...list.map(c => ({ host: c.host, name: c.name, ...(analysis.metrics[c.host] || {}) }))], [own, rows, analysis.metrics]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = unread(analysis, rows);
+  const compTotal = list.reduce((a, c) => a + (analysis.metrics[c.host]?.traffic || 0), 0);
   const cols = [
     { id: 'site', header: 'Site', first: 'asc', value: r => r.host, cell: r => <span className="font-medium">{r.host}{r.you && <span className="ml-2 text-11 font-semibold text-emerald-700">You</span>}</span> },
-    { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: r => r.traffic ?? null, cell: r => kfmt(r.traffic), tip: { what: 'Estimated visits a month from its ranked keywords. Yours: Google clicks in the last 28 days.' } },
+    { id: 'traffic', header: 'Organic traffic', right: true, first: 'desc', value: r => r.traffic ?? null, cell: r => (r.traffic == null ? <span className="text-slate-300">Not available</span> : kfmt(r.traffic)), tip: { what: 'Competitors: estimated visits a month from their ranked keywords (an estimate). Yours: Google clicks in the last 28 days (verified).' } },
+    { id: 'basis', header: 'Traffic basis', value: r => (r.you ? 'Verified' : r.traffic != null ? 'Estimated' : ''), cell: r => (r.you ? <Badge tone="green">Verified</Badge> : r.traffic != null ? <Badge tone="gray">Estimated</Badge> : <span className="text-slate-300">—</span>), tip: { what: 'Verified = measured by Google for your own site (Search Console). Estimated = worked out from the keywords a competitor ranks for and their positions; it is not their real analytics.', from: 'Search Console / ranked keywords (Apify)' } },
+    { id: 'share', header: 'Share of competitors', right: true, first: 'desc', value: r => (r.you || r.traffic == null || !compTotal ? null : r.traffic / compTotal), cell: r => (r.you || r.traffic == null || !compTotal ? <span className="text-slate-300">—</span> : `${Math.round((r.traffic / compTotal) * 100)}%`), tip: { what: 'Its part of all the estimated competitor traffic shown. Your own figure is not included: it is measured another way.' } },
     { id: 'keywords', header: 'Ranking keywords', right: true, first: 'desc', value: r => r.keywords ?? null, cell: r => num(r.keywords) },
     { id: 'top3', header: 'Top 3', right: true, first: 'desc', value: r => r.top3 ?? null },
     { id: 'top10', header: 'Top 10', right: true, first: 'desc', value: r => r.top10 ?? null },
@@ -449,10 +487,23 @@ export function TrafficTab({ rows, analysis, focus = '' }) {
       <FocusBar name={fh} what="its traffic, rankings and authority" onAll={() => setFh('')} />
       {n > 0 && <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-12.5 text-amber-900">{n} competitor{n === 1 ? ' has' : 's have'} not been analyzed yet, so {n === 1 ? 'its' : 'their'} traffic is “not read”. They are analyzed automatically; you can also select them on the Competitors tab and press Analyze selected.</div>}
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Estimated organic traffic" sub="Visits a month from the keywords each competitor ranks for. Yours is Google clicks in the last 28 days from Search Console."><Bars rows={mk('traffic')} /></Panel>
+        <Panel title="Organic traffic: estimated vs verified" sub="Competitors: estimated visits a month from the keywords they rank for. You (green): verified Google clicks in the last 28 days from Search Console. The two are measured differently, so compare them as a guide, not as equals."><Bars rows={mk('traffic')} /></Panel>
         <Panel title="Ranking keywords" sub="How many keywords each one ranks for (yours: your tracked keywords that rank)."><Bars rows={mk('keywords')} fmt={num} color="#0ea5e9" /></Panel>
+        <Panel title="Where the competitors' traffic is" sub="Each competitor's share of the estimated traffic of all the competitors read. An estimate, and your own verified clicks are left out.">
+          {compTotal ? <><div className="flex h-5 rounded-full overflow-hidden bg-slate-100" role="img" aria-label="Share of estimated competitor traffic">{list.filter(c => analysis.metrics[c.host]?.traffic).map((c, i) => <div key={c.host} title={`${c.host}: ${Math.round((analysis.metrics[c.host].traffic / compTotal) * 100)}%`} style={{ width: `${(analysis.metrics[c.host].traffic / compTotal) * 100}%`, background: PALETTE[i % PALETTE.length] }} />)}</div>
+            <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-12.5">{list.filter(c => analysis.metrics[c.host]?.traffic).map((c, i) => <li key={c.host} className="flex items-center gap-1.5 min-w-0"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} /><span className="truncate">{c.host}</span><b className="ml-auto tabular-nums">{Math.round((analysis.metrics[c.host].traffic / compTotal) * 100)}%</b></li>)}</ul></> : <p className="text-13 text-slate-500">No competitor traffic has been read yet.</p>}
+        </Panel>
         <Panel title="Keywords in the top 3" sub="Keywords where it holds one of the first three positions."><Bars rows={mk('top3')} fmt={num} color="#10b981" /></Panel>
         <Panel title="Keywords in the top 10" sub="Keywords on page 1 of Google."><Bars rows={mk('top10')} fmt={num} color="#f59e0b" /></Panel>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel title="Traffic over time" sub="Estimated traffic at the end of each analysis. These are the only readings kept: nothing is filled in between them.">{trend ? <TrendChart trend={trend} hosts={list.map(c => c.host)} /> : <Loader2 size={16} className="animate-spin text-slate-400" />}</Panel>
+        <Panel title="Keywords that bring the most traffic" sub="Estimated visits a month for each keyword, from the keywords read." action={<Select value={kwOf || list.find(c => topKw?.[c.host])?.host || ''} onChange={e => setKwOf(e.target.value)} aria-label="Competitor" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13">{list.filter(c => topKw?.[c.host]).map(c => <option key={c.host} value={c.host}>{c.host}</option>)}</Select>}>
+          {!topKw ? <Loader2 size={16} className="animate-spin text-slate-400" /> : (() => { const h = kwOf || list.find(c => topKw[c.host])?.host; const ks = h ? topKw[h] || [] : []; return ks.length ? (
+            <table className="w-full text-12.5"><thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Keyword</th><th className="font-medium text-right">Position</th><th className="font-medium text-right">Searches</th><th className="font-medium text-right">Est. visits</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{ks.map(k => <tr key={k.keyword}><td className="py-1 text-slate-900">{k.keyword}</td><td className="text-right tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className="text-right tabular-nums">{num(k.volume)}</td><td className="text-right tabular-nums font-semibold">{kfmt(Math.round(k.traffic))}</td></tr>)}</tbody></table>
+          ) : <p className="text-13 text-slate-500">No keywords read yet. Analyze a competitor on the Competitors tab.</p>; })()}
+        </Panel>
       </div>
       <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="traffic-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
     </div>
@@ -490,27 +541,75 @@ export function BacklinkTab({ rows, analysis, focus = '' }) {
   );
 }
 
+function PageDrawer({ b, pg, all, onClose }) {
+  const [toast, toastNode] = useToast();
+  const [busy, setBusy] = useState(false);
+  const list = pg.list || [];
+  const onPage = new Set(list.map(k => k.keyword));
+  const near = list.filter(k => k.position >= 4 && k.position <= 20).sort((x, y) => (y.volume || 0) - (x.volume || 0));
+  const opps = list.filter(k => !k.yours).sort((x, y) => (y.volume || 0) - (x.volume || 0));
+  const words = (pg.top_keyword || '').split(' ').filter(w => w.length > 3);
+  const related = [...new Map(all.filter(p => p.domain === pg.domain && p.url !== pg.url).flatMap(p => p.list || []).filter(k => !onPage.has(k.keyword) && words.some(w => k.keyword.split(' ').includes(w))).map(k => [k.keyword, k])).values()].sort((x, y) => (y.volume || 0) - (x.volume || 0)).slice(0, 8);
+  const add = async (ks) => {
+    if (!ks.length) return;
+    setBusy(true);
+    try {
+      const res = await api(`/businesses/${b.id}/keywords`, { method: 'POST', body: ks.map(k => ({ keyword: k.keyword, volume: k.volume ?? undefined, difficulty: k.difficulty ?? undefined, cpc: k.cpc ?? undefined, intent: k.intent || undefined, source: { kind: 'competitors', label: `Competitor keywords: ${pg.domain}`, competitor: pg.domain, from: 'competitor_top_pages', at: new Date().toISOString().slice(0, 10) } })), timeout: 120000 });
+      toast(`${res.added} new keyword${res.added === 1 ? '' : 's'} added to My Keywords${res.existing?.length ? `. ${res.existing.length} already there, not duplicated` : ''}`);
+    } catch (e) { toast(e.message || 'The keywords could not be added.'); } finally { setBusy(false); }
+  };
+  const Kw = ({ k }) => <tr><td className="py-1 text-slate-900">{k.keyword}</td><td className="text-right tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className="text-right tabular-nums">{num(k.volume)}</td><td className="text-right tabular-nums">{k.difficulty ?? '—'}</td><td className="text-right tabular-nums">{k.yours ? `#${k.yours}` : <span className="text-slate-400">Not ranking</span>}</td><td className="text-right"><button type="button" onClick={() => add([k])} title="Add to My Keywords" aria-label={`Add ${k.keyword} to My Keywords`} className="p-1 text-slate-400 hover:text-emerald-700 cursor-pointer"><Plus size={14} /></button></td></tr>;
+  return (
+    <Modal open onClose={onClose} width="max-w-3xl" title={pg.url.replace(/^https?:\/\/(www\.)?/, '')} footer={<Button onClick={onClose}>Close</Button>}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+        {[['Est. traffic', kfmt(pg.traffic)], ['Ranking keywords', num(pg.keywords)], ['Best position', pg.best ? `#${pg.best}` : '—'], ['Backlinks to the page', 'Not available']].map(([k, v]) => <div key={k} className="rounded-lg bg-slate-50 px-3 py-2"><div className="text-11.5 text-slate-500">{k}</div><div className="text-14 font-semibold text-slate-900">{v}</div></div>)}
+      </div>
+      <p className="mt-2 text-13"><a href={pg.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all inline-flex items-center gap-1">{pg.url}<ExternalLink size={11} /></a><span className="block text-12 text-slate-500">The page title and its backlinks are not read by any data source connected here, so they are not shown. The traffic is an estimate from its ranked keywords.</span></p>
+      <h4 className="mt-4 text-13 font-semibold text-slate-900">Keywords this page ranks for <span className="font-normal text-slate-400">(top {list.length} by traffic)</span></h4>
+      <table className="mt-1 w-full text-12.5"><thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Keyword</th><th className="font-medium text-right">Their position</th><th className="font-medium text-right">Searches</th><th className="font-medium text-right">KD</th><th className="font-medium text-right">You</th><th /></tr></thead><tbody className="divide-y divide-slate-100">{list.map(k => <Kw key={k.keyword} k={k} />)}</tbody></table>
+      <h4 className="mt-4 text-13 font-semibold text-slate-900">Page-level opportunities</h4>
+      {near.length ? <><p className="text-12 text-slate-500">Keywords where this page is on page 2 or low on page 1 (position 4 to 20): the ones a competitor could lose, or you could take.</p><div className="mt-1 flex flex-wrap gap-1.5">{near.map(k => <span key={k.keyword} className="px-2.5 py-1 rounded-full text-12.5 bg-amber-50 border border-amber-200 text-amber-900">{k.keyword} <b>#{k.position}</b></span>)}</div></> : <p className="text-13 text-slate-500">None of its keywords sit between position 4 and 20.</p>}
+      <h4 className="mt-4 text-13 font-semibold text-slate-900">Related search terms</h4>
+      {related.length ? <div className="mt-1 flex flex-wrap gap-1.5">{related.map(k => <span key={k.keyword} className="px-2.5 py-1 rounded-full text-12.5 bg-slate-50 border border-slate-200 text-slate-700">{k.keyword}{k.volume != null && <span className="ml-1 text-slate-400">{num(k.volume)}</span>}</span>)}</div> : <p className="text-13 text-slate-500">No other kept keyword of this competitor shares a word with this page's top keyword ({pg.top_keyword || '—'}).</p>}
+      <div className="mt-4 rounded-lg bg-emerald-50 ring-1 ring-emerald-200 px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2"><h4 className="text-13 font-semibold text-emerald-900">Content opportunities for your website</h4>
+          <Button size="sm" variant="primary" icon={Plus} busy={busy} disabled={!opps.length} className="ml-auto" onClick={() => add(opps)}>Add {opps.length} to My Keywords</Button></div>
+        {opps.length ? <p className="mt-1 text-12.5 text-emerald-900">This page ranks for {opps.length} keyword{opps.length === 1 ? '' : 's'} where your site does not show: {opps.slice(0, 5).map(k => k.keyword).join(', ')}{opps.length > 5 ? '…' : ''}. A page of yours on this topic could compete for them.</p> : <p className="mt-1 text-12.5 text-emerald-900">You already rank for every keyword listed above.</p>}
+      </div>
+      {toastNode}
+    </Modal>
+  );
+}
+
 export function TopPagesTab({ b, rows, focus = '' }) {
   const [all, setList] = useState(null);
   const [fh, setFh] = useState(focus);
+  const [open, setOpen] = useState(null);
   const list = all && (fh ? all.filter(p => sameSite(p.domain, fh)) : all);
   const domains = rows.map(c => c.host).filter(Boolean);
-  useEffect(() => { let on = true; api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/pages`, { method: 'POST', body: { domains } }).then(r => on && setList(r.pages || [])).catch(() => on && setList([])); return () => { on = false; }; }, [b.id, domains.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { let on = true; api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/pages`, { method: 'POST', body: { domains }, timeout: 120000 }).then(r => on && setList(r.pages || [])).catch(() => on && setList([])); return () => { on = false; }; }, [b.id, domains.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!list) return <div className="flex items-center justify-center gap-2 py-14 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Loading…</div>;
+  const NA = <span className="text-slate-300">Not available</span>;
   const cols = [
-    { id: 'url', header: 'Page', first: 'asc', value: p => p.url, className: 'px-3 py-2.5 max-w-[360px]', cell: p => <a href={p.url} target="_blank" rel="noreferrer" title={p.url} className="text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{p.url.replace(/^https?:\/\/(www\.)?/, '')}</span><ExternalLink size={11} className="shrink-0" /></a> },
+    { id: 'url', header: 'Page URL', first: 'asc', value: p => p.url, className: 'px-3 py-2.5 max-w-[340px]', cell: p => <button type="button" onClick={() => setOpen(p)} title={`Open the details of ${p.url}`} className="text-left text-blue-700 hover:underline max-w-full truncate cursor-pointer block">{p.url.replace(/^https?:\/\/(www\.)?/, '')}</button> },
+    { id: 'title', header: 'Page title', value: p => p.title || '', cell: p => p.title || NA, hide: true, tip: { what: 'The page title is not read by any data source connected here.' } },
     { id: 'domain', header: 'Competitor', value: p => p.domain },
-    { id: 'keywords', header: 'Keywords', right: true, first: 'desc', value: p => p.keywords },
-    { id: 'traffic', header: 'Est. traffic', right: true, first: 'desc', value: p => p.traffic, cell: p => kfmt(p.traffic) },
-    { id: 'best', header: 'Best position', right: true, value: p => p.best ?? null, cell: p => (p.best ? `#${p.best}` : '—') },
-    { id: 'top', header: 'Top keyword', value: p => p.top_keyword || '' },
+    { id: 'traffic', header: 'Est. organic traffic', right: true, first: 'desc', value: p => p.traffic, cell: p => kfmt(p.traffic), tip: { what: 'Estimated visits a month to the page from the keywords it ranks for. An estimate, not verified traffic.', from: 'Ranked keywords (Apify)' } },
+    { id: 'keywords', header: 'Ranking keywords', right: true, first: 'desc', value: p => p.keywords },
+    { id: 'top', header: 'Top keyword', value: p => p.top_keyword || '', tip: { what: 'The most searched keyword the page ranks for.' } },
+    { id: 'toppos', header: 'Top keyword position', right: true, value: p => p.top_position ?? null, cell: p => (p.top_position ? `#${p.top_position}` : '—') },
+    { id: 'best', header: 'Best position', right: true, value: p => p.best ?? null, cell: p => (p.best ? `#${p.best}` : '—'), hide: true },
+    { id: 'backlinks', header: 'Backlinks', right: true, value: p => p.backlinks ?? null, cell: () => NA, tip: { what: 'Backlinks to a single page are not read by any data source connected here.' } },
+    { id: 'act', header: 'Actions', csv: false, right: true, className: 'px-2 py-1.5 text-right whitespace-nowrap', cell: p => <span className="inline-flex"><button type="button" onClick={() => setOpen(p)} aria-label="Page details" title="Details and content opportunities" className="p-1.5 text-slate-500 hover:text-indigo-700 cursor-pointer"><Eye size={16} /></button><a href={p.url} target="_blank" rel="noreferrer" aria-label="Open the page" title="Open the page" className="p-1.5 text-slate-500 hover:text-indigo-700"><ExternalLink size={16} /></a></span> },
   ];
   const filters = [
     { id: 'domain', label: 'Competitor', options: [...new Set(list.map(p => p.domain))].map(d => [d, d]), test: (p, v) => p.domain === v },
     { id: 'best', label: 'Best position', options: BANDS.filter(x => x[0] !== 'none'), test: (p, v) => band(p.best) === v },
     { id: 'traffic', label: 'Traffic', options: [['100', '100+ a month'], ['1000', '1,000+ a month']], test: (p, v) => p.traffic >= Number(v) },
+    { id: 'opp', label: 'Opportunity', options: [['yes', 'Has keywords you do not rank for']], test: (p, v) => (p.list || []).some(k => !k.yours) },
   ];
-  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} /><DataTable key={fh} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." /></>;
+  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} /><DataTable key={fh} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />
+    {open && <PageDrawer b={b} pg={open} all={all} onClose={() => setOpen(null)} />}</>;
 }
 
 export { hostOf };
