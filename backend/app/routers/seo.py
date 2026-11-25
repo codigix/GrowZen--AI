@@ -204,6 +204,23 @@ def keyword_position_gsc(keyword: str = Query(min_length=2, max_length=255), day
         return {"state": "error", "message": str(exc)[:240]}
 
 
+class SerpScanIn(BaseModel):
+    keywords: list[str] | None = Field(default=None, max_length=12)
+
+
+@router.post("/serp-features/scan")
+def serp_features_scan(body: SerpScanIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Read Google's results page now for the tracked keywords (up to 12) and keep which special results each showed."""
+    from ..services import serp_features as sf  # noqa: PLC0415
+    return sf.scan(db, b, body.keywords)
+
+
+@router.get("/serp-features")
+def serp_features_report(keyword: str | None = Query(default=None, max_length=255), days: int = Query(90, ge=7, le=365), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import serp_features as sf  # noqa: PLC0415
+    return sf.report(db, b, keyword, days)
+
+
 @router.get("/keyword-position/serp")
 def keyword_position_serp(keyword: str = Query(min_length=2, max_length=255), b: Business = Depends(get_business)):
     """What Google shows for the keyword right now (competitors, features, our result). Read live, not kept."""

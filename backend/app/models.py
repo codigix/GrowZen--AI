@@ -634,6 +634,7 @@ class KeywordRankLog(Base):
     clicks: Mapped[int | None] = mapped_column(Integer)  # Search Console clicks for the keyword over the days read
     impressions: Mapped[int | None] = mapped_column(Integer)  # Search Console impressions for the keyword over the days read
     source: Mapped[str | None] = mapped_column(String(30))  # search_console | (older rows: null)
+    serp_extra: Mapped[dict | None] = mapped_column(JSON)  # what a live read of the results page showed that day: {features: {name: bool}, ads: [titles], questions: [..], related: [..], read_at}
 
 
 

@@ -4,6 +4,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, XCircle, ChevronDown, ExternalLink, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
+import SerpFeaturesTab from './SerpFeaturesTab';
 
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : String(Math.round(n)));
 const RANGES = [['28 days', 28], ['3 months', 90], ['6 months', 180]];
@@ -345,7 +346,7 @@ export default function KeywordPosition({ b, keyword }) {
               </div>
             </>
           )}
-          {tab === 'SERP Features' && <Card title="SERP Features on this search" action={<span className="text-12 text-slate-400">Read live from Google</span>}>{serp.data?.state === 'ok' ? <ul className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">{features.map(([n, on]) => <li key={n} className={`rounded-lg px-3 py-2 text-13 ring-1 ${on ? 'bg-indigo-50 ring-indigo-200 text-indigo-900' : 'bg-white ring-slate-200 text-slate-400'}`}>{n}<div className="text-11.5">{on ? 'On this search' : 'Not shown'}</div></li>)}</ul> : <p className="text-13 text-slate-500">{serp.data?.message || 'Reading Google…'}</p>}{serp.data?.state === 'ok' && <p className="mt-3 text-13 text-slate-600">Ads: {serp.data.ads} · People also ask: {serp.data.questions}</p>}</Card>}
+          {tab === 'SERP Features' && <SerpFeaturesTab b={b} keyword={keyword} />}
           {tab === 'Competitors' && <Card title="Top 10 on Google right now" action={<span className="text-12 text-slate-400">Your competitors are marked</span>}>{serp.data?.state === 'ok' ? <table className="w-full text-13"><thead><tr className="text-12 text-slate-500"><th className="text-left py-1.5 w-14">Position</th><th className="text-left">Page</th><th className="text-left">Domain</th></tr></thead><tbody className="divide-y divide-slate-100">{organic.map(o => <tr key={o.url} className={o.mine ? 'bg-emerald-50/60' : ''}><td className="py-2 tabular-nums">{o.position}</td><td className="py-2 max-w-[420px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline inline-flex items-center gap-1 truncate">{o.title || o.url}<ExternalLink size={11} /></a></td><td className="py-2">{o.site}{o.mine && <span className="ml-2 text-11 font-semibold text-emerald-700">You</span>}{rivals.includes((o.site || '').replace(/^www\./, '')) && <span className="ml-2 text-11 font-semibold text-rose-700">Your competitor</span>}</td></tr>)}</tbody></table> : <p className="text-13 text-slate-500">{serp.data?.message || 'Reading Google…'}</p>}{serp.data?.state === 'ok' && !mine && <p className="mt-3 text-13 text-slate-500">Your site is not in Google's top 10 for this search.</p>}</Card>}
           {tab === 'Pages' && (
             <div className="space-y-4">
