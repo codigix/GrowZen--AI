@@ -1753,7 +1753,7 @@ function KeywordPath({ b, tab, setTab }) {
 export default function KeywordResearchPage() {
   const [tab, setTab] = useUrlTab('workspace', ['workspace', 'mapping', 'ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use', 'status']);
   const HEAD = {
-    workspace: ['Keyword Workspace', 'Every keyword from your website, Search Console, Google and competitors in one list, to compare and pick'],
+    workspace: ['Find Keywords', 'One list of keywords from Google Keyword Planner, your website, Search Console, your Google listing and competitors; AI suggestions on request. Compare them, then pick'],
     tracked: ['Saved Keywords', 'The keywords you keep: primary or secondary, priority, searches, difficulty, the page that targets each and where it ranks'],
     topics: ['Keyword Strategy Builder', 'Group your saved keywords into topics, see the lead keyword of each topic and which page it still needs'],
     use: ['Where to Use Keywords', 'Put each saved keyword into your blog, posts, website and AI answers'],

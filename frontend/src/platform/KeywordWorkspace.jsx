@@ -111,7 +111,7 @@ function CollectModal({ d, open, onClose, onDone }) {
   const [info, setInfo] = useState('');
   const [busy, error, run] = useAction();
   const kinds = d.sources.map(s => s.kind);
-  const on = chosen || kinds;
+  const on = chosen || kinds.filter(k => k !== 'ai'); // AI suggestions cost a request, so they are read only when you tick them
   const toggle = (k) => setChosen(on.includes(k) ? on.filter(x => x !== k) : [...on, k]);
   const go = () => run('go', async () => {
     setProgress(Object.fromEntries(on.map(k => [k, 'running'])));
@@ -138,7 +138,7 @@ function CollectModal({ d, open, onClose, onDone }) {
             <li key={s.kind} className="px-3 py-2.5 flex items-center gap-3">
               <input type="checkbox" aria-label={s.label} checked={on.includes(s.kind)} onChange={() => toggle(s.kind)} disabled={busy === 'go'} className="w-4 h-4 accent-indigo-600" />
               <div className="min-w-0 flex-1">
-                <div className="text-13 font-semibold text-slate-900">{s.label}</div>
+                <div className="text-13 font-semibold text-slate-900">{s.label}{s.kind === 'ai' && <span className="ml-2 text-11 font-medium text-slate-500">on request</span>}</div>
                 <div className="text-12 text-slate-500">{s.count ? `${s.count} in the list` : 'Not collected yet'}</div>
               </div>
               {p === 'running' ? <span className="text-12 text-indigo-700 inline-flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />Reading…</span>
