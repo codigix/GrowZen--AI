@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ArrowDown, ArrowUp, CheckCircle2, ChevronDown, ExternalLink, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCircle2, XCircle, ChevronDown, ExternalLink, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 
@@ -142,6 +142,7 @@ export default function KeywordPosition({ b, keyword }) {
   const tracked = useApi(`/businesses/${b.id}/keywords`);
   const [range, setRange] = useState(90);
   const [metric, setMetric] = useState('position');
+  const [showAllPages, setShowAllPages] = useState(false);
   const gsc = useApi(`/businesses/${b.id}/seo/keyword-position/search-console?keyword=${q}&days=${range}`);
   const list = (tracked.data?.keywords || []).map(k => k.keyword);
   const d = rep.data;
@@ -179,6 +180,17 @@ export default function KeywordPosition({ b, keyword }) {
   const rivalRows = rivals.map(dom => ({ dom, hit: organic.find(o => (o.site || '').replace(/^www\./, '') === dom) }));
   const TONE = { working: 'bg-emerald-50 text-emerald-800 ring-emerald-200', climbing: 'bg-sky-50 text-sky-800 ring-sky-200', weak: 'bg-amber-50 text-amber-800 ring-amber-200', invisible: 'bg-rose-50 text-rose-800 ring-rose-200', unchecked: 'bg-slate-50 text-slate-700 ring-slate-200' };
   const AREA = { website: 'Website pages', meta: 'Titles and descriptions', gbp_profile: 'Google Business Profile', blog: 'Blog', gmb_post: 'Google posts', aeo: 'AI answers (AEO)', geo: 'GEO', chatgpt: 'ChatGPT' };
+  const used = st?.used_in || [];
+  const checks = st ? [
+    { label: 'Ranking on Google', ok: !!s.current, note: s.current ? `Average position ${now.position ?? s.current} (page ${Math.ceil((now.position ?? s.current) / 10)}), ${num(imp)} impression${imp === 1 ? '' : 's'} and ${num(clk)} click${clk === 1 ? '' : 's'} in ${range} days` : 'Google has not shown your site for this search yet', to: '/keyword-management/use', act: 'Use it' },
+    { label: 'Target page chosen', ok: !!st.target_url, note: st.target_url || 'No page is set to rank for it, so it can compete with your other pages', to: '/keyword-management/mapping', act: 'Map it' },
+    { label: 'Website pages carry it', ok: (P.pages || []).length > 0 || used.includes('website'), note: (P.pages || []).length ? `${P.pages.length} page${P.pages.length === 1 ? '' : 's'} with it in the title, heading or description` : 'No page has it yet', to: '/keyword-management/use', act: 'Add it' },
+    { label: 'Titles and descriptions', ok: used.includes('meta'), note: used.includes('meta') ? 'Used in page titles or descriptions' : 'Not used in any title or description', to: '/website-audit?tab=report', act: 'Check' },
+    { label: 'Google Business Profile', ok: used.includes('gbp_profile'), note: used.includes('gbp_profile') ? 'Used in your Business Profile' : 'Not in your Business Profile text', to: '/gmb-profile/profile', act: 'Add it' },
+    { label: 'Blog article', ok: (st.articles || 0) > 0, note: st.articles ? `${st.articles} article${st.articles === 1 ? '' : 's'} written for it` : 'No article written for it yet', to: '/ai-content-generation/blog', act: 'Write one' },
+    { label: 'Google posts', ok: used.includes('gmb_post'), note: used.includes('gmb_post') ? 'Used in your Google posts' : 'Not used in a Google post', to: '/google-posts', act: 'Post' },
+    { label: 'AI answers', ok: ['aeo', 'geo', 'chatgpt'].some(a => used.includes(a)), note: ['aeo', 'geo', 'chatgpt'].some(a => used.includes(a)) ? 'Planned or used for AI answer engines' : 'Not planned for AI answers (AEO, GEO, ChatGPT)', to: '/keyword-management/use', act: 'Plan it' },
+  ] : [];
 
   return (
     <div className="space-y-4">
@@ -224,31 +236,57 @@ export default function KeywordPosition({ b, keyword }) {
         <>
           {tab === 'Overview' && (
             <>
-              <Card title={`Status of “${keyword}” for your project`} action={st?.next && <Link to={st.next.to} className="text-13 font-semibold text-indigo-600 hover:underline">{st.next.text} →</Link>}>
+              <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-hidden">
                 {st ? (
-                  <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
-                    <div>
-                      <div className={`inline-flex items-center rounded-lg ring-1 px-3 py-1.5 text-14 font-semibold ${TONE[st.status] || TONE.unchecked}`}>{st.label}</div>
-                      <p className="mt-2 text-13 text-slate-600">{st.why}</p>
-                      <dl className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-13">
-                        {[['Google position', s.current ? `#${s.current}` : 'Not ranking'], ['Maps position', st.maps_rank ? `#${st.maps_rank}` : '—'], ['Impressions (28 days)', st.impressions ?? '—'], ['Clicks (28 days)', st.clicks ?? '—']].map(([l, v]) => <div key={l}><dt className="text-12 text-slate-500">{l}</dt><dd className="font-semibold text-slate-900 tabular-nums">{v}</dd></div>)}
-                      </dl>
-                      <dl className="mt-3 grid grid-cols-2 gap-3 text-13">
-                        <div><dt className="text-12 text-slate-500">Target page</dt><dd className="font-medium break-all">{st.target_url ? <a className="text-blue-700 hover:underline" href={st.target_url} target="_blank" rel="noreferrer">{st.target_url}</a> : <Link className="text-amber-700 underline" to="/keyword-management/mapping">None chosen: map it</Link>}</dd></div>
-                        <div><dt className="text-12 text-slate-500">Topic · Role · Priority</dt><dd className="font-medium">{[st.cluster, P.role, P.priority].filter(Boolean).join(' · ') || '—'}</dd></div>
-                      </dl>
-                      <div className="mt-3 text-12 text-slate-500">Used in</div>
-                      <div className="mt-1 flex flex-wrap gap-1.5">{Object.keys(AREA).map(a => { const on = (st.used_in || []).includes(a); return <span key={a} className={`px-2 py-0.5 rounded-full text-12 ${on ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-400 line-through'}`}>{AREA[a]}</span>; })}<span className="px-2 py-0.5 rounded-full text-12 bg-slate-100 text-slate-700">{st.articles} blog article{st.articles === 1 ? '' : 's'}</span></div>
+                  <>
+                    <div className={`px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b ${TONE[st.status] || TONE.unchecked}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-12 font-semibold uppercase tracking-wide opacity-75">Status for your project</div>
+                        <div className="text-20 font-bold leading-tight">{st.label}</div>
+                        <p className="text-13 mt-0.5 opacity-90">{st.why}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {[st.cluster, P.role === 'primary' ? 'Primary' : P.role === 'secondary' ? 'Secondary' : null, P.priority && `${P.priority} priority`].filter(Boolean).map(c => <span key={c} className="px-2.5 py-1 rounded-full bg-white/70 text-12 font-semibold capitalize">{c}</span>)}
+                        {st.next && <Link to={st.next.to} className="inline-flex items-center gap-1 h-9 px-3.5 rounded-lg bg-slate-900 text-white text-13 font-semibold hover:bg-slate-800">{st.next.text} <ArrowRight size={14} /></Link>}
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-13 font-semibold text-slate-800">Pages of your website that use it</div>
-                      {P.crawled === false ? <p className="mt-1 text-13 text-slate-500">Your website has not been crawled yet, so pages cannot be listed. <Link className="text-indigo-600 underline" to="/website-audit">Run the website audit</Link>.</p>
-                        : !(P.pages || []).length ? <p className="mt-1 text-13 text-amber-700">No page of your website has this keyword in its title, main heading or description. Add it to the page you want to rank.</p>
-                          : <ul className="mt-1 divide-y divide-slate-100">{P.pages.slice(0, 6).map(pg => <li key={pg.url} className="py-1.5"><a href={pg.url} target="_blank" rel="noreferrer" className="text-13 text-blue-700 hover:underline break-all">{pg.path}</a><div className="text-12 text-slate-500">in the {pg.in.join(', ')}</div></li>)}</ul>}
+                    <div className="grid lg:grid-cols-2 lg:divide-x divide-slate-100">
+                      <div className="p-5">
+                        <div className="text-13 font-semibold text-slate-800 mb-2">Is this keyword working for you?</div>
+                        <ul className="space-y-2.5">
+                          {checks.map(c => (
+                            <li key={c.label} className="flex items-start gap-2.5">
+                              {c.ok ? <CheckCircle2 size={18} className="text-emerald-500 shrink-0 mt-px" /> : <XCircle size={18} className="text-slate-300 shrink-0 mt-px" />}
+                              <div className="min-w-0 flex-1"><div className={`text-13.5 font-medium ${c.ok ? 'text-slate-900' : 'text-slate-500'}`}>{c.label}</div><div className="text-12.5 text-slate-500 break-words">{c.note}</div></div>
+                              {!c.ok && c.to && <Link to={c.to} className="shrink-0 text-12.5 font-semibold text-indigo-600 hover:underline">{c.act}</Link>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="p-5">
+                        <div className="flex items-baseline gap-2 mb-2"><div className="text-13 font-semibold text-slate-800">Pages of your website that carry it</div><span className="text-12 text-slate-500">{(P.pages || []).length} found</span></div>
+                        {P.crawled === false ? <p className="text-13 text-slate-500">Your website has not been crawled yet, so pages cannot be listed. <Link className="text-indigo-600 underline" to="/website-audit">Run the website audit</Link>.</p>
+                          : !(P.pages || []).length ? <p className="text-13 text-amber-700">No page has this keyword in its title, heading or description. Add it to the page you want to rank.</p> : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-13">
+                                <thead><tr className="text-12 text-slate-500"><th className="text-left font-medium pb-1.5">Page</th>{['Title', 'Heading', 'Description'].map(h => <th key={h} className="font-medium pb-1.5 px-2 text-center">{h}</th>)}</tr></thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {(showAllPages ? P.pages : P.pages.slice(0, 5)).map(pg => (
+                                    <tr key={pg.url}>
+                                      <td className="py-2 pr-2 max-w-[260px]"><a href={pg.url} target="_blank" rel="noreferrer" title={pg.url} className="text-blue-700 hover:underline break-all">{pg.path}</a></td>
+                                      {['title', 'heading', 'description'].map(w => <td key={w} className="py-2 px-2 text-center">{pg.in.includes(w) ? <Check size={15} className="inline text-emerald-600" /> : <span className="text-slate-300">–</span>}</td>)}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              {P.pages.length > 5 && <button type="button" onClick={() => setShowAllPages(v => !v)} className="mt-2 text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">{showAllPages ? 'Show fewer' : `Show all ${P.pages.length}`}</button>}
+                            </div>
+                          )}
+                      </div>
                     </div>
-                  </div>
-                ) : <p className="text-13 text-slate-500">No status yet: press Update report to read the position.</p>}
-              </Card>
+                  </>
+                ) : <p className="p-5 text-13 text-slate-500">No status yet: press Update report to read the position.</p>}
+              </div>
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
                 <Growth label="Average position" value={now.position != null ? `#${now.position}` : s.current ? `#${s.current}` : '—'} color="#2563eb" series={daily('position')} change={<Change now={now.position} before={before.position} kind="abs" good="down" />} tip={`Search Console average position over the last ${range} days, weighted by impressions`} />
                 <Growth label="Clicks" value={num(clk)} color="#059669" series={daily('clicks')} change={<Change now={now.clicks} before={before.clicks} />} tip={`Clicks from Google to your site for this search in the last ${range} days`} />
