@@ -90,36 +90,39 @@ export function useAutoAnalysis(b, analysis, pending) {
 }
 
 /** The line above the table: what the automatic analysis is doing. */
-export function AutoBar({ auto }) {
-  const { on, toggle, prog, stop } = auto;
+/** The two controls of the automatic analysis, small enough for a slim row: the switch and the button for its settings and usage. */
+export function AutoControls({ auto }) {
+  const { on, toggle } = auto;
   const [open, setOpen] = useState(false);
-  const failed = Object.entries(prog.failed || {});
   return (
-    <div className="rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm p-4 sm:p-5 space-y-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <div className="min-w-0 flex-1 basis-[300px]">
-          <div className="text-14 font-semibold text-slate-900">Automatic analysis</div>
-          <p className="mt-0.5 text-12.5 text-slate-500">{on ? 'Competitors that were not analyzed yet are read by themselves: their Domain Authority and the keywords they rank for. Their websites are not audited.' : 'Switched off. Use Analyze on a row to read a competitor.'}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 ml-auto">
-          <label className="inline-flex items-center gap-2.5 text-13 font-medium text-slate-800 cursor-pointer select-none" title="Each competitor read costs about $0.04 at Apify">
-            <button type="button" role="switch" aria-checked={on} onClick={() => toggle(!on)} className={`relative w-10 h-6 rounded-full transition-colors cursor-pointer ${on ? 'bg-indigo-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></button>
-            {on ? 'On' : 'Off'}
-          </label>
-          <Button size="sm" icon={Settings} onClick={() => setOpen(true)} title="What is read by itself, retries, refresh, the daily limit, and the calls made so far">Settings and usage</Button>
-        </div>
-      </div>
+    <div className="flex items-center gap-3">
+      <label className="inline-flex items-center gap-2 text-13 font-medium text-slate-800 cursor-pointer select-none" title={on ? 'Competitors that were not analyzed yet are read by themselves: their Domain Authority and the keywords they rank for. Their websites are not audited. Each read costs about $0.04 at Apify.' : 'Switched off. Use Analyze on a row to read a competitor.'}>
+        <button type="button" role="switch" aria-checked={on} onClick={() => toggle(!on)} className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${on ? 'bg-indigo-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></button>
+        Auto-analyze
+      </label>
+      <Button size="sm" icon={Settings} onClick={() => setOpen(true)} title="What is read by itself, retries, refresh, the daily limit, and the calls made so far">Settings and usage</Button>
+      {open && <AutoSettings auto={auto} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+/** Shown only when there is something to say: the progress of a running analysis, the daily limit, and the competitors that could not be read. One slim line each. */
+export function AutoNotices({ auto }) {
+  const { prog, stop } = auto;
+  const failed = Object.entries(prog.failed || {});
+  if (!prog.running && !prog.limit_reached && !failed.length) return null;
+  return (
+    <div className="space-y-1.5">
       {prog.running && (
-        <div className="flex items-center gap-3 rounded-xl bg-indigo-50/60 ring-1 ring-indigo-100 px-3.5 py-3">
-          <Loader2 size={16} className="animate-spin text-indigo-600 shrink-0" />
-          <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Analyzing competitors <span className="font-normal text-slate-500">{prog.done} of {prog.total}{prog.current ? ` · now ${prog.current}` : ''}</span></div>
-            <div className="mt-1.5 h-1.5 rounded-full bg-white overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.max(4, (prog.done / Math.max(1, prog.total)) * 100)}%` }} /></div></div>
+        <div className="flex items-center gap-3 rounded-lg bg-indigo-50/70 ring-1 ring-indigo-100 px-3 py-2">
+          <Loader2 size={15} className="animate-spin text-indigo-600 shrink-0" />
+          <span className="text-13 text-slate-800 shrink-0"><b>Analyzing competitors</b> {prog.done} of {prog.total}{prog.current ? ` · now ${prog.current}` : ''}</span>
+          <div className="flex-1 h-1.5 rounded-full bg-white overflow-hidden min-w-[60px]"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.max(4, (prog.done / Math.max(1, prog.total)) * 100)}%` }} /></div>
           <Button size="sm" onClick={stop}>Stop</Button>
         </div>
       )}
-      {!prog.running && prog.limit_reached && <div role="status" className="rounded-xl bg-amber-50 ring-1 ring-amber-200 px-3.5 py-2.5 text-13 text-amber-900"><b>Today's automatic limit is reached.</b> The rest waits until tomorrow, or raise the limit in Settings and usage.</div>}
-      {!prog.running && failed.length > 0 && <div role="status" className="rounded-xl bg-amber-50 ring-1 ring-amber-200 px-3.5 py-2.5 text-13 text-amber-900" title={failed.map(([d, m]) => `${d}: ${m}`).join('\n')}><b>{failed.length} competitor{failed.length === 1 ? '' : 's'} could not be fully read.</b> {failed[0][0]}: {failed[0][1]}{failed.length > 1 ? ` (and ${failed.length - 1} more)` : ''}</div>}
-      {open && <AutoSettings auto={auto} onClose={() => setOpen(false)} />}
+      {!prog.running && prog.limit_reached && <div role="status" className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-1.5 text-12.5 text-amber-900"><b>Today's automatic limit is reached.</b> The rest waits until tomorrow, or raise the limit in Settings and usage.</div>}
+      {!prog.running && failed.length > 0 && <div role="status" className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-1.5 text-12.5 text-amber-900 truncate" title={failed.map(([d, m]) => `${d}: ${m}`).join('\n')}><b>{failed.length} competitor{failed.length === 1 ? '' : 's'} could not be fully read.</b> {failed[0][0]}: {failed[0][1]}{failed.length > 1 ? ` (and ${failed.length - 1} more)` : ''}</div>}
     </div>
   );
 }
@@ -227,19 +230,30 @@ function Stat({ icon: Icon, label, value, sub, tone, help }) {
   );
 }
 
-/** The four figures above the table. Each is counted on its own: discovered (unique domains found), selected (confirmed by you), analyzed (every part read), Avg DA (only the sites that have one). */
+/** The four figures above the table, as one slim line. Each is counted on its own: discovered (unique domains found), selected (confirmed by you), analyzed (every part read), Avg DA (only the sites that have one). The note under each is its tooltip. */
 export function AnalysisStats({ rows, status, isChosen, metrics }) {
   const uniq = (list) => new Set(list.map(c => c.host || `name:${(c.name || '').toLowerCase()}`)).size;
   const das = [...new Map(rows.filter(c => c.host).map(c => [c.host, metrics[c.host]?.da])).values()].filter(v => v != null);
   const discovered = uniq(rows);
   const selected = uniq(rows.filter(isChosen));
   const analyzed = uniq(rows.filter(c => status(c) === 'analyzed'));
+  const items = [
+    [Users, discovered, 'discovered', `${discovered} unique domains found`, 'Unique competitor websites found on Google Maps or added by hand. A business seen twice counts once. Found does not mean selected.', 'text-indigo-600'],
+    [CheckCircle2, selected, 'selected', 'confirmed by you', 'Competitors you confirmed. Only these are watched and compared in the other tabs.', 'text-emerald-600'],
+    [BarChart3, analyzed, 'analyzed', `${discovered - analyzed} not fully read`, 'Competitors whose Domain Authority and ranked keywords were both read. Reading only one of them is Partly read and does not count here.', 'text-sky-600'],
+    [Layers, das.length ? Math.round(das.reduce((x, v) => x + v, 0) / das.length) : '—', 'avg. authority', das.length ? `from ${das.length} of ${discovered} sites` : 'analyze a competitor to read it', 'Average Domain Authority of the sites that have one. Sites without a figure are left out, not counted as zero.', 'text-violet-600'],
+  ];
   return (
-    <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
-      <Stat icon={Users} label="Discovered competitors" value={discovered} sub="unique domains found" help="Unique competitor websites found on Google Maps or added by hand. A business seen twice counts once. Found does not mean selected." tone="bg-indigo-50 text-indigo-600" />
-      <Stat icon={CheckCircle2} label="Selected competitors" value={selected} sub="confirmed by you" help="Competitors you confirmed. Only these are watched and compared in the other tabs." tone="bg-emerald-50 text-emerald-600" />
-      <Stat icon={BarChart3} label="Analyzed competitors" value={analyzed} sub={`${discovered - analyzed} not fully read`} help="Competitors whose Domain Authority and ranked keywords were both read. Reading only one of them is Partly read and does not count here." tone="bg-sky-50 text-sky-600" />
-      <Stat icon={Layers} label="Avg. Domain Authority" value={das.length ? Math.round(das.reduce((x, v) => x + v, 0) / das.length) : '—'} sub={das.length ? `from ${das.length} of ${discovered} site${discovered === 1 ? '' : 's'}` : 'analyze a competitor to read it'} help="Average of the Domain Authority figures that were read. Sites without a figure are left out, not counted as zero." tone="bg-violet-50 text-violet-600" />
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5">
+      {items.map(([Icon, v, label, sub, help, tone]) => (
+        <Tip key={label} text={`${sub}. ${help}`} align="left">
+          <span tabIndex={0} className="inline-flex items-center gap-2 cursor-help">
+            <Icon size={16} className={tone} />
+            <b className="text-16 text-slate-900 tabular-nums leading-none">{v}</b>
+            <span className="text-12.5 text-slate-600">{label}</span>
+          </span>
+        </Tip>
+      ))}
     </div>
   );
 }
