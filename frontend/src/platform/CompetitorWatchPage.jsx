@@ -115,10 +115,6 @@ function Body({ b }) {
             </table>
           </div>
           <p className="mt-2 text-11.5 text-gray-400">New, changed and removed are counted over the last 30 days.</p>
-          {d.not_chosen?.length > 0 && (
-            <p className="mt-3 text-12.5 text-gray-600">{d.not_chosen.length} more competitor{d.not_chosen.length === 1 ? ' was' : 's were'} found but not chosen ({d.not_chosen.slice(0, 3).map(x => x.name).join(', ')}{d.not_chosen.length > 3 ? '…' : ''}).{' '}
-              <Link className="font-semibold text-indigo-700 hover:underline" to="/competitor-finder?tab=competitors">Look at them <ArrowRight size={11} className="inline" /></Link></p>
-          )}
         </Card>
       )}
 

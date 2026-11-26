@@ -243,3 +243,30 @@ def test_history_shows_an_earlier_read_for_a_competitor_analyzed_before_runs_wer
     assert len(runs) == 1 and runs[0]["earlier"] is True and runs[0]["trigger"] == "earlier" and runs[0]["status"] == "analyzed"
     assert runs[0]["snapshot"]["da"] == 37 and runs[0]["snapshot"]["keywords"] == 1 and runs[0]["finished_at"]
     assert client.get(f"{base}/history", params={"domain": "null"}).json()["runs"] == []
+
+
+def test_competitor_watch_shows_data_only_for_the_chosen_competitors(client):
+    """Ticking a competitor chooses it; Competitor Watch lists it and its changes. A competitor that was never chosen, or was unticked, shows nothing: not its card, not its changes."""
+    from datetime import datetime, timezone
+    from app.backlinks.models import WatchEvent
+    from app.db import SessionLocal
+    bid = _project(client)
+    a = client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "https://chosen.example"}).json()
+    b = client.post("/api/v1/competitors/manual", json={"business_id": bid, "url": "https://left-out.example"}).json()
+    assert client.patch(f"/api/v1/competitors/{b['id']}", json={"selected": False}).status_code == 200  # found, not chosen
+    db = SessionLocal()
+    for dom in ("chosen.example", "left-out.example"):
+        db.add(WatchEvent(business_id=bid, domain=dom, kind="new_page", url=f"https://{dom}/new", title=f"New page on {dom}", detail={}, at=datetime.now(timezone.utc)))
+    db.commit()
+    db.close()
+    d = client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()
+    assert [c["domain"] for c in d["competitors"]] == ["chosen.example"]
+    assert [e["domain"] for e in d["events"]] == ["chosen.example"]  # nothing about the one that was not chosen
+    # tick the second one: it and its changes appear
+    assert client.patch(f"/api/v1/competitors/{b['id']}", json={"selected": True}).status_code == 200
+    d = client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()
+    assert sorted(c["domain"] for c in d["competitors"]) == ["chosen.example", "left-out.example"] and sorted(e["domain"] for e in d["events"]) == ["chosen.example", "left-out.example"]
+    # untick the first: gone again, with its changes
+    assert client.patch(f"/api/v1/competitors/{a['id']}", json={"selected": False}).status_code == 200
+    d = client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()
+    assert [c["domain"] for c in d["competitors"]] == ["left-out.example"] and [e["domain"] for e in d["events"]] == ["left-out.example"]

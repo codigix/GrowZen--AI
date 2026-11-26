@@ -281,7 +281,8 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const shown = onlyChosen ? data.filter(c => c.chosen) : data;
   const picked = data.filter(c => sel.has(c.key));
   const toggle = (k) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
-  const allOn = view.length > 0 && view.every(c => sel.has(c.key));
+  const allOn = view.length > 0 && view.every(c => c.chosen);
+  const chosenRows = data.filter(c => c.chosen);
 
   const setKind = async (c, kind) => {
     if (!c.reg?.id) { toast('Save this competitor first (select it), then mark it direct or indirect.'); return; }
@@ -323,8 +324,8 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const Icon = ({ label, onClick, children, disabled, tone = 'text-slate-500 hover:text-indigo-700' }) => <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className={`p-1 cursor-pointer disabled:opacity-30 disabled:cursor-default ${tone}`}>{children}</button>;
 
   const cols = [
-    { id: 'sel', header: <input type="checkbox" aria-label="Select every row shown" checked={allOn} onChange={e => setSel(s => { const n = new Set(s); view.forEach(c => (e.target.checked ? n.add(c.key) : n.delete(c.key))); return n; })} className="accent-indigo-600" />, csv: false,
-      cell: c => <input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.key)} onChange={() => toggle(c.key)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
+    { id: 'sel', header: <input type="checkbox" aria-label="Choose every competitor shown" title="Tick to choose every competitor shown: they are followed in Competitor Watch" checked={allOn} onChange={e => choose(view.filter(c => c.chosen !== e.target.checked), e.target.checked)} className="accent-indigo-600" />, csv: false,
+      cell: c => <input type="checkbox" aria-label={`Choose ${c.name} for Competitor Watch`} title={c.chosen ? 'Chosen: followed in Competitor Watch. Untick to take it out.' : 'Tick to choose it: it is then followed in Competitor Watch'} checked={c.chosen} onChange={() => choose([c], !c.chosen)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
     { id: 'name', header: 'Competitor', first: 'asc', value: c => [c.name, c.host, city(c), c.maps?.distance_m != null ? `${(c.maps.distance_m / 1000).toFixed(1)} km` : ''].filter(Boolean).join(' · '), className: 'px-3 py-2.5 min-w-[220px] max-w-[280px]',
       tip: { what: 'The competitor, its website and where it is. The distance is from the place you are searching. Press the name for its full profile.', from: 'Google Places' },
       cell: c => (
@@ -339,8 +340,6 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
     { id: 'source', header: 'Found by', value: c => (c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', '), className: 'px-3 py-2.5 text-12.5 text-slate-600', hide: true,
       tip: { what: 'How it was found. A business found on Google Maps is a local competitor; it is not automatically a competitor for organic search.', from: 'Google Places, organic search or added by hand' },
       cell: c => <span>{(c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', ') || <span className="text-slate-300">Not available</span>}</span> },
-    { id: 'watch', header: 'Watch', first: 'desc', value: c => (c.chosen ? 'Chosen' : 'Not chosen'), className: 'px-3 py-2.5 whitespace-nowrap', tip: { what: 'Choose the competitors that really compete with you. Chosen competitors are followed in Competitor Watch and used in the later steps. The others stay in this list.' },
-      cell: c => <button type="button" onClick={() => choose([c], !c.chosen)} aria-pressed={c.chosen} title={c.chosen ? 'Press to take it out of Competitor Watch' : 'Press to follow it in Competitor Watch'} className={`h-7 px-2.5 rounded-md text-12 font-semibold cursor-pointer ring-1 ring-inset ${c.chosen ? 'bg-emerald-600 text-white ring-emerald-600 hover:bg-emerald-700' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{c.chosen ? '✓ Chosen' : 'Choose'}</button> },
     { id: 'kind', header: 'Type', value: c => (KIND[kindOf(c)] || ['Not judged'])[0], className: 'px-3 py-2.5 whitespace-nowrap',
       tip: { what: 'Your own judgement: a direct competitor sells what you sell to the same customers; an indirect one overlaps only in part. Press to change it.' },
       cell: c => { const k = kindOf(c); const next = k === 'direct' ? 'indirect' : k === 'indirect' ? '' : 'direct'; return <button type="button" onClick={() => setKind(c, next)} title={`Press to set: ${next ? KIND[next][0] : 'not judged'}`} className={`text-12 font-semibold px-2 py-0.5 rounded-full ring-1 cursor-pointer ${k ? KIND[k][1] : 'text-slate-400 ring-slate-200 bg-white'}`}>{k ? KIND[k][0] : 'Not judged'}</button>; } },
@@ -404,15 +403,13 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
         empty={rows.length ? 'No competitor matches these filters.' : scope === 'near' ? `No competitor found within ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} of ${placeName || 'this place'}. Try Everywhere, a larger distance or Find more.` : 'No competitors yet. Find them on Google Maps or add one by its website.'} />
       <p className="text-12 text-slate-500">Ranking keywords, Top 3, Top 10, average position and traffic are for the market of this project{rating?.market ? ` (${rating.market})` : ''}, read from each competitor's ranked keywords. Distance and Match are for {placeName || 'the chosen place'}.</p>
 
-      {sel.size > 0 && (
-        <div className="sticky bottom-3 z-20"><div role="toolbar" aria-label="Selected competitors" className="rounded-xl bg-white shadow-xl ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
-          <span className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-800 text-13.5 font-semibold">{sel.size} competitor{sel.size === 1 ? '' : 's'} selected</span>
-          <button type="button" onClick={() => setSel(new Set())} className="text-12.5 text-slate-500 hover:text-slate-800 underline cursor-pointer">Clear</button>
-          <span className="text-12 text-slate-400 hidden md:inline">Analyze reads Domain Authority and up to 100 keywords: about ${COST(100)} each at Apify.</span>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <Button icon={Check} onClick={() => choose(picked, true)}>Select as competitors</Button>
-            <Button variant="primary" icon={BarChart3} disabled={!picked.some(c => c.host)} onClick={() => analyze(picked)}>Analyze selected</Button>
-            <Button icon={Trash2} disabled={!picked.some(c => c.reg)} onClick={() => setConfirm(true)} className="text-rose-700">Remove</Button>
+      {chosenRows.length > 0 && (
+        <div className="sticky bottom-3 z-20"><div role="toolbar" aria-label="Chosen competitors" className="rounded-xl bg-white shadow-xl ring-1 ring-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
+          <span className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 text-13.5 font-semibold">{chosenRows.length} chosen</span>
+          <span className="text-12.5 text-slate-500">Followed in Competitor Watch. Untick a row to take it out.</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Link to="/competitor-watch"><Button icon={Eye}>Open Competitor Watch</Button></Link>
+            <Button variant="primary" icon={BarChart3} disabled={!chosenRows.some(c => c.host)} onClick={() => analyze(chosenRows)} title={`Analyze reads Domain Authority and up to 100 keywords: about $${COST(100)} each at Apify.`}>Analyze chosen</Button>
           </div>
         </div></div>
       )}

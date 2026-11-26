@@ -387,10 +387,13 @@ def _not_chosen(db: Session, b: Business) -> list[dict]:
 def status(db: Session, b: Business, event_limit: int = 40) -> dict:
     cfg = _config(db, b.id)
     pages = {}
-    for dom in competitor_domains(db, b.id):
+    chosen = competitor_domains(db, b.id)  # only the competitors the owner chose: nothing about any other business is shown
+    for dom in chosen:
         pages[dom] = db.query(WatchPage).filter(WatchPage.business_id == b.id, WatchPage.domain == dom, WatchPage.content_hash.is_not(None), WatchPage.removed_at.is_(None)).count()
     reports = list(db.scalars(select(WatchReport).where(WatchReport.business_id == b.id).order_by(WatchReport.week_start.desc()).limit(8)))
-    events = list(db.scalars(select(WatchEvent).where(WatchEvent.business_id == b.id).order_by(WatchEvent.at.desc()).limit(event_limit)))
+    wanted = {d.lower().removeprefix("www.") for d in chosen}
+    events = [e for e in db.scalars(select(WatchEvent).where(WatchEvent.business_id == b.id).order_by(WatchEvent.at.desc()).limit(event_limit * 6))
+              if (e.domain or "").lower().removeprefix("www.") in wanted][:event_limit]  # what changed: only on the chosen competitors, not on ones since taken out
     rep = lambda r: {"week_start": r.week_start, "created_at": r.created_at, "source": r.source, "events": r.events, "baseline": r.baseline, **r.summary}
     return {"enabled": cfg.watch_enabled is not False, "running": is_running(cfg), "last_run_at": cfg.watch_last_run_at,
             "next_run_at": (_aw(cfg.watch_last_run_at) + INTERVAL) if cfg.watch_last_run_at else None,
