@@ -317,14 +317,37 @@ def remove(competitor_id: int, db: Session = Depends(get_db), user: User = Depen
     if c is None:
         raise HTTPException(404, "Competitor not found")
     owned_business(db, user, c.business_id)  # 404 for another account's project
+    host = _host(c.website or "")
+    if host:  # the same competitor kept in Backlink Intelligence would be brought back into this list, so it stops being one there too
+        from ..backlinks.models import BiTrackedTarget  # noqa: PLC0415
+        for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == c.business_id, BiTrackedTarget.is_competitor.is_(True))):
+            if _host((t.domain or "") if "//" in (t.domain or "") else "//" + (t.domain or "")) == host:
+                t.is_competitor = False
     db.delete(c)
     db.commit()
+
+
+def _adopt_backlink_competitors(db: Session, b: Business) -> None:
+    """A competitor added directly in Backlink Intelligence is already watched and compared everywhere, so it is listed here too (chosen, found by "backlinks"), not only there."""
+    from ..backlinks.models import BiTrackedTarget  # noqa: PLC0415
+    have = {_host(c.website or "") for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id))}
+    added = False
+    for t in db.scalars(select(BiTrackedTarget).where(BiTrackedTarget.business_id == b.id, BiTrackedTarget.is_competitor.is_(True)).order_by(BiTrackedTarget.id)):
+        host = _host((t.domain or "") if "//" in (t.domain or "") else "//" + (t.domain or ""))
+        if not host or "." not in host or host in have or hygiene.skip_reason(b, host):
+            continue
+        have.add(host)
+        db.add(Competitor(business_id=b.id, website=f"https://{host}", name=host, source="backlinks", selected=True, domain=host, discovery=["backlinks"]))
+        added = True
+    if added:
+        db.commit()
 
 
 @router.get("")
 def list_for_business(business_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Competitors already registered against a business, for picking one to audit or compare."""
-    owned_business(db, user, business_id)
+    b = owned_business(db, user, business_id)
+    _adopt_backlink_competitors(db, b)
     q = select(Competitor).where(Competitor.business_id == business_id).order_by(Competitor.name)
     out = []
     for c in db.scalars(q):

@@ -13,7 +13,7 @@ const num = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
 const kfmt = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : num(n));
 const hostOf = (u) => { if (!u) return ''; try { return new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
 const STATUS = { analyzed: ['Analyzed', 'green'], partial: ['Partly read', 'amber'], pending: ['Pending', 'gray'], queued: ['Queued', 'gray'], running: ['Analyzing…', 'blue'], failed: ['Failed', 'red'], retry: ['Needs retry', 'amber'] };
-const SOURCE = { google_places: 'Google Maps', organic_serp: 'Organic search', manual: 'Added by hand' };
+const SOURCE = { google_places: 'Google Maps', organic_serp: 'Organic search', manual: 'Added by hand', backlinks: 'Backlinks tool' };
 const KIND = { direct: ['Direct', 'text-emerald-700 bg-emerald-50 ring-emerald-200'], indirect: ['Indirect', 'text-amber-700 bg-amber-50 ring-amber-200'] };
 const fdate = (t) => (t ? new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 const daTone = (v) => (v == null ? 'bg-slate-100 text-slate-400' : v >= 60 ? 'bg-emerald-100 text-emerald-800' : v >= 30 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800');

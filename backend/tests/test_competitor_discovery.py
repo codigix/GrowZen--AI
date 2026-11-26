@@ -48,3 +48,19 @@ def test_radius_uses_a_map_point_and_keeps_only_places_inside(client, monkeypatc
     assert r.status_code == 200, r.text
     assert got["radius_m"] == 3000 and got["restrict"] is True and got["lat"] == 18.52
     assert r.json()["competitors"][0]["distance_m"] == 900 and r.json()["requests"] == 1
+
+
+def test_a_competitor_added_in_backlink_intelligence_is_listed_and_stays_removed(client):
+    from app.backlinks.models import BiTrackedTarget
+    from app.db import SessionLocal
+    bid = client.post("/api/v1/businesses", json={"name": "Adopt Co", "website": "https://adopt.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add(BiTrackedTarget(business_id=bid, domain="rival-site.com", is_competitor=True))
+    db.add(BiTrackedTarget(business_id=bid, domain="not-a-rival.com", is_competitor=False))
+    db.commit()
+    db.close()
+    rows = client.get(f"/api/v1/competitors?business_id={bid}").json()
+    assert [r["website"] for r in rows] == ["https://rival-site.com"] and rows[0]["selected"] is True and rows[0]["source"] == "backlinks"
+    assert len(client.get(f"/api/v1/competitors?business_id={bid}").json()) == 1  # not added twice
+    assert client.delete(f"/api/v1/competitors/{rows[0]['id']}").status_code == 204
+    assert client.get(f"/api/v1/competitors?business_id={bid}").json() == []  # removing it also stops it being a competitor there
