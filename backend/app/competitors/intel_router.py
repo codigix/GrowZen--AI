@@ -58,13 +58,16 @@ def save_found(db: Session, b: Any, result: dict) -> int:
     try:
         have = {hygiene.host_of(c.website) for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if c.website}
         added = 0
-        for item in [*(result.get("local_competitors") or []), *(result.get("organic_competitors") or [])]:
+        tagged = [(x, "google_places") for x in (result.get("local_competitors") or [])] + [(x, "organic_serp") for x in (result.get("organic_competitors") or [])]
+        for item, how in tagged:
             site = (item.get("website") or "").strip() or (f"https://{item['domain']}" if item.get("domain") else "")
             host = hygiene.host_of(site)
             if not host or host in have or hygiene.skip_reason(b, site):
                 continue
+            # found, not chosen: it appears in the Competitors list, and only feeds Competitor Watch and the later steps once the owner chooses it
             db.add(Competitor(business_id=b.id, website=site, name=item.get("name") or host, address=item.get("address"), phone=item.get("phone"),
-                              rating=item.get("rating") if isinstance(item.get("rating"), (int, float)) else None, reviews=item.get("reviews"), source="research"))
+                              rating=item.get("rating") if isinstance(item.get("rating"), (int, float)) else None, reviews=item.get("reviews"), source="research",
+                              selected=False, domain=host, discovery=[how]))
             have.add(host)
             added += 1
             if added >= MAX_SAVED_PER_RUN:

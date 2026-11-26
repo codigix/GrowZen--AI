@@ -277,6 +277,8 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const failedBy = auto?.prog?.failed || {};
   const st = (c) => running[c.host] || (auto?.prog?.running && auto.prog.current === c.host ? 'running' : auto?.prog?.running && queue.includes(c.host) ? 'queued' : metrics[c.host]?.status || 'pending');
   const data = useMemo(() => rows.map(c => ({ ...c, m: metrics[c.host] || {}, status: st(c), chosen: isChosen(c) })), [rows, metrics, running, auto?.prog, isChosen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [onlyChosen, setOnlyChosen] = useState(false); // show every competitor found, or only the ones you chose
+  const shown = onlyChosen ? data.filter(c => c.chosen) : data;
   const picked = data.filter(c => sel.has(c.key));
   const toggle = (k) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const allOn = view.length > 0 && view.every(c => sel.has(c.key));
@@ -305,7 +307,11 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
     }
     if (ok) toast(`${ok} competitor${ok === 1 ? '' : 's'} analyzed`);
   };
-  const choose = async (list, on) => { for (const c of list) await onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, on); setSel(new Set()); };
+  const choose = async (list, on) => {
+    for (const c of list) await onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, on);
+    setSel(new Set());
+    toast(on ? `${list.length === 1 ? list[0].name : `${list.length} competitors`} chosen: now followed in Competitor Watch.` : `${list.length === 1 ? list[0].name : `${list.length} competitors`} taken out of Competitor Watch.`);
+  };
   const remove = async () => { for (const c of picked.filter(x => x.reg)) await onRemove(c.reg); setSel(new Set()); setConfirm(false); };
   const submitAdd = async (e) => { e.preventDefault(); if (await onAdd(url.trim(), name.trim())) { setUrl(''); setName(''); setAdding(false); } };
   const city = (c) => (c.maps?.address || '').split(',').slice(-3, -1).map(x => x.trim()).filter(Boolean).join(', ') || (c.maps?.address || '').split(',')[0];
@@ -333,6 +339,8 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
     { id: 'source', header: 'Found by', value: c => (c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', '), className: 'px-3 py-2.5 text-12.5 text-slate-600', hide: true,
       tip: { what: 'How it was found. A business found on Google Maps is a local competitor; it is not automatically a competitor for organic search.', from: 'Google Places, organic search or added by hand' },
       cell: c => <span>{(c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', ') || <span className="text-slate-300">Not available</span>}</span> },
+    { id: 'watch', header: 'Watch', first: 'desc', value: c => (c.chosen ? 'Chosen' : 'Not chosen'), className: 'px-3 py-2.5 whitespace-nowrap', tip: { what: 'Choose the competitors that really compete with you. Chosen competitors are followed in Competitor Watch and used in the later steps. The others stay in this list.' },
+      cell: c => <button type="button" onClick={() => choose([c], !c.chosen)} aria-pressed={c.chosen} title={c.chosen ? 'Press to take it out of Competitor Watch' : 'Press to follow it in Competitor Watch'} className={`h-7 px-2.5 rounded-md text-12 font-semibold cursor-pointer ring-1 ring-inset ${c.chosen ? 'bg-emerald-600 text-white ring-emerald-600 hover:bg-emerald-700' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{c.chosen ? '✓ Chosen' : 'Choose'}</button> },
     { id: 'kind', header: 'Type', value: c => (KIND[kindOf(c)] || ['Not judged'])[0], className: 'px-3 py-2.5 whitespace-nowrap',
       tip: { what: 'Your own judgement: a direct competitor sells what you sell to the same customers; an indirect one overlaps only in part. Press to change it.' },
       cell: c => { const k = kindOf(c); const next = k === 'direct' ? 'indirect' : k === 'indirect' ? '' : 'direct'; return <button type="button" onClick={() => setKind(c, next)} title={`Press to set: ${next ? KIND[next][0] : 'not judged'}`} className={`text-12 font-semibold px-2 py-0.5 rounded-full ring-1 cursor-pointer ${k ? KIND[k][1] : 'text-slate-400 ring-slate-200 bg-white'}`}>{k ? KIND[k][0] : 'Not judged'}</button>; } },
@@ -368,6 +376,9 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   ];
   const toolbar = (
     <>
+      <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden" role="group" aria-label="Which competitors">
+        {[[false, `All found (${data.length})`], [true, `Chosen (${data.filter(c => c.chosen).length})`]].map(([v, l]) => <button key={String(v)} type="button" aria-pressed={onlyChosen === v} onClick={() => setOnlyChosen(v)} className={`h-8 px-3 text-12 font-medium cursor-pointer ${onlyChosen === v ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}
+      </div>
       <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden" role="group" aria-label="Where">
         {[['near', `Within ${radius >= 1000 ? `${Math.round(radius / 100) / 10} km` : `${radius} m`} of ${placeName || 'the place'} (${nearCount})`], ['all', `Everywhere (${allCount})`]].map(([k, l]) => <button key={k} type="button" aria-pressed={scope === k} onClick={() => setScope(k)} className={`h-8 px-3 text-12 font-medium cursor-pointer ${scope === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}
       </div>
@@ -387,7 +398,7 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
           {addError && <div className="w-full"><ErrorNote>{addError}</ErrorNote></div>}
         </form>
       )}
-      <DataTable columnsKey="competitors" dense columns={cols} rows={data} rowKey={c => c.key} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={860} label="competitors"
+      <DataTable columnsKey="competitors" dense columns={cols} rows={shown} rowKey={c => c.key} toolbar={toolbar} initialSort={{ key: 'match', dir: 'desc' }} pageSize={10} serial minWidth={860} label="competitors"
         exportName="competitors" searchPlaceholder="Search competitor by name or domain" onState={s => { viewRef.current = s.rows; }}
         rowClass={c => (sel.has(c.key) ? 'bg-indigo-50/50' : c.chosen ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-slate-50')}
         empty={rows.length ? 'No competitor matches these filters.' : scope === 'near' ? `No competitor found within ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`} of ${placeName || 'this place'}. Try Everywhere, a larger distance or Find more.` : 'No competitors yet. Find them on Google Maps or add one by its website.'} />
