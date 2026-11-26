@@ -207,7 +207,7 @@ export function KeywordGapTab({ b, focus = '' }) {
     { id: 'keyword', header: 'Keyword', first: 'asc', value: r => r.keyword, cell: r => <span className="font-medium text-slate-900">{r.keyword}</span>, className: 'px-3 py-2.5 min-w-[170px]' },
     { id: 'status', header: 'Gap', value: r => STATUS[r.status][0], cell: r => <Badge tone={STATUS[r.status][1]} title={STATUS[r.status][2]}>{STATUS[r.status][0]}</Badge> },
     { id: 'volume', header: 'Searches', right: true, first: 'desc', value: r => r.volume ?? null, cell: r => num(r.volume) },
-    { id: 'kd', header: 'KD', right: true, value: r => r.difficulty ?? null },
+    { id: 'kd', header: 'Ad comp.', right: true, value: r => r.difficulty ?? null, tip: { what: 'How many advertisers compete for this keyword in Google Ads, 0 to 100. It is not the SEO difficulty of ranking on page 1, which the Keyword Magic Tool works out from the real top 10 (so the two numbers differ). A keyword nobody advertises on shows 0.', from: 'Google Ads Keyword Planner (kept, refreshed by Sync KD)' } },
     { id: 'score', header: 'Score', right: true, first: 'desc', value: r => r.score ?? null, tip: { what: SCORE_HELP },
       cell: r => (r.score == null ? <span className="text-slate-300">—</span> : <span title={r.score_parts ? `Searches ${r.score_parts.searches}/30 · Ease ${r.score_parts.ease}/25 · Intent ${r.score_parts.intent}/15 · Distance ${r.score_parts.distance}/20 · Fit ${r.score_parts.fit}/10` : ''} className={`inline-flex min-w-[34px] justify-center px-2 py-0.5 rounded-md text-13 font-bold ${r.score >= 70 ? 'bg-emerald-100 text-emerald-800' : r.score >= 45 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>{r.score}</span>) },
     ...g.competitors.filter(x => x.keywords || x.from_google).slice(0, 6).map((x, i) => ({ id: `pos:${x.domain}`, label: x.domain, header: <span className="block max-w-[80px] truncate" title={x.domain}>{x.domain}</span>, right: true, hide: i > 1, value: r => r.competitors.find(y => y.domain === x.domain)?.position ?? null, cell: r => { const p = r.competitors.find(y => y.domain === x.domain)?.position; return p ? `#${p}` : <span className="text-slate-300">—</span>; }, tip: { what: `Where ${x.domain} ranks for the keyword.` } })),
@@ -226,7 +226,7 @@ export function KeywordGapTab({ b, focus = '' }) {
     { id: 'comp', label: 'Competitor', options: g.competitors.map(x => [x.domain, x.domain]), test: (r, v) => r.competitors.some(x => x.domain === v) },
     { id: 'pos', label: 'Their best', options: BANDS.filter(x => x[0] !== 'none'), test: (r, v) => band(r.best?.position) === v },
     { id: 'volume', label: 'Searches', options: VOLUME, test: (r, v) => (r.volume || 0) >= Number(v) },
-    { id: 'kd', label: 'Difficulty', options: KD, test: (r, v) => kdBand(r.difficulty) === v },
+    { id: 'kd', label: 'Ad competition', options: KD, test: (r, v) => kdBand(r.difficulty) === v },
     { id: 'intent', label: 'Intent', options: INTENTS, test: (r, v) => r.intent === v },
   ];
   return (
@@ -243,7 +243,7 @@ export function KeywordGapTab({ b, focus = '' }) {
       {!hasData ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-8 text-center text-13 text-slate-500">No competitor rankings are kept yet. They are read automatically on the Competitors tab, or open <b>SERP Features</b> in Position Tracking to read Google's top 10 on your tracked searches. Then the gap appears here.</div> : (
         <DataTable columnsKey="keyword-gap" dense key={only} columns={cols} rows={pool} rowKey={r => r.keyword} filters={only ? filters.filter(f => f.id !== 'comp') : filters} collapseFilters initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-gap" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={860} onState={s => { viewRef.current = s.rows; }}
           toolbar={<><Button size="sm" variant="primary" icon={Plus} busy={wsBusy === 'ws'} onClick={send}>Send useful to Find Keywords</Button>
-            <Button size="sm" icon={RefreshCw} busy={wsBusy === 'sync'} title="Difficulty, searches and cost per click are kept once looked up. Sync asks Google Keyword Planner again and updates what changed." onClick={syncKd}>Sync KD</Button></>} empty="No keywords in this view." />
+            <Button size="sm" icon={RefreshCw} busy={wsBusy === 'sync'} title="Ad competition, searches and cost per click are kept once looked up. Sync asks Google Keyword Planner again and updates what changed." onClick={syncKd}>Sync figures</Button></>} empty="No keywords in this view." />
       )}
       <p className="text-12 text-slate-500">Rankings are for {COUNTRY[g.country] || g.country || 'the project market'}. Your position is your checked position, or Search Console's average when Google showed your site.</p>
       {toastNode2}
