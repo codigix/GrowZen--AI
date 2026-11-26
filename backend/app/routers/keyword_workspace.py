@@ -262,10 +262,10 @@ def area_at(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=18
 
 
 @router.get("/competitor-gap")
-def competitor_gap(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def competitor_gap(sync: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """The keyword gap: what the competitors rank for and where you stand, from their kept rankings and Google's top 10 on your tracked searches. Nothing of their websites is audited."""
     from ..services import competitor_keyword_report as ck  # noqa: PLC0415
-    return ck.gap(db, b)
+    return ck.gap(db, b, sync=sync)  # sync=true asks Google Keyword Planner again for every keyword and updates the kept difficulty, volume and cost per click
 
 
 class AnalysisIn(BaseModel):

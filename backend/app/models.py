@@ -1008,4 +1008,5 @@ class CompetitorKeyword(Base):
     intent: Mapped[str | None] = mapped_column(String(20))
     url: Mapped[str | None] = mapped_column(String(500))
     traffic: Mapped[float | None] = mapped_column(Float)
+    metrics_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when Google Keyword Planner was last asked about this keyword (difficulty, volume, cost per click), whether or not it had a figure
     read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

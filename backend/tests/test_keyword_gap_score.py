@@ -54,3 +54,33 @@ def test_the_gap_uses_only_chosen_competitors(client):
     out = client.get(f"/api/v1/businesses/{bid}/keyword-workspace/competitor-gap").json()
     words = {r["keyword"] for r in out["rows"]}
     assert "alpha keyword" in words and "beta keyword" not in words
+
+
+def test_difficulty_is_looked_up_once_kept_and_only_changed_by_a_sync(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Competitor, CompetitorKeyword
+    from app.services import keyword_metrics
+    calls = []
+    answer = {"kd": 12}
+
+    def fake(words, country=None):
+        calls.append(list(words))
+        return {w: {"volume": 500, "cpc": 1.0, "competition": "LOW", "difficulty": (None if w == "nothing known" else answer["kd"])} for w in words}, None
+    monkeypatch.setattr(keyword_metrics, "lookup", fake)
+    bid = client.post("/api/v1/businesses", json={"name": "Kd Co", "website": "https://kd.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add_all([Competitor(business_id=bid, website=f"https://{d}", name=d, source="manual", selected=True, domain=d) for d in ("one-rival.com", "two-rival.com")])
+    db.add_all([CompetitorKeyword(business_id=bid, domain="one-rival.com", keyword="seo help", position=3, volume=None),
+                CompetitorKeyword(business_id=bid, domain="two-rival.com", keyword="seo help", position=5, volume=None),
+                CompetitorKeyword(business_id=bid, domain="one-rival.com", keyword="nothing known", position=9, volume=None)])
+    db.commit()
+    db.close()
+    url = f"/api/v1/businesses/{bid}/keyword-workspace/competitor-gap"
+    first = client.get(url).json()
+    kd = {r["keyword"]: r["difficulty"] for r in first["rows"]}
+    assert kd["seo help"] == 12 and kd["nothing known"] is None and len(calls) == 1
+    client.get(url)
+    assert len(calls) == 1  # kept: Google is not asked again, not even for the keyword it had no figure for
+    answer["kd"] = 20
+    again = client.get(url + "?sync=true").json()
+    assert len(calls) == 2 and {r["keyword"]: r["difficulty"] for r in again["rows"]}["seo help"] == 20 and again["difficulty_sync"]["updated"] >= 1

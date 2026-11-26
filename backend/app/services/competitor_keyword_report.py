@@ -166,7 +166,9 @@ def store(db: Session, b: Business, domain: str, rows: list[dict[str, Any]]) -> 
 
     from ..models import CompetitorKeyword  # noqa: PLC0415
     domain = domain.lower().removeprefix("www.")
+    kept: dict[str, Any] = {}
     for old in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain == domain)):
+        kept[old.keyword] = (old.difficulty, old.intent, old.metrics_at)  # what was already looked up for a keyword is not lost when the competitor is read again
         db.delete(old)
     db.flush()
     now = datetime.now(timezone.utc)
@@ -176,8 +178,9 @@ def store(db: Session, b: Business, domain: str, rows: list[dict[str, Any]]) -> 
         if not k or k in seen:
             continue
         seen.add(k)
-        db.add(CompetitorKeyword(business_id=b.id, domain=domain, keyword=k, position=r.get("position"), volume=r.get("volume"), cpc=r.get("cpc"), difficulty=r.get("difficulty"),
-                                 intent=r.get("intent"), url=r.get("url"), traffic=r.get("traffic"), read_at=now))
+        db.add(CompetitorKeyword(business_id=b.id, domain=domain, keyword=k, position=r.get("position"), volume=r.get("volume"), cpc=r.get("cpc"), difficulty=r.get("difficulty") if r.get("difficulty") is not None else (kept.get(k) or (None, None, None))[0],
+                                 intent=r.get("intent") or (kept.get(k) or (None, None, None))[1], url=r.get("url"), traffic=r.get("traffic"), read_at=now,
+                                 metrics_at=(kept.get(k) or (None, None, None))[2]))
     db.commit()
 
 
@@ -198,36 +201,73 @@ def _own_positions(db: Session, b: Business, keywords: list[str]) -> dict[str, i
     return out
 
 
-def fill_missing(db: Session, b: Business, rows: list[Any]) -> None:
-    """The ranked-keywords read gives no difficulty and no intent. Difficulty (and a missing volume or cost per click) is asked from Google Keyword Planner, whose figure is the competition index
-    of the keyword (0-100); intent comes from the wording of the keyword. Only what is really known is filled in; a keyword Google has no figure for keeps its empty difficulty. Kept in the database."""
+METRICS_FRESH_DAYS = 30  # a keyword Google Keyword Planner answered for is not asked again for this long, unless a sync is asked for
+
+
+def fill_missing(db: Session, b: Business, rows: list[Any], sync: bool = False) -> dict[str, int]:
+    """The ranked-keywords read gives no difficulty and no intent. Difficulty (and a missing volume or cost per click) is asked from Google Keyword Planner (the competition index of the
+    keyword, 0-100); intent comes from the wording. What is found is kept on the row with the day it was asked, so:
+      - a keyword already looked up is never asked again, whether Google had a figure or not, until it is older than METRICS_FRESH_DAYS;
+      - the same keyword on another competitor reuses the figure already kept;
+      - `sync` asks again for every keyword (or the old ones) and updates the kept figures when Google's answer changed.
+    Returns {asked, updated, reused}."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
     from . import keyword_metrics  # noqa: PLC0415
     from .providers.base import intent_of  # noqa: PLC0415
-    need = [r for r in rows if r.difficulty is None or r.intent is None]
-    if not need:
-        return
-    found: dict[str, dict] = {}
-    if any(r.difficulty is None for r in need):
-        try:
-            found, _why = keyword_metrics.lookup([r.keyword for r in need if r.difficulty is None], market.serp_country(b))
-        except Exception:  # noqa: BLE001 -- Google Ads being unavailable must not stop the page
-            found = {}
+    now = datetime.now(timezone.utc)
+    fresh_after = now - timedelta(days=METRICS_FRESH_DAYS)
+
+    def stale(r: Any) -> bool:
+        at = r.metrics_at
+        if at is None:
+            return True
+        at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+        return sync or at < fresh_after
+
+    known = {_norm(r.keyword): r for r in rows if r.difficulty is not None and not stale(r)}  # figures kept and still fresh, reusable by the same keyword elsewhere
+    stats = {"asked": 0, "updated": 0, "reused": 0}
     changed = False
-    for r in need:
-        m = found.get(_norm(r.keyword)) or {}
-        if r.difficulty is None and m.get("difficulty") is not None:
-            r.difficulty, changed = m["difficulty"], True
-        if r.volume is None and m.get("volume"):
-            r.volume, changed = m["volume"], True
-        if r.cpc is None and m.get("cpc") is not None:
-            r.cpc, changed = m["cpc"], True
+    todo: list[Any] = []
+    for r in rows:
         if r.intent is None:
             r.intent, changed = intent_of(r.keyword), True
+        if not stale(r):
+            continue
+        twin = known.get(_norm(r.keyword))
+        if twin is not None and twin is not r:  # same keyword, already looked up on another competitor
+            r.difficulty, r.metrics_at, changed = twin.difficulty, twin.metrics_at, True
+            r.volume = r.volume if r.volume is not None else twin.volume
+            r.cpc = r.cpc if r.cpc is not None else twin.cpc
+            stats["reused"] += 1
+            continue
+        todo.append(r)
+    if todo:
+        words = list(dict.fromkeys(_norm(r.keyword) for r in todo))
+        try:
+            found, why = keyword_metrics.lookup(words, market.serp_country(b))
+        except Exception as exc:  # noqa: BLE001 -- Google Ads being unavailable must not stop the page
+            found, why = {}, str(exc)
+        if why and not found:
+            todo = []  # Google could not answer at all: nothing is marked as looked up, so the next time asks again
+        stats["asked"] = len(words) if todo else 0
+        for r in todo:
+            m = found.get(_norm(r.keyword)) or {}
+            new = m.get("difficulty")
+            if new != r.difficulty:
+                stats["updated"] += 1
+            r.difficulty = new if new is not None else r.difficulty  # a keyword Google no longer has a figure for keeps the one kept
+            if m.get("volume"):
+                r.volume = m["volume"] if (sync or r.volume is None) else r.volume
+            if m.get("cpc") is not None and (sync or r.cpc is None):
+                r.cpc = m["cpc"]
+            r.metrics_at, changed = now, True
     if changed:
         db.commit()
+    return stats
 
 
-def gap(db: Session, b: Business) -> dict[str, Any]:
+def gap(db: Session, b: Business, sync: bool = False) -> dict[str, Any]:
     """The keyword gap against the competitors: for each keyword a competitor ranks for (from its kept ranked-keywords read, and from Google's top 10 on your tracked searches) where you stand.
     missing = they rank and you do not; weak = both rank and they are more than SHARED_WITHIN positions above you; strong = both rank and you are more than that above them;
     shared = both rank within SHARED_WITHIN positions of each other; only_you = only you rank. Each row says whether the keyword is useful for the business, and carries an opportunity score
@@ -248,7 +288,7 @@ def gap(db: Session, b: Business) -> dict[str, Any]:
             e["competitors"][dom] = {"domain": dom, "position": pos, "url": url, "source": source, "traffic": round(traffic, 1) if traffic is not None else None}
 
     kept = list(db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain.in_(domains or [""]))))  # only the chosen competitors: a found one that was not chosen feeds nothing
-    fill_missing(db, b, kept)
+    stats = fill_missing(db, b, kept, sync=sync)
     for r in kept:
         add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, r.traffic, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc)
         s = reads.setdefault(r.domain, {"domain": r.domain, "keywords": 0, "read_at": None, "from_google": 0})
@@ -285,4 +325,4 @@ def gap(db: Session, b: Business) -> dict[str, Any]:
     rows.sort(key=lambda r: (order[r["status"]], -(r["score"] or 0), {"yes": 0, "maybe": 1, "have": 2, "no": 3}[r["fit"]], -(r["volume"] or 0)))
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in order}
     counts["useful_gaps"] = sum(1 for r in rows if r["status"] == "missing" and r["fit"] in ("yes", "maybe"))
-    return {"competitors": list(reads.values()), "rows": rows[:2000], "counts": counts, "total": len(rows), "country": market.serp_country(b), "own_read": bool(own and any(own.values()))}
+    return {"competitors": list(reads.values()), "rows": rows[:2000], "counts": counts, "total": len(rows), "country": market.serp_country(b), "own_read": bool(own and any(own.values())), "difficulty_sync": stats}

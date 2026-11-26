@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { FocusBar, sameSite } from './TableBits';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Eye, Loader2, Plus, Search } from 'lucide-react';
+import { ExternalLink, Eye, Loader2, Plus, RefreshCw, Search } from 'lucide-react';
 import { Button, Badge, ErrorNote, Modal, useAction, useToast } from './SeoUi';
 import DataTable from './DataTable';
 import MultiSelect from '../components/MultiSelect';
@@ -198,6 +198,7 @@ export function KeywordGapTab({ b, focus = '' }) {
   const pool = useMemo(() => (g ? g.rows.filter(r => (!status || r.status === status) && (!only || r.competitors.some(x => sameSite(x.domain, only)))) : []), [g, status, only]);
   if (!g) return <div className="flex items-center justify-center gap-2 py-14 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Loading…</div>;
   const c = g.counts;
+  const syncKd = () => wsRun('sync', async () => { const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-gap?sync=true`, { timeout: 120000 }); gap.setData(r); const n = r.difficulty_sync?.updated || 0; toast(n ? `${n} keyword${n === 1 ? '' : 's'} updated` : 'Everything is up to date'); });
   const send = () => wsRun('ws', async () => { const list = viewRef.current.filter(r => r.fit === 'yes' || r.fit === 'maybe'); const r = await api(`/businesses/${b.id}/keyword-workspace/add`, { method: 'POST', body: { ideas: list.slice(0, 300).map(i => ({ keyword: i.keyword, volume: i.volume, detail: `Keyword gap: ${i.best?.domain || 'competitor'} ranks #${i.best?.position ?? '?'}` })), label: 'Keyword gap' } }); toast(r.added ? `${r.added} keywords sent to Find Keywords` : 'Already in Find Keywords'); });
   const hasData = g.competitors.some(x => x.keywords || x.from_google);
   const stale = c.missing === undefined && (c.gap !== undefined || c.behind !== undefined); // the server still sends the old status names: it is running code from before this page was updated
@@ -241,7 +242,8 @@ export function KeywordGapTab({ b, focus = '' }) {
       {stale && <div role="alert" className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-13 text-amber-900"><b>The backend is running old code.</b> It still answers with the old gap names (Gap, Behind, Ahead), so the cards and table cannot fill in. Stop every backend process on port 8000, start the backend again, and reload this page.</div>}
       {!hasData ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-8 text-center text-13 text-slate-500">No competitor rankings are kept yet. They are read automatically on the Competitors tab, or open <b>SERP Features</b> in Position Tracking to read Google's top 10 on your tracked searches. Then the gap appears here.</div> : (
         <DataTable columnsKey="keyword-gap" dense key={only} columns={cols} rows={pool} rowKey={r => r.keyword} filters={only ? filters.filter(f => f.id !== 'comp') : filters} collapseFilters initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-gap" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={860} onState={s => { viewRef.current = s.rows; }}
-          toolbar={<Button size="sm" variant="primary" icon={Plus} busy={wsBusy === 'ws'} onClick={send}>Send useful to Find Keywords</Button>} empty="No keywords in this view." />
+          toolbar={<><Button size="sm" variant="primary" icon={Plus} busy={wsBusy === 'ws'} onClick={send}>Send useful to Find Keywords</Button>
+            <Button size="sm" icon={RefreshCw} busy={wsBusy === 'sync'} title="Difficulty, searches and cost per click are kept once looked up. Sync asks Google Keyword Planner again and updates what changed." onClick={syncKd}>Sync KD</Button></>} empty="No keywords in this view." />
       )}
       <p className="text-12 text-slate-500">Rankings are for {COUNTRY[g.country] || g.country || 'the project market'}. Your position is your checked position, or Search Console's average when Google showed your site.</p>
       {toastNode2}
