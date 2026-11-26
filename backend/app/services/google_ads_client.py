@@ -5,6 +5,8 @@ from ..config import get_settings
 
 log = logging.getLogger("seo.google_ads")
 
+ADS_TIMEOUT_SECONDS = 60  # a Google Ads request that has not answered by then gives up (it used to wait for the library's default, which can be many minutes)
+
 # India / English by default (matches this platform's primary market); callers can override.
 DEFAULT_LANGUAGE = "languageConstants/1000"  # English
 DEFAULT_GEO_TARGET = "geoTargetConstants/2356"  # India
@@ -134,7 +136,7 @@ def keyword_ideas(
 
     results = []
     try:
-        response = service.generate_keyword_ideas(request=request)
+        response = service.generate_keyword_ideas(request=request, timeout=ADS_TIMEOUT_SECONDS)
         for idea in response:
             results.append(_build_metrics(idea, include_monthly))
             if limit and len(results) >= limit:
@@ -171,7 +173,7 @@ def geo_constants(names: list[str], country_code: str = "IN") -> dict[str, dict]
         request.country_code = (country_code or "IN").upper()
         request.location_names.names.append(name)
         try:
-            response = service.suggest_geo_target_constants(request=request)
+            response = service.suggest_geo_target_constants(request=request, timeout=ADS_TIMEOUT_SECONDS)
         except GoogleAdsException as exc:
             log.warning("Google Ads location lookup failed for %s: %s", name, [e.message for e in exc.failure.errors])
             continue
@@ -201,7 +203,7 @@ def historical_metrics(keywords: list[str], *, geo_target: str | list[str] | Non
     request.keywords.extend(keywords)
     out: dict[str, dict] = {}
     try:
-        response = service.generate_keyword_historical_metrics(request=request)
+        response = service.generate_keyword_historical_metrics(request=request, timeout=ADS_TIMEOUT_SECONDS)
         for res in response.results:
             m = res.keyword_metrics
             out[res.text.lower()] = {

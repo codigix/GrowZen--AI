@@ -157,6 +157,8 @@ class DurableJob(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(12), default="running", index=True)  # running | failed
     attempts: Mapped[int] = mapped_column(Integer, default=1)
     error: Mapped[str | None] = mapped_column(Text)
+    owner: Mapped[str | None] = mapped_column(String(80))  # the backend process that runs it (host:pid:token); another process may take the job only when the owner has gone quiet
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)  # the owner touches this every few seconds while it is alive
 
 
 class Audit(TimestampMixin, Base):

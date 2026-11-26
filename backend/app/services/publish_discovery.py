@@ -16,7 +16,7 @@ import hashlib
 import logging
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlsplit

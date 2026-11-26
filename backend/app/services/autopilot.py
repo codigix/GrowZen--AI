@@ -451,34 +451,43 @@ def cancel_for_post(db: Session, post_id: int) -> int:
     return n
 
 
+def _publish_one(db: Session, t: AgentTask, d: dict[str, Any]) -> int:
+    """One approved item whose time has come: refuse it when it has no approval or its profile is gone, otherwise send it. 1 when it was sent."""
+    b = db.get(Business, t.business_id)
+    if not d.get("approved_by") or not d.get("approved_at") or b is None:
+        t.status, t.result = "failed", {"error": "No approval is recorded for this item, so it was not sent."}  # never publish on a guess
+        return 0
+    if t.kind == "gbp_post":
+        p = db.get(Post, d.get("post_id"))
+        if p is None:
+            t.status, t.result = "failed", {"error": "The post was deleted before its time, so nothing was sent."}
+            return 0
+        if p.approved_at is None:
+            t.status, t.result = "failed", {"error": "The post has no approval record, so it was not sent."}
+            return 0
+    if not linked(b):
+        t.status, t.result = "failed", {"error": "The Google profile is no longer linked."}
+        return 0
+    agent.apply(db, t, f"scheduled:{d.get('approved_by')}")
+    return 1
+
+
 def publish_due(db: Session, limit: int = 20) -> int:
-    """Send what was approved for a time that has come. Refuses anything without an approval record, and anything for a profile that is no longer linked."""
+    """Send what was approved for a time that has come. Refuses anything without an approval record, and anything for a profile that is no longer linked.
+    Every item's result is saved as soon as it is done (not once at the end of the run): a failure later in the run cannot send an item a second time, and no connection is held
+    across the whole run of Google calls."""
     now = datetime.now(timezone.utc)
     n = 0
-    for t in db.scalars(select(AgentTask).where(AgentTask.status == "scheduled", AgentTask.kind.in_(("gbp_post", "gbp_photo"))).order_by(AgentTask.id).limit(200)):
+    tasks = list(db.scalars(select(AgentTask).where(AgentTask.status == "scheduled", AgentTask.kind.in_(("gbp_post", "gbp_photo"))).order_by(AgentTask.id).limit(200)))
+    for t in tasks:
         d = t.detail or {}
         due = parse_when(d.get("publish_at"))
         if n >= limit:
             break
         if due is None or due > now:
             continue
-        b = db.get(Business, t.business_id)
-        if not d.get("approved_by") or not d.get("approved_at") or b is None:
-            t.status, t.result = "failed", {"error": "No approval is recorded for this item, so it was not sent."}  # never publish on a guess
-            continue
-        if t.kind == "gbp_post":
-            p = db.get(Post, d.get("post_id"))
-            if p is None:
-                t.status, t.result = "failed", {"error": "The post was deleted before its time, so nothing was sent."}
-                continue
-            if p.approved_at is None:
-                t.status, t.result = "failed", {"error": "The post has no approval record, so it was not sent."}
-                continue
-        if not linked(b):
-            t.status, t.result = "failed", {"error": "The Google profile is no longer linked."}
-            continue
-        agent.apply(db, t, f"scheduled:{d.get('approved_by')}")
-        n += 1
+        n += _publish_one(db, t, d)
+        db.commit()
     db.commit()
     return n
 

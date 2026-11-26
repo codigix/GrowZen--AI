@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Settings2, KeyRound, AlertTriangle, FileCode2, Eye, EyeOff, PlugZap, RefreshCw } from 'lucide-react';
 import { Badge, Button, Field, inputCls, useDoubleConfirm } from './SeoUi';
-import { api, fmtDateTime } from './seoApi';
+import { api, fmtDateTime, usePoll } from './seoApi';
 import Select from '../components/Select';
 
 /**
@@ -96,18 +96,14 @@ export default function HtmlSitePanel({ b, article = null, toast = console.log, 
 
   // the test deployment runs on the server in the background: follow it until it ends
   const testing = site?.deploy_test?.status === 'running';
-  useEffect(() => {
-    if (!testing) return undefined;
-    const t = setInterval(() => api(`/businesses/${b.id}/html-site`).then(s => {
-      setSite(s);
-      if (s.deploy_test?.status !== 'running') {
-        const ok = s.deploy_test?.status === 'ok';
-        setSteps(st => [...st.filter(x => x.step !== 'Test deployment'), { step: 'Test deployment', ok, detail: s.deploy_test?.detail }]);
-        if (ok) { setEditing(false); toast('HTML website connected.'); }
-      }
-    }).catch(() => {}), 3000);
-    return () => clearInterval(t);
-  }, [testing, b.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  usePoll(() => api(`/businesses/${b.id}/html-site`).then(s => {
+    setSite(s);
+    if (s.deploy_test?.status !== 'running') {
+      const ok = s.deploy_test?.status === 'ok';
+      setSteps(st => [...st.filter(x => x.step !== 'Test deployment'), { step: 'Test deployment', ok, detail: s.deploy_test?.detail }]);
+      if (ok) { setEditing(false); toast('HTML website connected.'); }
+    }
+  }).catch(() => {}), testing, 3000);  // pauses on a hidden tab and never stacks requests
 
   // the article's publish status on the HTML website (followed while it is being published)
   const postBusy = ['publishing', 'uploading', 'deploying'].includes(post?.status);
@@ -116,7 +112,8 @@ export default function HtmlSitePanel({ b, article = null, toast = console.log, 
     let stop = false;
     const get = () => api(`/businesses/${b.id}/html-site/articles/${article.id}`).then(p => { if (!stop) { setPost(p); if (p.steps?.length) setPubSteps(p.steps); } }).catch(() => {});
     get();
-    const t = postBusy ? setInterval(get, 4000) : null;
+    let busy = false;
+    const t = postBusy ? setInterval(() => { if (busy || document.visibilityState === 'hidden') return; busy = true; Promise.resolve(get()).finally(() => { busy = false; }); }, 4000) : null;  // not while the tab is hidden, and never two at once
     return () => { stop = true; if (t) clearInterval(t); };
   }, [article?.id, b.id, postBusy]);
 

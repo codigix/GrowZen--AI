@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -36,6 +36,19 @@ ENGINE_ERRORS = (pagespeed.PageSpeedError, lighthouse.LighthouseError)
 _pools: dict[str, ThreadPoolExecutor] = {}
 _lock = threading.Lock()
 _active = 0
+_waiters: dict[int, threading.Event] = {}  # audit id -> set when that audit has finished running (for a caller that waits for it in this process)
+
+
+def watch(audit_id: int) -> threading.Event:
+    """An event that is set when the audit has finished running here, so a caller can wait for it without asking the database again and again.
+    It is only a hint: a caller must also look at the database now and then (a restart, or another process, would never set it)."""
+    with _lock:
+        return _waiters.setdefault(audit_id, threading.Event())
+
+
+def unwatch(audit_id: int) -> None:
+    with _lock:
+        _waiters.pop(audit_id, None)
 
 
 def _now() -> datetime:
@@ -65,23 +78,31 @@ def stop() -> None:
 
 def recover_interrupted(db: Session) -> int:
     """A restart cuts off queued and running audits. Recent ones are queued again so the page just keeps waiting for them;
-    older ones (the person has long since left) are marked failed."""
-    stuck = list(db.scalars(select(LighthouseAudit).where(LighthouseAudit.status.in_(["queued", "running"]))))
+    older ones (the person has long since left) are marked failed.
+    With several backend processes an audit that has not changed for a while is what counts as cut off: a running audit finishes (or fails) within the engine timeout, so one that has been
+    still for longer than that, plus a margin, has no live process behind it. Each one is changed by a conditional UPDATE, so two processes looking at once do not both act on it, and the run
+    itself is claimed in `execute`, so even an audit queued twice runs once. Called at start-up and from the scheduler's tick."""
+    quiet = _now() - timedelta(seconds=get_settings().lighthouse_timeout_seconds + 120)
+    stuck = list(db.scalars(select(LighthouseAudit).where(LighthouseAudit.status.in_(["queued", "running"]), LighthouseAudit.updated_at < quiet)))
     again: list[tuple[int, str]] = []
     recent = _now() - RESTART_WINDOW
+    taken = 0
     for a in stuck:
         created = a.created_at if a.created_at is None or a.created_at.tzinfo else a.created_at.replace(tzinfo=timezone.utc)
+        same = [LighthouseAudit.id == a.id, LighthouseAudit.status == a.status, LighthouseAudit.updated_at < quiet]
         if created and created >= recent:
-            a.status = "queued"
-            again.append((a.id, a.engine))
+            won = db.execute(update(LighthouseAudit).where(*same).values(status="queued")).rowcount
+            if won:
+                again.append((a.id, a.engine))
         else:
-            a.status, a.error_message, a.completed_at = "failed", "Interrupted by a server restart before completion.", _now()
+            won = db.execute(update(LighthouseAudit).where(*same).values(status="failed", error_message="Interrupted by a server restart before completion.", completed_at=_now())).rowcount
+        taken += 1 if won else 0
     db.commit()
     for audit_id, engine in again:
         submit(audit_id, engine)
-    if stuck:
-        log.warning("Interrupted Lighthouse audits after a restart: %d queued again, %d marked failed", len(again), len(stuck) - len(again))
-    return len(stuck)
+    if taken:
+        log.warning("Interrupted Lighthouse audits: %d queued again, %d marked failed", len(again), taken - len(again))
+    return taken
 
 
 def find_recent_duplicate(db: Session, url: str, strategy: str, engine: str) -> LighthouseAudit | None:
@@ -125,16 +146,22 @@ def _run(audit_id: int) -> None:
     finally:
         with _lock:
             _active -= 1
+            waiter = _waiters.get(audit_id)
+        if waiter is not None:
+            waiter.set()
 
 
 def execute(audit_id: int) -> None:
     db = SessionLocal()
     try:
+        # one backend process runs an audit: the move queued -> running is a single conditional UPDATE, so when two processes were handed the same audit (a restart, a take-over) the second finds it taken and leaves
+        if not db.execute(update(LighthouseAudit).where(LighthouseAudit.id == audit_id, LighthouseAudit.status == "queued").values(status="running")).rowcount:
+            db.rollback()
+            return
+        db.commit()
         a = db.get(LighthouseAudit, audit_id)
         if a is None:
             return
-        a.status = "running"
-        db.commit()
         try:  # again at run time: DNS may have changed since the request
             validated = resolve_and_validate(a.submitted_url)
         except SSRFValidationError as exc:

@@ -7,7 +7,7 @@ The AI (when configured) only writes what has no single right answer: the descri
 category and the services list, always from the facts found and labelled as AI.
 """
 import re
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from typing import Any
 
 from . import ai, discovery, keywords

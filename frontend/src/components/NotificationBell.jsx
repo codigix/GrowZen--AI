@@ -22,8 +22,8 @@ export default function NotificationBell() {
 
   const load = useCallback(async () => {
     try {
-      const [latest, unreadList] = await Promise.all([api('/notifications?limit=10'), api('/notifications?unread=true&limit=100')]);
-      setItems(latest); setUnread(unreadList.length);
+      const [latest, count] = await Promise.all([api('/notifications?limit=10'), api('/notifications/unread-count')]);
+      setItems(latest); setUnread(count.count);
     } catch (e) { /* signed out, offline or the API is restarting: keep what is shown */ }
   }, []);
 

@@ -176,15 +176,30 @@ export function usePaged(path, size = 25) {
   return { ...state, reload: load, setData, loadMore };
 }
 
-/** Re-run `fn` every `ms` while `active`; stops on unmount. */
-export function usePoll(fn, active, ms = 2500) {
+/** Re-run `fn` every `ms` while `active`; stops on unmount. When `fn` returns a promise (a request), the next run waits until it has answered, so a slow server is never
+ *  sent a second request before the first one is done. While the browser tab is hidden it pauses (and runs once as soon as the tab is shown again), unless `{ background: true }`. */
+export function usePoll(fn, active, ms = 2500, options = {}) {
   const saved = useRef(fn);
   saved.current = fn;
+  const background = Boolean(options.background);  // true: keep asking while the tab is hidden (the default is to pause: nobody is looking)
   useEffect(() => {
     if (!active) return undefined;
-    const t = setInterval(() => saved.current(), ms);
-    return () => clearInterval(t);
-  }, [active, ms]);
+    let busy = false;
+    const tick = () => {
+      if (busy) return;
+      if (!background && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      const r = saved.current();
+      if (r && typeof r.then === 'function') {
+        busy = true;
+        const done = () => { busy = false; };
+        r.then(done, done);
+      }
+    };
+    const t = setInterval(tick, ms);
+    const shown = () => { if (document.visibilityState === 'visible') tick(); };  // back on the tab: catch up at once, not at the next tick
+    if (!background) document.addEventListener('visibilitychange', shown);
+    return () => { clearInterval(t); if (!background) document.removeEventListener('visibilitychange', shown); };
+  }, [active, ms, background]);
 }
 
 /** Backend business (snake_case) -> the shape the screens use. */

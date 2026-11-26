@@ -157,6 +157,8 @@ def build(db: Session, b: Business) -> dict[str, Any]:
     pages = read_site(b.website)
     fct = facts(db, b, pages)
     base = _fallback(b, pages)
+    from ..db import release_connection  # noqa: PLC0415
+    release_connection(db)  # the facts are read: no connection is held while the AI answers
     ai_data = _ai(b, pages, fct)
     old_edits = dict((getattr(b, "business_brief", None) or {}).get("edits") or {})
     brief = _clean(ai_data, base) | {"facts": fct, "pages": [{"url": p["url"], "title": p["title"], "words": p["words"]} for p in pages], "by_ai": bool(ai_data),

@@ -572,6 +572,8 @@ def suggest(db: Session, b: Any) -> dict[str, Any]:
         return {"state": "no_ai", "message": "AI is not set up, so drafts cannot be written. The audit and its fixes above do not need it."}
     kws = [k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id).order_by(Keyword.volume.desc().nullslast()).limit(8))]
     comps = [c.name for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id).limit(5))]
+    from ..db import release_connection  # noqa: PLC0415
+    release_connection(db)  # the facts are read: no connection is held while the AI writes the drafts
     facts = {"name": b.name, "category": b.primary_category, "secondary_categories": b.secondary_categories or [], "city": b.city, "area": b.area,
              "services": [{"name": s["name"], "description": s.get("description") or "", "price": s.get("price")} for s in _services(b)][:12], "current_description": (b.description or "")[:750],
              "target_keywords": kws, "nearby_competitors": comps}

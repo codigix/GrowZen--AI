@@ -72,7 +72,7 @@ def test_a_job_cut_off_by_a_restart_starts_again_by_itself():
     ran = []
     aid = make_audit(age_minutes=1)
     db = SessionLocal()
-    db.add(DurableJob(fn=f"{__name__}:_sample_job", args=[aid], refs=[f"audit:{aid}"], status="running", attempts=1))
+    db.add(DurableJob(fn=f"{__name__}:_sample_job", args=[aid], refs=[f"audit:{aid}"], status="running", attempts=1, owner="dead-host:1:x", heartbeat_at=datetime.now(timezone.utc) - timedelta(minutes=5)))  # its owner went quiet: a crash
     db.commit()
     assert durable.resume_all(db) == 1
     jobs.recover_stale(db, startup=True)  # the audit its job is re-running is left alone
@@ -87,7 +87,7 @@ def test_a_job_cut_off_by_a_restart_starts_again_by_itself():
     time.sleep(0.5)
     db = SessionLocal()
     assert db.query(DurableJob).count() == 0  # finished: the row is gone
-    db.add(DurableJob(fn=f"{__name__}:_sample_job", args=[aid], refs=[], status="running", attempts=durable.MAX_ATTEMPTS))
+    db.add(DurableJob(fn=f"{__name__}:_sample_job", args=[aid], refs=[], status="running", attempts=durable.MAX_ATTEMPTS, owner="dead-host:1:x", heartbeat_at=datetime.now(timezone.utc) - timedelta(minutes=5)))
     db.commit()
     assert durable.resume_all(db) == 0  # a crash loop does not repeat it forever
     assert db.query(DurableJob).one().status == "failed"

@@ -1,5 +1,5 @@
 """The keyword workspace of a project: every keyword from every source in one list, with where it came from; collect, compare, pick."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -129,7 +129,11 @@ def add(body: IdeasIn, b: Business = Depends(get_business), db: Session = Depend
 @router.post("/collect")
 def collect(body: CollectIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Read the chosen sources (all when none are named) and file the keywords they give. A source that cannot run says why."""
-    report = kw.collect(db, b, body.sources)
+    from ..services import inflight  # noqa: PLC0415
+    with inflight.only_one(("collect_keywords", b.id, tuple(sorted(body.sources or [])))) as first:
+        if not first:
+            raise HTTPException(409, "These keyword sources are already being collected for this project. Wait for them to finish.")
+        report = kw.collect(db, b, body.sources)
     log(db, user.name, "keywords_collected", b.id, sources=",".join(report), new=sum(r["new"] for r in report.values()))
     db.commit()
     return {"report": report, **kw.overview(db, b)}

@@ -90,6 +90,8 @@ def build(db: Session, b: Business) -> dict[str, Any]:
         return {"crawled": False, "pages": []}
     crawl = {urlsplit(p["url"]).path.rstrip("/") or "/": p for p in (gc._crawl(db, b).get("pages") or []) if p.get("url")}
     base = [p for p in plan["pages"]]
+    from ..db import release_connection  # noqa: PLC0415
+    release_connection(db)  # the plan and the crawl are read: no connection is held while the AI writes the titles and descriptions
     written = _ai(b, base)
     rows = []
     for i, pg in enumerate(base):

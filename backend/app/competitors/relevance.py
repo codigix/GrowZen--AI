@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from typing import Any
 
 log = logging.getLogger("seo.relevance")

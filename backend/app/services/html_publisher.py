@@ -33,7 +33,7 @@ from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
-from ..db import SessionLocal
+from ..db import SessionLocal, release_connection
 from ..models import Article, Business, SiteIntegration
 from . import articles as svc, featured_images as fi, html_deploy as hd
 from .net import site_client
@@ -858,7 +858,8 @@ def _set_post(business_id: int, article_id: int, **kw) -> None:
 
 def _spawn(fn, *args) -> None:
     """Run a job in the background (one seam, so tests can run it at once)."""
-    threading.Thread(target=fn, args=args, daemon=True).start()
+    from .durable import spawn  # noqa: PLC0415
+    spawn(fn, *args, name="html-publish")
 
 
 def start_publish(business_id: int, article_id: int) -> bool:
@@ -885,6 +886,7 @@ def publish_sync(business_id: int, article_id: int, record: bool = True) -> dict
         dep = deployer(s)
         if dep.name == "manual" or not deploy_ready(s):
             raise PublishError("Publishing is not connected: run a successful test deployment first (or use Download files).")
+        release_connection(db)  # the article, the site and its settings are read: no connection is held while the files are uploaded and the live site is checked (up to five minutes)
         _set_post(business_id, article_id, status="publishing", detail="Preparing the article", error=None, steps=[])
         prep = prepare(s, dep, a, b, steps)
         _set_post(business_id, article_id, status="uploading", detail=f"Uploading {len(prep['files'])} file(s) with {dep.name}", url=prep["url"],

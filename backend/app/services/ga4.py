@@ -5,7 +5,7 @@ GoogleConnection (via gbp.GbpClient) and never changes it.
 Needs, in the Google Cloud project: the "Google Analytics Data API" and "Google Analytics Admin API" enabled, and
 the read-only scope below granted by the account (connect it with GET /analytics/ga4/start).
 """
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError

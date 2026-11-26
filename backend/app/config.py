@@ -172,6 +172,12 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     backlink_autostart: bool = True  # onboarding starts the backlink sync from our crawler straight away (false: it only runs on its schedule)
     scheduler_tick_seconds: int = 300
+    # How much one backend process does at the same time. With several processes the totals are these numbers times the processes (set them lower for each).
+    background_jobs_max: int = 10  # background jobs (audits, publishing, growth start ...) running at once; the others wait
+    background_resume_max: int = 3  # of those, jobs started again after a restart
+    fanout_max: int = 48  # outside calls made at once by the small thread pools that requests start (DNS, Google, Moz, website pages)
+    job_heartbeat_seconds: int = 10  # a running background job's owner touches its row this often
+    job_abandoned_seconds: int = 60  # a job whose owner has been quiet this long is taken over by another process
     scheduled_posts_tick_seconds: int = 60  # how often articles scheduled in GrowZen are checked and published when due
     publish_timezone: str = "Asia/Kolkata"  # the time zone schedule dates/times are entered in (PUBLISH_TIMEZONE)
     # HTML websites: each site's deployment adapter and credentials (server side only, git-ignored; relative paths are

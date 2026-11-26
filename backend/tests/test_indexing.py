@@ -206,7 +206,7 @@ def test_a_page_published_by_the_app_is_recorded_and_sent_at_once_when_automatic
     from app.db import SessionLocal
     from app.models import Business
     started = []
-    monkeypatch.setattr("threading.Thread", lambda target, args, daemon: type("T", (), {"start": lambda self: started.append(args)})())
+    monkeypatch.setattr(indexing, "send_later", lambda business_id, url, delay=None: started.append((business_id, url)))  # one shared sender waits and sends: here only what is queued is recorded
     db = SessionLocal()
     try:
         b = db.get(Business, bid)

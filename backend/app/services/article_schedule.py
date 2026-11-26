@@ -13,10 +13,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..db import release_connection
 from ..models import Article, Business, ScheduledPost
 from . import article_publishing as ap, featured_images as fi, react_site as rs, site_publish as sp
 
@@ -64,12 +65,12 @@ def _now() -> datetime:
 
 def latest_by_article(db: Session, business_id: int, article_id: int | None = None) -> dict[int, ScheduledPost]:
     """Each article's most recent schedule row."""
-    q = select(ScheduledPost).where(ScheduledPost.business_id == business_id)
-    if article_id is not None:
-        q = q.where(ScheduledPost.article_id == article_id)
+    # Only each article's newest row is read (the highest id), not every row it ever had: an article that was rescheduled and retried many times keeps its whole history in the table.
+    scope = [ScheduledPost.business_id == business_id] + ([ScheduledPost.article_id == article_id] if article_id is not None else [])
+    newest = select(func.max(ScheduledPost.id)).where(*scope).group_by(ScheduledPost.article_id)
     out: dict[int, ScheduledPost] = {}
-    for p in db.scalars(q.order_by(ScheduledPost.id)):
-        out[p.article_id] = p  # the last one wins
+    for p in db.scalars(select(ScheduledPost).where(ScheduledPost.id.in_(newest)).order_by(ScheduledPost.id)):
+        out[p.article_id] = p
     return out
 
 
@@ -239,6 +240,7 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
             from . import html_publisher as hp  # noqa: PLC0415
             if not ap.html_target(db, b):
                 raise _Gone("The HTML website is no longer connected for publishing (its test deployment must pass).")
+            release_connection(db)  # publish_sync works in a session of its own: this one holds no connection while the site is uploaded and checked
             out = hp.publish_sync(b.id, a.id, record=False)  # uploads, then verifies the live site; raises when not live
         else:
             row = ap.site_target(db, b)

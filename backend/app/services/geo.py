@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..db import release_connection
 from ..errors import DataUnavailable
 from ..models import Business, GeoPrompt, GeoResult
 
@@ -105,6 +106,7 @@ def run_prompts(db: Session, b: Business, competitors: list[str] | None = None) 
         db.commit()
     competitors = competitors or []
     saved = 0
+    release_connection(db)  # the prompts are read: no connection is held while the AI engines answer (the results are saved together at the end)
     if engines:
         for p in prompts:
             for name, engine in engines.items():

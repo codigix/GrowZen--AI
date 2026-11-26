@@ -11,12 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
-from ..db import get_db
+from ..db import get_db, release_connection
 from ..deps import owned_business
 from ..models import Business, Competitor
 from ..schemas import CompetitorManualIn, CompetitorRegisterIn
 from ..serialize import row, rows
+from ..services import inflight
 from ..services.crawler import homepage
+from ..services.fanout import ThreadPoolExecutor
 from ..services.url_safety import SSRFValidationError, validate_url_shape
 from . import hygiene, service
 
@@ -77,13 +79,15 @@ def upsert_without_website(db: Session, business_id: int, found: list[dict]) -> 
 def find(body: CompetitorRegisterIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Top competitors on Google Maps for a type of business near a location. Pass `business_id`
     to also register the ones with a website against that business."""
+    if body.business_id is not None:
+        owned_business(db, user, body.business_id)  # checked first: nobody pays for a Google search on a project that is not theirs
+    release_connection(db)  # the Google Places search takes seconds: no database connection is held while it runs
     try:
         results = service.find_competitors(body.business_type.strip(), body.location.strip(), body.own_firm_name.strip(), body.top_n)
     except service.CompetitorSearchError as exc:
         raise HTTPException(400, str(exc)) from exc
     out = {"business_type": body.business_type, "location": body.location, "count": len(results), "competitors": results}
     if body.business_id is not None:
-        owned_business(db, user, body.business_id)
         saved = _upsert(db, body.business_id, results)
         out["registered"] = rows(saved)
     return out
@@ -175,12 +179,17 @@ def listing_audit(competitor_id: int, db: Session = Depends(get_db), user: User 
     """Audit a competitor through its Google Maps listing (for one with no website): the listing is checked and the AI works out its services and keywords. Stored on the competitor."""
     from . import listing_audit as la
     c, b = _own(db, user, competitor_id)
-    try:
-        out = la.audit_competitor(c, _region(b), b.lat, b.lng)
-    except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, "Google Maps could not be read right now. Try again in a minute.") from exc
+    region = _region(b)
+    release_connection(db)  # Google Maps and the AI take seconds: no database connection is held meanwhile
+    with inflight.only_one(("listing_audit", competitor_id)) as first:  # a double click is one audit (one Google read, one AI call), not two
+        if not first:
+            raise HTTPException(409, "This competitor's listing is already being audited. Wait for it to finish.")
+        try:
+            out = la.audit_competitor(c, region, b.lat, b.lng)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, "Google Maps could not be read right now. Try again in a minute.") from exc
     c.place_id, c.listing, c.listing_at = out["place_id"], out, datetime.now(timezone.utc)
     db.commit()
     return {"id": c.id, "score": out["score"], "understanding": out["understanding"], "audited_at": out["audited_at"]}
@@ -193,24 +202,38 @@ def listing_compare(competitor_id: int, db: Session = Depends(get_db), user: Use
     from ..services import business_understanding
     from . import listing_audit as la
     c, b = _own(db, user, competitor_id)
-    if not c.listing:  # not audited yet: read its Google listing now, so Compare needs no earlier step
-        try:
-            out = la.audit_competitor(c, _region(b), b.lat, b.lng)
-        except LookupError as exc:
-            raise HTTPException(404, str(exc)) from exc
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(502, "Google Maps could not be read right now. Try again in a minute.") from exc
-        c.place_id, c.listing, c.listing_at = out["place_id"], out, datetime.now(timezone.utc)
-        db.commit()
-    ours = None
-    if b.place_id:
-        try:
-            ours = la.audit_one(b.place_id)
-        except Exception:  # noqa: BLE001 - the comparison still shows the services and keywords
-            ours = None
+    region = _region(b)
     brief = b.business_brief or {}
     services = list(dict.fromkeys([*(s.get("name") for s in (b.services or []) if s.get("name")), *(brief.get("offerings") or [])]))
     keywords = list(dict.fromkeys([*(k for k in db.scalars(select(Keyword.keyword).where(Keyword.business_id == b.id).limit(80))), *business_understanding.search_terms(b)]))
+    our_place = b.place_id
+    release_connection(db)  # everything the slow part needs is read: no database connection is held while Google Maps and the AI answer
+    ours = out = None
+    with inflight.only_one(("listing_compare", competitor_id)) as first:
+        if not first:
+            raise HTTPException(409, "This comparison is already running. Wait for it to finish.")
+        db.refresh(c, ["listing", "place_id"])  # another backend process may have audited it while this request waited for its turn: look again, now that it is this request's turn
+        need_theirs = not c.listing
+        release_connection(db)
+        # their listing (when it has not been audited yet) and ours are independent reads: they are done side by side, and ours failing never stops the comparison
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f_theirs = pool.submit(la.audit_competitor, c, region, b.lat, b.lng) if need_theirs else None
+            f_ours = pool.submit(la.audit_one, our_place) if our_place else None
+            if f_theirs is not None:
+                try:
+                    out = f_theirs.result()
+                except LookupError as exc:
+                    raise HTTPException(404, str(exc)) from exc
+                except Exception as exc:  # noqa: BLE001
+                    raise HTTPException(502, "Google Maps could not be read right now. Try again in a minute.") from exc
+            if f_ours is not None:
+                try:
+                    ours = f_ours.result()
+                except Exception:  # noqa: BLE001 - the comparison still shows the services and keywords
+                    ours = None
+    if out is not None:  # not audited yet: its Google listing was read now, so Compare needs no earlier step
+        c.place_id, c.listing, c.listing_at = out["place_id"], out, datetime.now(timezone.utc)
+        db.commit()
     return la.compare(b, c, ours, services, keywords)
 
 

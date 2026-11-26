@@ -13,7 +13,7 @@ from ..auth import User, current_user
 from ..config import get_settings
 from ..db import get_db
 from ..deps import can_access, get_business
-from ..services.durable import durable, resuming
+from ..services.durable import alive, durable
 from ..models import Audit, Business
 from ..serialize import row
 from . import intel
@@ -38,7 +38,7 @@ STALE = timedelta(minutes=4)  # a run reports progress every few seconds; silenc
 def _expire_stale(db: Session, a: Audit | None) -> Audit | None:
     """A run still "running" after its worker died (the server restarted or reloaded mid-run) would spin on the
     page forever and block new runs: mark it failed so the page shows the reason and a new run can start."""
-    if a and a.status in ("queued", "running") and not resuming(f"audit:{getattr(a, 'id', None)}"):  # a run being started again after a restart is not dead
+    if a and a.status in ("queued", "running") and not alive(f"audit:{getattr(a, 'id', None)}"):  # a run that a job (in any backend process) is running, or is about to take over after a crash, is not dead
         seen = a.updated_at or a.created_at
         if seen and datetime.now(timezone.utc) - (seen if seen.tzinfo else seen.replace(tzinfo=timezone.utc)) > STALE:
             a.status, a.error, a.finished_at = "failed", "The research was interrupted (the server restarted while it ran). Run it again.", datetime.now(timezone.utc)
@@ -93,13 +93,15 @@ def _run(db: Session, audit_id: int, business_id: int, keywords: list[str], loca
         own = {}
         try:
             from ..services import google_rank
+            from ..db import release_connection
+            release_connection(db)  # the Search Console read takes seconds: no connection is held while it runs
             own = google_rank.organic_positions(db, b, keywords) if b.website else {}
         except Exception:  # noqa: BLE001 - Search Console not connected: the Maps research still stands
             own = {}
         authority: dict[str, int] = {}
         try:  # Domain Authority already read for these domains (cached by Backlink Intelligence): nothing new is bought here
             from ..backlinks.models import BiDomainMetric
-            authority = {m.domain.lower(): m.da for m in db.scalars(select(BiDomainMetric)).all() if m.da is not None}
+            authority = {d.lower(): da for d, da in db.execute(select(BiDomainMetric.domain, BiDomainMetric.da).where(BiDomainMetric.da.is_not(None))) if d}  # two columns, not every full row
         except Exception:  # noqa: BLE001 - authority is a small factor: the rating stands without it
             authority = {}
         result = intel.analyse(b, keywords, location, progress, own, authority)

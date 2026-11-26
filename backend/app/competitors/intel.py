@@ -17,7 +17,8 @@ import re
 import threading
 import time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
+from app.services.fanout import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse

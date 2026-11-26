@@ -12,7 +12,7 @@ import json
 import logging
 import re
 import socket
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit

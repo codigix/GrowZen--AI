@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..competitors import service
-from ..db import get_db
+from ..db import get_db, release_connection
 from ..deps import get_business
 from ..models import Business
 from ..services.activity import log
@@ -142,6 +142,7 @@ def search(body: SearchIn, b: Business = Depends(get_business), db: Session = De
         raise HTTPException(422, "Add the business category first (or type what to search for, e.g. clothing rental).")
     if not area:
         raise HTTPException(422, "Add the city or area on the profile first.")
+    release_connection(db)  # the Google Places search takes seconds: no database connection is held while it runs
     try:
         found = service.find_competitors(kind, area, b.name, body.top_n)
     except service.CompetitorSearchError as exc:

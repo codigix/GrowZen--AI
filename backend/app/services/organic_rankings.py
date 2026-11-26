@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, timedelta
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlsplit
 
+from ..db import release_connection
 from . import apify_metrics
 from . import google_ads_client as ads
 from . import keyword_difficulty as kd
@@ -32,16 +34,41 @@ def _page_filter(body: dict[str, Any], url: str) -> dict[str, Any]:
     return body
 
 
+def plain_search_console(sc):
+    """The same Search Console client, built from plain values (the Google account's id, email and stored token) so another thread can use it without touching a database session or a
+    loaded database object. Anything that is not a real client (a test double) is returned as it is."""
+    from . import gsc  # noqa: PLC0415
+    conn = getattr(getattr(sc, "client", None), "conn", None)
+    if not isinstance(sc, gsc.SearchConsole) or conn is None:
+        return sc
+    return gsc.SearchConsole(SimpleNamespace(id=conn.id, email=conn.email, refresh_token_enc=conn.refresh_token_enc))
+
+
+def own_site_context(db, b, url: str) -> dict[str, Any]:
+    """The part of own_site_data that reads the database. Run it on the thread that owns `db` (the request's), BEFORE any worker starts: a session is never shared between threads.
+    It returns plain values only: either the finished answer, or what the Search Console reads need (the client, the property, the page and the brand words)."""
+    from . import google_rank, gsc_access, keyword_workspace  # noqa: PLC0415
+    host = google_rank.host_of(b.website)
+    if not host or google_rank.host_of(url) != host:
+        return {"answer": {"own": False}}
+    state, message, sc, site = gsc_access.search_console(db, b, host)
+    if state != "ok":
+        return {"answer": {"own": True, "note": message}}
+    return {"sc": plain_search_console(sc), "site": site, "url": url, "brand": {w for w in keyword_workspace._brand(b) if len(w) > 3}}
+
+
 def own_site_data(db, b, url: str) -> dict[str, Any]:
     """For a page of the project's own site: Google Search Console's searches for the page (last 90 days) and how each moved against the 90 days before, the daily clicks, the branded share, and the
     site's top pages. {own: False} for any other site."""
-    from . import google_rank, gsc, gsc_access, keyword_workspace  # noqa: PLC0415
-    host = google_rank.host_of(b.website)
-    if not host or google_rank.host_of(url) != host:
-        return {"own": False}
-    state, message, sc, site = gsc_access.search_console(db, b, host)
-    if state != "ok":
-        return {"own": True, "note": message}
+    return own_site_fetch(own_site_context(db, b, url))
+
+
+def own_site_fetch(ctx: dict[str, Any]) -> dict[str, Any]:
+    """The Search Console reads of own_site_data, from the plain values own_site_context gave. It uses no database session, so it is safe on any thread."""
+    from . import gsc  # noqa: PLC0415
+    if "answer" in ctx:
+        return ctx["answer"]
+    sc, site, url, brand = ctx["sc"], ctx["site"], ctx["url"], ctx["brand"]
     end = date.today() - timedelta(days=gsc.LAG_DAYS)
     cur, prev = (end - timedelta(days=89), end), (end - timedelta(days=179), end - timedelta(days=90))
 
@@ -57,7 +84,6 @@ def own_site_data(db, b, url: str) -> dict[str, Any]:
             now_rows, before_rows, day_rows, page_rows = f_cur.result(), f_prev.result(), f_days.result(), f_pages.result()
     except Exception as exc:  # noqa: BLE001 -- Google's own message is the reason
         return {"own": True, "note": str(exc)[:200]}
-    brand = {w for w in keyword_workspace._brand(b) if len(w) > 3}
 
     def rows_of(rs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         return {(r.get("keys") or [""])[0]: {"keyword": (r.get("keys") or [""])[0], "views": int(r.get("impressions") or 0), "clicks": int(r.get("clicks") or 0),
@@ -90,15 +116,26 @@ def summary(db, b, url: str, keyword: str | None, country: str) -> dict[str, Any
     geo = ads.geo_target_for(country)
     with ThreadPoolExecutor(max_workers=4) as pool:
         f_auth = pool.submit(uo.authority, site)
-        f_own = pool.submit(own_site_data, db, b, url)
         f_ideas = pool.submit(lambda: ads.keyword_ideas([], limit=300, geo_target=geo, page_url=url))
+        # The Google account is looked up on THIS thread, because it reads `db` (the request's session, which no other thread may use); the worker gets plain values only.
+        # A failure is kept and raised where the worker's failure used to surface, so the order of errors is unchanged.
+        own_ctx, own_error = None, None
+        try:
+            own_ctx = own_site_context(db, b, url)
+        except Exception as exc:  # noqa: BLE001
+            own_error = exc
+        f_own = pool.submit(own_site_fetch, own_ctx) if own_error is None else None
+        release_connection(db)  # the account is looked up and `db` is not used again: the connection is not held while Moz, Google Ads and Search Console are read
         page = uo.page_analysis(url)
         try:
             ideas = f_ideas.result()
         except Exception as exc:  # noqa: BLE001 -- without ideas the page's own phrases are used
             log.info("page ideas unavailable: %r", exc)
             ideas = []
-        authority, own = f_auth.result(), f_own.result()
+        authority = f_auth.result()
+        if own_error is not None:
+            raise own_error
+        own = f_own.result()
     seen: dict[str, dict[str, Any]] = {}
     for i in ideas:
         if (i.get("avg_monthly_searches") or 0) >= MIN_VOLUME:

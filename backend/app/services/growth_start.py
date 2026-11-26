@@ -13,7 +13,7 @@ import time
 from datetime import date, datetime, timezone
 from typing import Any
 
-from ..db import SessionLocal
+from ..db import SessionLocal, release_connection
 from ..models import Business
 
 log = logging.getLogger("seo.growth.start")
@@ -55,12 +55,14 @@ def _set(business_id: int, key: str, state: str, detail: str | None = None) -> N
 def start_background(business_id: int, actor: str) -> bool:
     if not begin(business_id, actor):
         return False
-    threading.Thread(target=run, args=(business_id, actor), daemon=True, name=f"growth-start-{business_id}").start()
+    from .durable import bounded  # noqa: PLC0415
+    threading.Thread(target=bounded(run), args=(business_id, actor), daemon=True, name=f"growth-start-{business_id}").start()  # at most a few of these run at once in this process
     return True
 
 
 def _step(db, business_id: int, key: str, fn) -> Any:
     _set(business_id, key, "running")
+    release_connection(db)  # the step before has saved its work: no connection is held while this step waits on Google, the AI or the website
     try:
         res = fn()
         detail, state = res if isinstance(res, tuple) else (None, "done")

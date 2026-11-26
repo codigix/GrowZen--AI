@@ -20,8 +20,10 @@ def _session(b: Any) -> Any:
         return None
 
 
-def skip_reason(business: Any, website: str | None) -> str | None:
-    """Why this website must not be a competitor of `business`, or None when it can be."""
+def skip_reason(business: Any, website: str | None, siblings: list[str] | None = None) -> str | None:
+    """Why this website must not be a competitor of `business`, or None when it can be.
+    `siblings` (optional): the websites of the owner's other projects, when the caller checks many websites and has read them once (`site_guard.sibling_hosts`);
+    by default they are read here, for each call."""
     host = host_of(website)
     if not host or "." not in host:
         return "It is not a website address."
@@ -30,7 +32,8 @@ def skip_reason(business: Any, website: str | None) -> str | None:
         return "That is your own website."
     from ..services import site_guard
     from sqlalchemy.orm import object_session
-    if any(site_guard.belongs_to(host, o) for o in site_guard.sibling_hosts(_session(business), business)):
+    own_sites = siblings if siblings is not None else site_guard.sibling_hosts(_session(business), business)
+    if any(site_guard.belongs_to(host, o) for o in own_sites):
         return "That is another of your own websites, not a competitor."
     if intel.is_directory(host):
         return "That is a social network or directory page, not a competitor's own website."

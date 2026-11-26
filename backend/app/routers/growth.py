@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
-from ..db import get_db
+from ..db import get_db, release_connection
 from ..deps import get_business
 from ..services.durable import durable
 from ..models import Business, GeoPrompt, GeoResult, Keyword, RankScan
@@ -23,7 +23,9 @@ router = APIRouter(prefix="/businesses/{business_id}", tags=["growth"])
 def list_keywords(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     found = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id).order_by(Keyword.cluster, Keyword.volume.desc().nullslast())))
     if any(k.volume is None for k in found) and keyword_metrics.enabled():  # saved before Google Ads was connected: fill once, cached for a day
-        keyword_metrics.fill(found[:300], market.serp_country(b))
+        country = market.serp_country(b)
+        release_connection(db)  # the keywords are read: the connection is not held while Google Ads answers
+        keyword_metrics.fill(found[:300], country)
         db.commit()
     clusters: dict[str, dict] = {}
     for k in found:
@@ -186,6 +188,7 @@ def cluster_keywords(b: Business = Depends(get_business), db: Session = Depends(
         return {"updated": 0}
     if not ai.is_configured():
         raise HTTPException(503, "AI is not set up on the SEO platform.")
+    release_connection(db)  # the keywords are read: no connection is held while the AI groups them
     out = ai.complete_json("You group search keywords into topic clusters (one page per cluster). Return JSON only.",
                            "Group these into clusters with short names (2-4 words). Return {\"items\":[{\"id\":number,\"cluster\":string}]}\n\n" + "\n".join(f"#{k.id} {k.keyword}" for k in found),
                            temperature=0.2, max_tokens=3000)
@@ -204,6 +207,7 @@ def cluster_keywords(b: Business = Depends(get_business), db: Session = Depends(
 def _scan(db: Session, business_id: int, keyword: str, size: int, radius: float) -> None:
     b = db.get(Business, business_id)
     prov = providers.rank_provider()
+    release_connection(db)  # the project is read: no connection is held while the grid of Google searches runs
     out = prov.scan_grid(b, keyword, size, radius)
     found = [p["rank"] for p in out["points"] if p["rank"]]
     db.add(RankScan(business_id=b.id, keyword=keyword, grid_size=out.get("grid_size", size), radius_km=radius, points=out["points"], competitors=out["competitors"],

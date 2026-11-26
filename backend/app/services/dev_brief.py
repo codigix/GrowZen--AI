@@ -12,7 +12,7 @@ Two formats from the same data: PDF (to send) and Markdown (to paste into a tick
 from __future__ import annotations
 
 import re
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date
 from io import BytesIO
 from typing import Any

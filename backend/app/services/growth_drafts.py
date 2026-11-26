@@ -88,6 +88,8 @@ def build(db: Session, b: Business, a: GrowthAction) -> dict[str, Any]:
         user = (f"Business profile:\n{profile}\n\n{kw_line}\n\nPlan one helpful blog article for customers: a title (under 65 characters), a meta description (110 to 155 characters), a 2 sentence intro and 5 to 7 section headings (some as customer questions). "
                 'Return JSON {"title": "", "meta_description": "", "intro": "", "headings": [""]}.')
         limits = {"title": 70, "meta_description": 160, "intro": 500}
+    from ..db import release_connection  # noqa: PLC0415
+    release_connection(db)  # the profile and keywords are read: no connection is held while the AI writes the draft
     try:
         data = ai.complete_json(system, user, max_tokens=900)
     except Exception as exc:  # noqa: BLE001 - the provider chain already retried; say why in words

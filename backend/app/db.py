@@ -48,3 +48,19 @@ def get_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def release_connection(db: Session) -> None:
+    """Give this session's pooled connection back before a slow call (Google, Apify, an AI provider, a website, Chrome).
+
+    A session keeps its connection from its first statement until commit, rollback or close, so a handler that reads the database and then waits on an outside service
+    would hold the connection for the whole wait. Everything the handler still needs must already be read: loaded attributes stay readable after this (the sessions keep
+    `expire_on_commit=False`), but an attribute that was never loaded is read from the database again later, which takes a connection again.
+
+    It only ends a transaction that has nothing unsaved. When the session holds unsaved changes it does nothing, because committing would save them earlier than the caller meant to.
+    It never rolls back and never closes the session (rolling back would expire every loaded object, closing would detach them).
+    """
+    if db.new or db.dirty or db.deleted:
+        return
+    if db.in_transaction():
+        db.commit()

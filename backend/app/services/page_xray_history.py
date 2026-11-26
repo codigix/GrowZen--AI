@@ -10,7 +10,8 @@ Real data only: a saved report is either read by this server (source 'server' / 
 import inspect
 import json
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
+from app.services.fanout import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlsplit
@@ -226,7 +227,7 @@ def latest_job(db: Session, b: Business) -> PageXRayJob | None:
 
 
 def job_view(db: Session, job: PageXRayJob) -> dict[str, Any]:
-    if job.status == "running" and job.id not in _ACTIVE and not durable.resuming(f"xray:{job.id}"):  # the process that ran it is gone
+    if job.status == "running" and job.id not in _ACTIVE and not durable.alive(f"xray:{job.id}"):  # the process that ran it is gone
         job.status, job.error = "failed", job.error or "Interrupted: the server restarted before the scan finished. Run it again."
         job.finished_at = datetime.now(timezone.utc)
         db.commit()

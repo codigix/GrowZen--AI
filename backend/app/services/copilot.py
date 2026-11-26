@@ -10,11 +10,12 @@ import json
 import re
 import threading
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..db import release_connection
 from ..models import AgentTask, Audit, Business, InsightDay, Keyword, Review
 from . import countries, ai
 
@@ -249,14 +250,17 @@ def _rule_priorities(projects: list[dict[str, Any]], found: list[dict[str, Any]]
     return unique[:5]
 
 
-def briefing(db: Session, portfolio: dict[str, Any], refresh: bool = False, owner_ids: list[int] | None = None) -> dict[str, Any]:
-    """Today's top priorities across every client, cached for the day. AI-written with a key."""
+def briefing(db: Session, portfolio: dict[str, Any] | Callable[[], dict[str, Any]], refresh: bool = False, owner_ids: list[int] | None = None) -> dict[str, Any]:
+    """Today's top priorities across every client, cached for the day. AI-written with a key.
+    `portfolio` may be a function: the (expensive) portfolio is then built only when there is no briefing cached for today."""
     today = date.today()
     key = "briefing:all" if owner_ids is None else "briefing:" + ",".join(map(str, sorted(owner_ids)))  # one cache per set of projects: nobody reads another account's briefing
     with _lock:
         hit = _cache.get(key)
         if hit and hit[0] == today and not refresh:
             return hit[1]
+    if callable(portfolio):
+        portfolio = portfolio()
     projects = portfolio["projects"]
     found = alerts(db, today, owner_ids)
     priorities = _rule_priorities(projects, found)
@@ -265,6 +269,7 @@ def briefing(db: Session, portfolio: dict[str, Any], refresh: bool = False, owne
                 f"and {t['critical_issues']} critical issue{'s' if t['critical_issues'] != 1 else ''} across {t['projects']} project{'s' if t['projects'] != 1 else ''}.")
     result = {"date": today.isoformat(), "source": "rules", "headline": headline, "priorities": priorities, "generated_at": datetime.now(timezone.utc).isoformat()}
     if ai.is_configured() and projects:
+        release_connection(db)  # the alerts and the portfolio are read: the connection is not held while the AI writes the briefing
         compact = [{"id": p["id"], "name": p["name"], "status": p["status"], "health": p["health"], "issues": p["issues"], "pending_tasks": p["pending_tasks"],
                     "unreplied_reviews": p.get("unreplied_reviews"), "leads_30": p.get("leads_30"), "actions_30": p.get("actions_30"),
                     "actions_prev_30": p.get("actions_prev_30"), "gbp_linked": p["gbp_linked"]} for p in projects[:40]]

@@ -44,6 +44,8 @@ def judge(db: Session, b: Business, rows: list[KeywordCandidate]) -> dict[str, i
     if not todo or not ai.is_configured():
         return out
     ctx = _context(db, b)
+    from ..db import release_connection  # noqa: PLC0415
+    release_connection(db)  # the context is read: no connection is held while the AI checks the keywords
     system = ("You decide which keywords a business should go after. Use ONLY the facts given. A keyword fits when a real customer of THIS business could type it and the business can serve "
               "that customer in its target area. It does not fit when it is another company's brand name, a different product or service, a different place from the target area, a job or "
               "support query, a piece of a sentence or a marketing line nobody would type, or too vague to mean anything. Reply with JSON only.")

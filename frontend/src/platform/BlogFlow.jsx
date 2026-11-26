@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Sparkles, CheckCircle2, AlertTriangle, Copy, RefreshCw, Plus, Layout, Megaphone, ArrowRight, FileText, Globe, Users, ListChecks, Link2, Send, ShieldCheck, Download } from 'lucide-react';
 import { Card, Button, Badge, Stat, ErrorNote, useAction, useToast, SkList, inputCls } from './SeoUi';
-import { api, useApi } from './seoApi';
+import { api, useApi, usePoll } from './seoApi';
 import Tip from './Tip';
 import { downloadFile } from './DataTable';
 
@@ -366,11 +366,7 @@ function CompetitorPlaces({ b, base, comp, onAdded, reload }) {
   useEffect(() => {  // automatic: competitors never checked are researched once, in the background
     if (!started.current && research && !research.running && research.total && research.done < research.total) { started.current = true; go(false); }
   }, [research?.done, research?.total, research?.running]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!research?.running) return undefined;
-    const t = setInterval(() => reload(true), 4000);
-    return () => clearInterval(t);
-  }, [research?.running]); // eslint-disable-line react-hooks/exhaustive-deps
+  usePoll(() => reload(true), Boolean(research?.running), 4000);  // follows the research until it ends; pauses on a hidden tab and never stacks requests
   if (!comp || comp.state === 'error') return null;
   const add = (x) => run(`a${x.domain}`, async () => { onAdded(await api(`${base}/add-from-competitor`, { method: 'POST', body: { domain: x.domain } })); toast(`${x.domain} added to the plan`); });
   if (comp.state === 'no_competitors') {
@@ -512,11 +508,7 @@ function TopPlatforms({ b, article }) {
   const go = () => run('check', async () => { await api(`${base}/check`, { method: 'POST' }); r.reload(true); });
   useEffect(() => { if (d?.stale && !d.running && !auto.current) { auto.current = true; go(); } }, [d?.stale, d?.running]); // eslint-disable-line react-hooks/exhaustive-deps
   const busyNow = Boolean(d?.running || d?.rental?.running);
-  useEffect(() => {
-    if (!busyNow) return undefined;
-    const t = setInterval(() => r.reload(true), 5000);
-    return () => clearInterval(t);
-  }, [busyNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  usePoll(() => r.reload(true), busyNow, 5000);  // follows the check until it ends; pauses on a hidden tab and never stacks requests
   const rentalTried = React.useRef(false);  // the clothing-rental websites are looked up and opened in the background (once a day at most)
   useEffect(() => {
     if (d?.rental?.show && d.rental.stale && !d.rental.running && !d.running && !rentalTried.current) {

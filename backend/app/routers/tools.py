@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
 from ..competitors import intel
-from ..db import get_db
+from ..db import get_db, release_connection
 from ..deps import get_business
 from ..models import Business, Keyword
 from ..services import ai, market
@@ -62,6 +62,7 @@ class BriefIn(BaseModel):
 def seo_brief(body: BriefIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """A content brief for a keyword: the questions and related searches Google's Keyword Planner shows, and an outline written for this business."""
     _need_ai()
+    release_connection(db)  # nothing more is read before the Google Ads and AI calls: no connection is held while they answer
     kw = " ".join(body.keyword.split())
     res = _google(b, kw)
     top = [{"position": o.get("position"), "title": o.get("title"), "url": o.get("link"), "snippet": (o.get("snippet") or "")[:240]} for o in (res.get("organic") or [])[:8]]
@@ -94,6 +95,7 @@ class SocialIn(BaseModel):
 def social_posts(body: SocialIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """One draft per platform for a topic, kept inside each platform's length limit. Nothing is posted."""
     _need_ai()
+    release_connection(db)  # no connection is held while the AI writes
     system = "You write social media posts for a local business. Return JSON only."
     limits = {p: LIMITS[p] for p in body.platforms}
     prompt = (f"{_about(b)}\nTopic: {body.topic}\nTone: {body.tone}\nPlatforms and their maximum lengths: {limits}\n"
@@ -132,6 +134,7 @@ def ads_plan(body: AdsIn, b: Business = Depends(get_business), db: Session = Dep
     """A Google Ads search campaign to review and build: ad groups, keywords with match types, and responsive search ads within Google's limits."""
     _need_ai()
     seeds = [k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id).order_by(Keyword.priority, Keyword.id).limit(25))] or intel.default_keywords(b)[:15]
+    release_connection(db)  # the keywords are read: no connection is held while the AI writes the campaign
     system = "You are a Google Ads specialist for local businesses. Return JSON only."
     prompt = (f"{_about(b)}\nGoal: {body.goal}. Daily budget: {body.daily_budget or 'not set'}. Landing page: {body.landing_url or b.website or 'not set'}.\nKeywords the business already targets: {seeds}\n\n"
               'Return {"campaign_name": "...", "bidding": "which strategy and why in one line", "ad_groups": [{"name": "...", "keywords": [{"text": "...", "match": "phrase|exact"}], '
@@ -167,6 +170,7 @@ def questions(body: QuestionsIn, b: Business = Depends(get_business), db: Sessio
     seeds = [k.strip() for k in (body.keywords or []) if k.strip()][:5]
     if not seeds:
         seeds = [k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.id).limit(5))] or intel.default_keywords(b)[:3]
+    release_connection(db)  # the keywords are read: no connection is held through the Google Ads calls
     seen: dict[str, dict[str, Any]] = {}
     for kw in seeds:
         res = _google(b, kw)

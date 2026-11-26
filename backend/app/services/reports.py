@@ -1,5 +1,8 @@
 """Monthly client report: numbers vs last month, audit scores, top fixes, plain-words summary, PDF."""
+import hashlib
 import io
+import threading
+import time
 from datetime import date, timedelta
 from typing import Any
 
@@ -14,6 +17,7 @@ from datetime import datetime
 
 from ..backlinks.models import Backlink, BacklinkEvent, BiDomain
 from ..backlinks.summary import own_site_links
+from ..db import release_connection
 from ..models import Business, InsightDay, Keyword, Lead, Review
 from . import ai, audits
 from .activity import log
@@ -56,22 +60,48 @@ def monthly_summary(db: Session, b: Business, month: str | None = None, ai_words
     summary = {"business": b.name, "month": month, "insights": cur, "previous": prev, "leads": leads, "new_reviews": new_reviews,
                "scores": scores, "overall": audits.overall(db, b), "top_fixes": fixes, "keywords": kws,
                "backlinks": ({**own, "new_this_month": gained, "lost_this_month": lost} if own else None)}
+    if ai_words and ai.is_configured():
+        release_connection(db)  # everything the report says is read: the connection is not held while the AI writes the summary
     summary["plain_words"] = _plain_words(b, summary, use_ai=ai_words)
     return summary
 
 
-def _plain_words(b: Business, s: dict[str, Any], use_ai: bool = True) -> str:
+_WORDS_TTL, _WORDS_MAX = 3600, 200
+_words: dict[tuple[int, str], tuple[float, str]] = {}  # (project, hash of the figures) -> (when, the AI's summary)
+_words_lock = threading.Lock()
+
+
+def plain_words_text(name: str, business_id: int, s: dict[str, Any], use_ai: bool = True) -> str:
+    """The plain-words summary of a report, from plain values only (so it can run in a worker thread). The AI's text is kept for an hour for the same project and the same figures:
+    the report's page, its PDF and its CSV ask for it one after another and need not each pay for an AI call."""
     calls, prev = s["insights"]["calls"], s["previous"]["calls"]
-    fallback = (f"This month {calls} people called {b.name} from Google ({'up' if calls >= prev else 'down'} from {prev}) and "
+    fallback = (f"This month {calls} people called {name} from Google ({'up' if calls >= prev else 'down'} from {prev}) and "
                 f"{s['insights']['directions']} asked for directions. Overall score: {s['overall'] if s['overall'] is not None else 'not audited yet'}/100. "
                 f"Next step: {s['top_fixes'][0]['title'] if s['top_fixes'] else 'keep posting weekly and replying to reviews'}.")
     if not use_ai or not ai.is_configured():
         return fallback
+    facts = {k: v for k, v in s.items() if k != "plain_words"}
+    key = (business_id, hashlib.sha1(repr(sorted(facts.items(), key=lambda kv: kv[0])).encode()).hexdigest())
+    now = time.time()
+    with _words_lock:
+        hit = _words.get(key)
+    if hit and now - hit[0] < _WORDS_TTL:
+        return hit[1]
     try:
-        return ai.complete(f"You write short monthly reports for small business owners. Plain words, no jargon, 4-6 sentences.\n{ai.RULES}",
-                           f"Business: {b.name}\nData (use only this): {s}\nWrite the summary.", max_tokens=400)
+        text = ai.complete(f"You write short monthly reports for small business owners. Plain words, no jargon, 4-6 sentences.\n{ai.RULES}",
+                           f"Business: {name}\nData (use only this): {facts}\nWrite the summary.", max_tokens=400)
     except Exception:
         return fallback
+    with _words_lock:
+        if len(_words) >= _WORDS_MAX:  # keep it small: forget what is stale, then the oldest
+            for k in [k for k, (t, _) in _words.items() if now - t >= _WORDS_TTL] or [min(_words, key=lambda k: _words[k][0])]:
+                _words.pop(k, None)
+        _words[key] = (now, text)
+    return text
+
+
+def _plain_words(b: Business, s: dict[str, Any], use_ai: bool = True) -> str:
+    return plain_words_text(b.name, b.id, s, use_ai)
 
 
 def csv_bytes(summary: dict[str, Any]) -> bytes:

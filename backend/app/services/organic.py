@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..competitors import intel
+from ..db import release_connection
 from ..models import Business, Keyword, KeywordRankLog
 from . import google_rank, market
 from .google_rank import RankCheckError
@@ -89,6 +90,15 @@ def check(db: Session, b: Business, only: list[str] | None = None, limit: int = 
     now = datetime.now(timezone.utc)
     today = now.date()
     maps_on = bool(maps and google_rank.maps_enabled())
+    # The Maps request of every keyword (up to 20 s each, one after another) is made first, with no connection held; the positions are then saved in one short run below.
+    maps_by: dict[str, list | None] = {}
+    if maps_on:
+        release_connection(db)  # the keywords are read and nothing is changed yet
+        for k in rows:
+            try:
+                maps_by[k.keyword] = google_rank.maps_results(b, k.keyword)
+            except Exception:  # noqa: BLE001 - the Maps request failing must not lose the organic result we already have
+                maps_by[k.keyword] = None
     out = []
     for k in rows:
         d = data.get(k.keyword)
@@ -96,10 +106,7 @@ def check(db: Session, b: Business, only: list[str] | None = None, limit: int = 
         maps_rank = maps_total = None
         maps_listing = maps_first = None
         if maps_on:
-            try:
-                places = google_rank.maps_results(b, k.keyword)
-            except Exception:  # noqa: BLE001 - the Maps request failing must not lose the organic result we already have
-                places = None
+            places = maps_by.get(k.keyword)
             if places is not None:
                 maps_total = len(places)
                 maps_rank, mine_listing = find_listing(places, b)

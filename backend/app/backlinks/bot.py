@@ -4,10 +4,11 @@ import logging
 from datetime import timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from ..config import get_settings
-from ..db import utcnow
+from ..db import SessionLocal, release_connection, utcnow
 from .models import Backlink, BacklinkProvenance, BiBotConfig, BiDomain, BiPage, BiTrackedTarget
 
 log = logging.getLogger("seo.backlinks.bot")
@@ -24,7 +25,11 @@ def get_config(db: Session, business_id: int) -> BiBotConfig:
     if cfg is None:
         cfg = BiBotConfig(business_id=business_id)
         db.add(cfg)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:  # another caller made the row at the same moment: read theirs
+            db.rollback()
+            cfg = db.scalar(select(BiBotConfig).where(BiBotConfig.business_id == business_id))
     return cfg
 
 
@@ -68,7 +73,7 @@ def run_due(db: Session) -> int:
     """Scheduler entry point: sync every business whose interval has elapsed (only when the crawler is connected)."""
     if not crawler_mode():
         return 0
-    ran = 0
+    due: list[int] = []
     now = utcnow()
     for cfg in list(db.scalars(select(BiBotConfig).where(BiBotConfig.enabled.is_(True)))):
         last = cfg.last_run_at
@@ -78,9 +83,16 @@ def run_due(db: Session) -> int:
             continue
         if not db.scalar(select(func.count()).select_from(BiTrackedTarget).where(BiTrackedTarget.business_id == cfg.business_id)):
             continue
-        run_cycle(db, cfg.business_id)
-        ran += 1
-    return ran
+        due.append(cfg.business_id)
+    release_connection(db)
+    for business_id in due:  # every business syncs in a session of its own: one business's failure or slow crawler never touches another's
+        try:
+            with SessionLocal() as job_db:
+                run_cycle(job_db, business_id)
+        except Exception:  # noqa: BLE001 - one business failing must not stop the others
+            log.exception("Backlink sync failed for business %s", business_id)
+    db.expire_all()  # what the syncs saved was saved in their own sessions
+    return len(due)
 
 
 def status(db: Session, business_id: int) -> dict:

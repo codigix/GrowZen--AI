@@ -10,8 +10,10 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
+from ..db import get_db, release_connection
 from ..deps import get_business
 from ..models import Business
 from ..services import page_xray_lighthouse as lighthouse, pagespeed, ratelimit
@@ -30,7 +32,8 @@ class LighthouseIn(BaseModel):
 
 
 @router.post("/lighthouse")
-def page_lighthouse(body: LighthouseIn, request: Request, b: Business = Depends(get_business), user: User = Depends(current_user)):
+def page_lighthouse(body: LighthouseIn, request: Request, b: Business = Depends(get_business), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    release_connection(db)  # signing in and the project check are done: the connection is not held while Google measures the page
     url = body.url.strip()
     if not url.lower().startswith(("http://", "https://")):
         if re.match(r"^[a-z][a-z0-9+.-]*:(?!\d)", url, re.I) or "://" in url:  # javascript:, file:, ftp:// ... are not web pages (host:8080 still is)

@@ -11,8 +11,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
+from ..db import get_db, release_connection
 from ..deps import get_business
 from ..models import Business
 from ..services import page_xray as xray, ratelimit
@@ -39,7 +41,8 @@ def _throttle(user_id: str, render: bool = False) -> None:
 
 
 @router.post("")
-def page_xray(body: XrayIn, b: Business = Depends(get_business), user: User = Depends(current_user)):
+def page_xray(body: XrayIn, b: Business = Depends(get_business), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    release_connection(db)  # signing in and the project check are done: the connection is not held while the page is fetched (and Chrome runs)
     try:
         url = xray.normalise_url(body.url)
         if body.render:
