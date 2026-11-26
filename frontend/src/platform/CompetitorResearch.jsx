@@ -72,7 +72,6 @@ function Discovery({ b, ctx, disc, setDisc }) {
     { id: 'group', header: 'Type', value: r => GROUP[r.group] || r.group, cell: r => <Badge tone={r.group === 'question' ? 'blue' : r.group === 'competitor' ? 'amber' : 'gray'}>{GROUP[r.group] || r.group}</Badge>, tip: { what: 'How the keyword was found: a service search, a near-me search, a place search, a question, a fresh topic, or one the competitors use.' } },
     { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume ?? null, cell: r => (r.volume == null ? <span className="text-slate-300">Not available</span> : num(r.volume)), tip: { what: 'Monthly searches from Google Keyword Planner. Not available when Keyword Planner is not connected or has no figure.' } },
     { id: 'kd', header: 'KD', right: true, value: r => r.kd ?? null, cell: r => r.kd ?? <span className="text-slate-300">—</span> },
-    { id: 'cpc', header: 'CPC', right: true, value: r => r.cpc ?? null, cell: r => (r.cpc == null ? '—' : `$${Number(r.cpc).toFixed(2)}`) },
     { id: 'intent', header: 'Intent', value: r => r.intent || '', cell: r => (r.intent ? <span className="text-12 capitalize text-slate-600">{r.intent}</span> : '—') },
     { id: 'site', header: 'On your site?', value: r => r.coverage?.status || '', hide: true, cell: r => (r.coverage ? (r.coverage.status === 'covered' ? 'Covered' : r.coverage.status === 'partial' ? 'Partly' : 'Not yet') : '—') },
     { id: 'tracked', header: 'In My Keywords', value: r => (r.tracked ? 'Yes' : 'No'), cell: r => (r.tracked ? <Badge tone="green">Saved</Badge> : <span className="text-slate-300">—</span>) },
@@ -95,11 +94,11 @@ function Discovery({ b, ctx, disc, setDisc }) {
         {places.length > 0 && <div><div className="text-13 font-semibold text-slate-900">Target locations <span className="font-normal text-slate-500">(optional)</span></div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">{places.slice(0, 14).map(p => <button key={p} type="button" aria-pressed={areas.includes(p)} onClick={() => setAreas(a => (a.includes(p) ? a.filter(x => x !== p) : [...a, p].slice(0, 10)))} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${areas.includes(p) ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{p}</button>)}</div></div>}
         <div className="flex flex-wrap items-center gap-3"><Button variant="primary" icon={Search} busy={busy === 'f'} disabled={!seeds.length} onClick={find}>Find keywords</Button>
-          <span className="text-12 text-slate-500">Reads Google's own suggestions for your seeds, places, questions and the competitors' ideas, then adds searches, CPC and difficulty from Keyword Planner when it is connected.</span></div>
+          <span className="text-12 text-slate-500">Reads Google's own suggestions for your seeds, places, questions and the competitors' ideas, then adds searches and difficulty from Keyword Planner when it is connected.</span></div>
         {error && <ErrorNote>{error}</ErrorNote>}
       </div>
       {disc && <>
-        <p className="text-12.5 text-slate-600">{rows.length} keywords from {disc.queries} Google suggestions. {disc.metrics_note ? <span className="text-amber-700">{disc.metrics_note}</span> : 'Searches, CPC and difficulty are from Google Keyword Planner.'}</p>
+        <p className="text-12.5 text-slate-600">{rows.length} keywords from {disc.queries} Google suggestions. {disc.metrics_note ? <span className="text-amber-700">{disc.metrics_note}</span> : 'Searches and difficulty are from Google Keyword Planner.'}</p>
         <SaveTable b={b} rows={rows} cols={cols} filters={filters} label="Keyword research" kind="google_ideas" exportName="keyword-discovery" initialSort={{ key: 'volume', dir: 'desc' }} empty="No keyword matches these filters." />
       </>}
     </div>
@@ -133,7 +132,6 @@ function Location({ b, ctx }) {
     { id: 'place', header: 'Location', value: r => r.place, cell: r => <span className="text-slate-600">{r.place.split(',')[0]}</span> },
     { id: 'service', header: 'Service', value: r => r.service },
     { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume ?? null, cell: r => (r.volume == null ? <span className="text-slate-300">Not available</span> : num(r.volume)), tip: { what: 'Monthly searches from Google Keyword Planner. A phrase nobody searches shows Not available.' } },
-    { id: 'cpc', header: 'CPC', right: true, value: r => r.cpc ?? null, cell: r => (r.cpc == null ? '—' : `$${Number(r.cpc).toFixed(2)}`) },
   ];
   const filters = [
     { id: 'place', label: 'Location', options: places.map(p => [p, p.split(',')[0]]), test: (r, v) => r.place === v },

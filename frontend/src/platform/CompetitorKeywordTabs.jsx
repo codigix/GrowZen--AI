@@ -80,7 +80,6 @@ export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
     { id: 'url', header: 'Ranking page', value: r => r.url || '', className: 'px-3 py-2.5 max-w-[240px]', cell: r => (r.url ? <a href={r.url} target="_blank" rel="noreferrer" title={r.url} className="text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{short(r.url)}</span><ExternalLink size={11} className="shrink-0" /></a> : <span className="text-slate-300">—</span>) },
     { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume ?? null, cell: r => num(r.volume) },
     { id: 'kd', header: 'KD', right: true, value: r => r.kd ?? null },
-    { id: 'cpc', header: 'CPC', right: true, value: r => r.cpc ?? null, cell: r => (r.cpc == null ? '—' : `$${Number(r.cpc).toFixed(2)}`) },
     { id: 'traffic', header: 'Est. traffic', right: true, first: 'desc', value: r => r.traffic ?? null, cell: r => (r.traffic == null ? '—' : num(Math.round(r.traffic))), tip: { what: 'Estimated visits a month this keyword brings the competitor.' } },
     { id: 'intent', header: 'Intent', value: r => r.intent || '', cell: r => (r.intent ? <span className="text-12 capitalize text-slate-600">{r.intent}</span> : <span className="text-slate-300">—</span>) },
     { id: 'yours', header: 'Your position', right: true, value: r => r.yours ?? null, cell: r => (r.yours ? `#${r.yours}` : <span className="text-slate-400">Not ranking</span>) },
@@ -141,7 +140,7 @@ function KeywordDrawer({ r, rows, country, onClose, onAdd }) {
   return (
     <Modal open onClose={onClose} width="max-w-2xl" title={r.keyword} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" icon={Plus} onClick={() => onAdd(r)}>Add to My Keywords</Button></>}>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        <F k="Searches / mo" v={num(r.volume)} /><F k="Keyword difficulty" v={r.kd ?? '—'} /><F k="CPC" v={r.cpc == null ? '—' : `$${Number(r.cpc).toFixed(2)}`} />
+        <F k="Searches / mo" v={num(r.volume)} /><F k="Keyword difficulty" v={r.kd ?? '—'} />
         <F k="Search intent" v={r.intent ? <span className="capitalize">{r.intent}</span> : '—'} /><F k={`${r.domain} position`} v={`#${r.position}`} /><F k="Your position" v={r.yours ? `#${r.yours}` : 'Not ranking'} />
       </div>
       <dl className="mt-3 text-13 space-y-1.5">
@@ -170,7 +169,6 @@ function TopicList({ b, rows }) {
     { id: 'keyword', header: 'Keyword', first: 'asc', value: r => r.keyword, cell: r => <span className="font-medium text-slate-900">{r.keyword}</span> },
     { id: 'fit', header: 'Useful for you?', value: r => FIT[r.fit]?.[0] || '', cell: r => <span><Badge tone={FIT[r.fit]?.[1] || 'gray'}>{FIT[r.fit]?.[0]}</Badge> <span className="text-12 text-slate-500">{r.why}</span></span> },
     { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume ?? null, cell: r => num(r.volume) },
-    { id: 'cpc', header: 'CPC', right: true, value: r => r.cpc ?? null, cell: r => (r.cpc == null ? '—' : `$${Number(r.cpc).toFixed(2)}`) },
     { id: 'comp', header: 'Competitor', value: r => (r.competitors || []).join(', ') },
   ];
   const filters = [
@@ -211,7 +209,6 @@ export function KeywordGapTab({ b, focus = '' }) {
     { id: 'kd', header: 'KD', right: true, value: r => r.difficulty ?? null },
     { id: 'score', header: 'Opportunity', right: true, first: 'desc', value: r => r.score ?? null, tip: { what: SCORE_HELP },
       cell: r => (r.score == null ? <span className="text-slate-300">—</span> : <span title={r.score_parts ? `Searches ${r.score_parts.searches}/30 · Ease ${r.score_parts.ease}/25 · Intent ${r.score_parts.intent}/15 · Distance ${r.score_parts.distance}/20 · Fit ${r.score_parts.fit}/10` : ''} className={`inline-flex min-w-[34px] justify-center px-2 py-0.5 rounded-md text-13 font-bold ${r.score >= 70 ? 'bg-emerald-100 text-emerald-800' : r.score >= 45 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>{r.score}</span>) },
-    { id: 'cpc', header: 'CPC', right: true, value: r => r.cpc ?? null, cell: r => (r.cpc == null ? '—' : `$${Number(r.cpc).toFixed(2)}`), hide: true },
     ...g.competitors.filter(x => x.keywords || x.from_google).slice(0, 6).map((x, i) => ({ id: `pos:${x.domain}`, header: x.domain, right: true, hide: i > 1, value: r => r.competitors.find(y => y.domain === x.domain)?.position ?? null, cell: r => { const p = r.competitors.find(y => y.domain === x.domain)?.position; return p ? `#${p}` : <span className="text-slate-300">—</span>; }, tip: { what: `Where ${x.domain} ranks for the keyword.` } })),
     { id: 'intent', header: 'Intent', value: r => r.intent || '', cell: r => (r.intent ? <span className="text-12 capitalize text-slate-600">{r.intent}</span> : <span className="text-slate-300">—</span>) },
     { id: 'who', header: 'Who ranks', value: r => r.competitors.map(x => x.domain).join(', '), className: 'px-3 py-2.5 max-w-[240px]', cell: r => <span className="block truncate" title={r.competitors.map(x => `${x.domain} #${x.position ?? '—'}`).join(', ')}>{r.competitors.slice(0, 2).map(x => `${x.domain} #${x.position ?? '—'}`).join(', ')}{r.competitors.length > 2 ? ` +${r.competitors.length - 2}` : ''}</span> },
