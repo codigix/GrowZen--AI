@@ -115,7 +115,7 @@ export function downloadCsv(name, head, body) {
  */
 export default function DataTable({
   columns, rows, rowKey = (r, i) => r.id ?? i, initialSort = null, pageSize = 25, search = true, searchPlaceholder = 'Search this table', filters = [], exportName = '',
-  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState, initialSearch = '', initialFilters = {}, collapseFilters = false, filtersExtra = null, columnsKey = ''
+  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState, initialSearch = '', initialFilters = {}, collapseFilters = false, filtersExtra = null, columnsKey = '', dense = false
 }) {
   const [q, setQ] = useState(initialSearch);
   const [fv, setFv] = useState(initialFilters);
@@ -174,7 +174,7 @@ export default function DataTable({
         </div>)}
       {collapseFilters && showF && (filters.length > 0 || filtersExtra) && <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/60 flex flex-wrap items-center gap-x-4 gap-y-2">{filterEls}{filtersExtra}</div>}
       <div className="overflow-x-auto">
-        <table className="w-full text-13" style={{ minWidth }}>
+        <table className={`w-full text-13 ${dense ? '[&_td]:!px-2 [&_th]:!px-2' : ''}`} style={{ minWidth }}>
           <thead className={`${headClass} text-12 uppercase tracking-wide`}>
             <tr>{serial && <th scope="col" className="pl-4 pr-1 py-3 w-10 text-left font-semibold" title="Row number">#</th>}{cols.map(c => (c.value
               ? <SortTh key={c.id} id={c.id} sort={sort} onSort={onSort} right={c.right} first={c.first} tip={c.tip} className={c.thClass || 'px-3 py-3'}>{c.header}</SortTh>

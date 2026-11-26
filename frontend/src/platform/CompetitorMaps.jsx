@@ -27,7 +27,7 @@ export default function CompetitorMaps({ b, rows, legacy = null }) {
     };
   });
   const cols = [
-    { id: 'name', header: 'Business', first: 'asc', value: r => r.name, className: 'px-3 py-2.5 min-w-[200px]', cell: r => <span className="font-semibold text-slate-900">{r.name}{r.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</span> },
+    { id: 'name', header: 'Business', first: 'asc', value: r => r.name, className: 'px-3 py-2.5 min-w-[180px] max-w-[260px]', cell: r => <span className="block truncate font-semibold text-slate-900" title={r.name}>{r.name}{r.chosen && <span className="ml-2 text-11 font-semibold text-emerald-700">Selected</span>}</span> },
     { id: 'category', header: 'Primary category', value: r => r.category, cell: r => r.category || NA, tip: { what: 'The category Google Maps shows for the business.', from: 'Google Places' } },
     { id: 'address', header: 'Address', value: r => r.address, className: 'px-3 py-2.5 max-w-[260px]', cell: r => (r.address ? <span className="block truncate" title={r.address}>{r.address}</span> : NA) },
     { id: 'distance', header: 'Distance', right: true, first: 'asc', value: r => r.distance, cell: r => km(r.distance) || NA, tip: { what: 'Straight-line distance from the place you search.', from: 'Google Places' } },
@@ -53,7 +53,7 @@ export default function CompetitorMaps({ b, rows, legacy = null }) {
       </div>
       {part === 'found' && <>
         <div className="rounded-lg bg-sky-50 ring-1 ring-sky-200 px-3 py-2 text-12.5 text-sky-900"><b>Discovery only.</b> This is who Google Maps returned around your place: it does not show who ranks higher. Real positions are in <button type="button" onClick={() => setPart('rank')} className="font-semibold underline cursor-pointer">Local rank tracking</button>.</div>
-        <DataTable columnsKey="maps" columns={cols} rows={list} rowKey={r => r.id} filters={filters} collapseFilters initialSort={{ key: 'distance', dir: 'asc' }} exportName="google-maps-competitors" searchPlaceholder="Search businesses, categories or addresses" label="businesses" minWidth={1300}
+        <DataTable columnsKey="maps" dense columns={cols} rows={list} rowKey={r => r.id} filters={filters} collapseFilters initialSort={{ key: 'distance', dir: 'asc' }} exportName="google-maps-competitors" searchPlaceholder="Search businesses, categories or addresses" label="businesses" minWidth={860}
           empty="No business found on Google Maps yet. Press Find or refresh on Google Maps on the Competitors tab." />
       </>}
       {part === 'rank' && <>
