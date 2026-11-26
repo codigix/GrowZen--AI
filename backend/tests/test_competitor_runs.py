@@ -11,7 +11,7 @@ def _project(client):
 
 
 def _fake(monkeypatch, da, rows, note=None):
-    monkeypatch.setattr(apify_metrics, "check", lambda doms, force=False: [{"domain": doms[0], "da": da, **({"error": "Apify answered 429"} if da is None else {})}])
+    monkeypatch.setattr(apify_metrics, "check", lambda doms, force=False: [{"domain": doms[0], "scores": {"da": da} if da is not None else None, **({"error": "Apify answered 429"} if da is None else {})}])
     monkeypatch.setattr(ck, "ranked", lambda db, b, d, limit=100, min_volume=10: {"rows": rows, "cost": 0.05, "note": note})
 
 
@@ -69,7 +69,7 @@ def _clean_pause():
 def _ok(monkeypatch, calls):
     def moz(doms, force=False):
         calls.append("moz")
-        return [{"domain": doms[0], "da": 40}]
+        return [{"domain": doms[0], "scores": {"da": 40}}]
     def ranked(db, b, d, limit=100, min_volume=10):
         calls.append("ranked")
         return {"rows": [{"keyword": "x"}], "cost": 0.05, "note": None}
@@ -193,7 +193,7 @@ def test_only_real_website_domains_are_read(client, monkeypatch):
     bid = _project(client)
     base = KW.format(bid=bid)
     calls = []
-    monkeypatch.setattr(apify_metrics, "check", lambda doms, force=False: calls.append(doms) or [{"domain": doms[0], "da": 1}])
+    monkeypatch.setattr(apify_metrics, "check", lambda doms, force=False: calls.append(doms) or [{"domain": doms[0], "scores": {"da": 1}}])
     r = client.post(f"{base}/analyze", json={"domain": "null"})
     assert r.status_code == 400 and calls == []
     from app.db import SessionLocal

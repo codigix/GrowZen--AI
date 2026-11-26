@@ -223,7 +223,7 @@ def analyze_one(db: Session, b: Business, domain: str, limit: int = 100, trigger
         def moz():
             got = apify_metrics.check([domain], force=True)
             err = got[0].get("error") if got else "no answer"
-            if not err and (not got or got[0].get("da") is None):
+            if not err and (not got or (got[0].get("scores") or {}).get("da") is None):
                 err = "no figure returned"
             return got, (str(err) if err else None)
         _got, err = _call(db, b, "apify_moz", domain, moz)

@@ -30,7 +30,7 @@ def _fake_providers(monkeypatch, fail=()):
         db.add(m)
         db.commit()
         db.close()
-        return [{"domain": doms[0], "da": 41}]
+        return [{"domain": doms[0], "scores": {"da": 41}}]
 
     def ranked(db, b, d, limit=100, min_volume=10):
         calls["ranked"].append(d)
