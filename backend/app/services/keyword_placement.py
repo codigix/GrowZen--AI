@@ -284,6 +284,8 @@ def page_detail(db: Session, b: Business, url: str, focus: str | None = None) ->
     if not host or host_of(full) != host:
         raise PlacementError("Only pages of this project's own website can be opened here.")
     path = (urlsplit(full).path or "/").rstrip("/") or "/"
+    from ..db import release_connection  # noqa: PLC0415
+    release_connection(db)  # no connection is held while the page is fetched
     read = _read(full)
     scope = scope_of(path, read["title"])
     plan = km.plan(db, b)

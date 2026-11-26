@@ -80,28 +80,31 @@ async def lifespan(_: FastAPI):
     step("interrupted jobs", lambda db: jobs.recover_stale(db, startup=True))
     scheduler.start()
     def _warm_dashboard() -> None:  # the dashboard's journeys are worked out once, in the background, so the first page load after a start is quick
-        import time as _t
-        _t.sleep(5)
-        try:
-            from sqlalchemy import select as _select
-            from .db import SessionLocal as _S
-            from .models import Business as _B
-            from .routers import flow as _flow
-            _db = _S()
-            try:
-                _ids = list(_db.scalars(_select(_B.id).order_by(_B.id)))
-            finally:
-                _db.close()
-            _flow._work_out(_ids)
-        except Exception:  # noqa: BLE001 - only a head start
-            pass
-    import threading as _threading
-    _threading.Thread(target=_warm_dashboard, daemon=True).start()
+        from sqlalchemy import select as _select
+        from .db import SessionLocal as _S
+        from .models import Business as _B
+        from .routers import flow as _flow
+        from .services import lifecycle as _life
+        if _life.STOP.wait(5):  # shutdown before the head start began
+            return
+        with _S() as _db:  # the connection is returned before the slow work: each journey uses a session of its own
+            _ids = list(_db.scalars(_select(_B.id).order_by(_B.id.desc()).limit(_flow.WARM_MAX)))
+        for _i in range(0, len(_ids), 12):  # a few at a time, so a shutdown does not wait for hundreds of projects
+            if _life.STOP.is_set():
+                return
+            _flow._work_out(_ids[_i:_i + 12])
+    from .services import lifecycle as _lifecycle
+    _lifecycle.reset()
+    _lifecycle.run_single("dashboard-warmup", _warm_dashboard)  # only a head start: a failure is logged and nothing else
     yield
+    _lifecycle.stop_all()
     from .backlinks import stop as backlink_stop
     backlink_stop.STOP.set()  # let a running crawl finish its current page and leave, so shutdown does not hang
     scheduler.stop()
     lighthouse_runner.stop()
+    _durable.stop()  # the heartbeat thread: jobs still running go quiet and another process takes them over
+    from .services import inflight as _inflight
+    _inflight.stop()
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan, **security_headers.docs_kwargs(settings))

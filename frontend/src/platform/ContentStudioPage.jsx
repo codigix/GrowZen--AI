@@ -563,6 +563,16 @@ function GeneratedArticlesTab({ b, openId, onOpen, onWrite, onShowPosted, toast 
   );
 }
 
+/** The time since an article was started. It ticks on its own, so the (large) page around it is not drawn again every second. */
+function ElapsedTime({ since }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <>{mins(since ? Math.max(0, (now - new Date(since).getTime()) / 1000) : 0)}</>;
+}
+
 /** The single "AI Blog & Article Writer" tab: the generated articles on top, the E-E-A-T pipeline for the open one below. */
 function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onScheduled, onShowArticles, toast }) {
   const list = useApi(`/businesses/${b.id}/articles`);
@@ -571,9 +581,25 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   const article = openId && full.data?.id === openId ? full.data : null;
   const [pendingId, setPendingId] = useState(null);  // an article started from the writer: opened as soon as it is written
   const pending = pendingId ? articles.find(x => x.id === pendingId) : null;
-  const pendingFull = useApi(pendingId ? `/businesses/${b.id}/articles/${pendingId}` : null);  // the text written so far
-  usePoll(() => pendingFull.reload(true), Boolean(pendingId), 1000);
-  usePoll(() => list.reload(true), Boolean(pendingId), 2000);
+  // While an article is being written, one small request a second asks only for what changed (GET .../progress): the text comes back only when it has changed, and the list of
+  // articles is refreshed once, when the article is finished, instead of every two seconds.
+  const [live, setLive] = useState(null);
+  const liveBody = useRef({ id: null, len: 0, text: '' });
+  useEffect(() => { liveBody.current = { id: null, len: 0, text: '' }; setLive(null); }, [pendingId]);
+  const pollProgress = useCallback(async () => {
+    if (!pendingId || document.visibilityState !== 'visible') return;  // a hidden tab asks nothing; the next tick after it is shown catches up
+    const have = liveBody.current.id === pendingId ? liveBody.current.len : -1;
+    let r;
+    try { r = await api(`/businesses/${b.id}/articles/${pendingId}/progress?known_len=${have}`); } catch { return; }
+    if (r.body != null) liveBody.current = { id: pendingId, len: r.body_len, text: r.body };
+    setLive({ ...r, body: liveBody.current.id === pendingId ? liveBody.current.text : '' });
+    if ((r.status === 'completed' || r.status === 'failed') && finishedSeen.current !== pendingId) { finishedSeen.current = pendingId; list.reload(true); }  // the list shows the result and opens the article
+  }, [b.id, pendingId, list]);
+  const finishedSeen = useRef(null);
+  const liveDone = Boolean(live && live.id === pendingId && (live.status === 'completed' || live.status === 'failed'));
+  usePoll(pollProgress, Boolean(pendingId) && !liveDone, 1000);  // stops by itself once the article is finished or failed
+  usePoll(() => list.reload(true), liveDone, 3000);  // only if the list has not yet caught up with a finished article
+  const pendingArticle = pendingId ? (live && live.id === pendingId ? { ...(pending || {}), status: live.status, progress: live.progress, error: live.error, title: live.title || pending?.title, meta_description: live.meta_description || pending?.meta_description, body: live.body } : pending) : null;
   // a scheduled article is published by the server at its time: refresh on our own so the page shows it without F5
   const waiting = s => s === 'scheduled' || s === 'publishing';
   const anyWaiting = articles.some(x => waiting(x.publishing_status)) || waiting(article?.publishing_status);
@@ -582,15 +608,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
     list.reload(true);
     if (openId) full.reload(true);
   }, anyWaiting && !pendingId, 30000);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!pendingId) return undefined;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [pendingId]);
   const pendingLength = ARTICLE_LENGTHS.find(l => l.id === pending?.length) || ARTICLE_LENGTHS[1];
-  const elapsed = pending?.created_at ? Math.max(0, (now - new Date(pending.created_at).getTime()) / 1000) : 0;
-  const preview = pendingFull.data?.id === pendingId ? pendingFull.data.body : '';
+  const preview = pendingArticle?.body || '';
 
   const generate = async ({ topic, keywords, length, title, blog_title, workflow }) => {
     const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, title: title || undefined, blog_title: blog_title || undefined, workflow: workflow || undefined, keywords: keywords.map(k => ({ keyword: k })) } });
@@ -613,15 +632,15 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-[12.5px] text-indigo-900 shadow-xs">
           <RefreshCw size={14} className="animate-spin text-indigo-600 shrink-0" />
           <span className="font-bold">AI is writing your blog live with Claude ({pendingLength.label})</span>
-          <span className="text-indigo-700 truncate hidden sm:inline">— {pending?.progress || 'Streaming line by line below…'}</span>
-          <span className="ml-auto font-mono text-[11px] font-semibold text-slate-500 shrink-0">Elapsed {mins(elapsed)}</span>
+          <span className="text-indigo-700 truncate hidden sm:inline">— {pendingArticle?.progress || 'Streaming line by line below…'}</span>
+          <span className="ml-auto font-mono text-[11px] font-semibold text-slate-500 shrink-0">Elapsed <ElapsedTime since={pending?.created_at} /></span>
         </div>
       )}
       {!showStart && !pendingId && <div><button type="button" onClick={() => { setOpenId(null); onPickTopic(null); }} className="text-12.5 font-semibold text-indigo-600 hover:underline cursor-pointer">← Back to my blogs and a new topic</button></div>}
       {/* on "Keywords & topic" the Topic & Intent form is always shown */}
       {openId && !article
         ? <div className="py-10 text-center text-[13px] text-slate-500">Loading the article…</div>
-        : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingId ? (pendingFull.data?.id === pendingId ? pendingFull.data : pending) : null} pendingLength={pendingLength} elapsed={elapsed} onGenerate={generate} generating={Boolean(pendingId)}
+        : <BlogWriterTab key={article ? `a${article.id}` : `t${activeTopic?.title || ''}`} b={b} selectedTopic={activeTopic} selectedArticle={article} pendingArticle={pendingArticle} pendingLength={pendingLength} startedAt={pending?.created_at} onGenerate={generate} generating={Boolean(pendingId)}
           onSaved={() => { full.reload(true); list.reload(true); }} onScheduled={onScheduled} toast={toast} />}
 
       {done && <LayoutCheckCard b={b} article={article} />}
@@ -736,7 +755,7 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
   );
 }
 
-function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, elapsed = 0, onGenerate, generating, onSaved, onScheduled, toast }) {
+function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pendingLength, startedAt, onGenerate, generating, onSaved, onScheduled, toast }) {
   const [step, setStep] = useState(selectedArticle ? 1 : 0);
   const urlTopic = React.useMemo(() => (selectedArticle || selectedTopic ? '' : (() => { const q = new URLSearchParams(window.location.search); return (q.get('topic') || q.get('keyword') || '').slice(0, 200); })()), []); // a keyword sent from My Keywords, Keyword Mapping or the usage grid (?keyword= or ?topic=): the writer opens with it ready
   const [kw, setKw] = useState(selectedArticle ? selectedArticle.keyword : selectedTopic ? selectedTopic.title : urlTopic);  // the primary keyword
@@ -817,6 +836,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       if (v && (v.draft !== (selectedArticle.body || '') || v.meta?.title !== (selectedArticle.title || '') || v.meta?.meta_description !== (selectedArticle.meta_description || ''))) setRestore(v);
     } catch { /* nothing kept */ }
   }, [bk]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The unsent draft is kept in the browser after a pause in typing (not on every key: the whole article is written each time), and at once when the page is left or closed.
+  const backupNow = useRef(null);
   useEffect(() => {
     if (!bk || restore) return;
     // the draft is still being loaded from a newer saved copy (an older cached copy came first): that is not the user's edit, so nothing is kept
@@ -824,9 +845,17 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
       if (draft !== syncingTo.current) return;
       syncingTo.current = null;
     }
+    backupNow.current = null;
+    if (!bk || restore) return undefined;
     const same = draft === (selectedArticle.body || '') && meta.title === (selectedArticle.title || '') && meta.meta_description === (selectedArticle.meta_description || '');
-    try { if (!same) localStorage.setItem(bk, JSON.stringify({ draft, meta, at: Date.now() })); } catch { /* not kept */ }
+    if (same) return undefined;
+    const save = () => { backupNow.current = null; try { localStorage.setItem(bk, JSON.stringify({ draft, meta, at: Date.now() })); } catch { /* not kept */ } };
+    backupNow.current = save;
+    const t = setTimeout(save, 800);
+    window.addEventListener('pagehide', save);
+    return () => { clearTimeout(t); window.removeEventListener('pagehide', save); };
   }, [draft, meta, bk, restore, selectedArticle]);
+  useEffect(() => () => { if (backupNow.current) backupNow.current(); }, []);  // leaving the tab keeps what was typed in the last moments
   const isGenerating = Boolean(generating || (pendingArticle && pendingArticle.status === 'generating'));
   const activeArt = selectedArticle || pendingArticle;
   const liveBody = isGenerating ? (activeArt?.body || '') : (draft || activeArt?.body || '');
@@ -1298,7 +1327,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               </div>
               {pickedBlogTitle.trim() && kw.trim() && !pickedBlogTitle.toLowerCase().includes(kw.trim().toLowerCase()) && <div className="text-[11.5px] text-amber-800">This Blog title does not contain the primary keyword “{kw}”.</div>}
             </div>
-            {generating &&<div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
+            {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
             <div className="flex flex-wrap items-center gap-2">
               <Button disabled={genBusy} onClick={() => { setTitleStage(false); setTitleOptions([]); setPickedTitle(''); setBlogTitleOptions([]); setPickedBlogTitle(''); }}>Back to keywords</Button>
@@ -1420,7 +1449,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               </div>
               <div className="flex items-center gap-3 text-[11px] font-mono text-slate-500">
                 <span>{liveBody.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length} words</span>
-                {isGenerating && pendingLength && <span>• {mins(elapsed)}</span>}
+                {isGenerating && pendingLength && <span>• <ElapsedTime since={startedAt} /></span>}
               </div>
             </div>
 

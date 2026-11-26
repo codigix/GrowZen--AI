@@ -9,13 +9,14 @@ from __future__ import annotations
 import logging
 import math
 import re
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..db import release_connection
 from ..models import Audit, Business, Keyword, KeywordCandidate
 from . import ai, competitor_keywords as ck, keyword_fit, keyword_metrics, market
 from .providers.base import intent_of
@@ -229,6 +230,7 @@ def from_competitors(db: Session, b: Business) -> tuple[list[dict[str, Any]], st
     listed = _listing_rows(db, b)
     if not domains:
         return listed, (None if listed else "No competitors saved yet. Find the competitors first.")
+    release_connection(db)  # the competitors are read: no connection is held through the Keyword Planner calls
     got = competitor_keywords.planner_ideas(db, b, domains)  # the searches each competitor's address is about: no website is crawled
     out = [{"keyword": r["keyword"], "kind": "competitors", "label": ", ".join(r["competitors"][:2]), "competitor": r["competitors"][0], "volume": r.get("volume"),
             "detail": f"Keyword Planner: what {r['competitors'][0]}'s website is about"} for r in got["rows"] if r["fit"] in ("yes", "maybe")]
@@ -305,6 +307,7 @@ def from_google_ideas(db: Session, b: Business) -> tuple[list[dict[str, Any]], s
     seeds = [s for s in seeds if s] or [x for x in [b.primary_category] if x]
     if not seeds:
         return [], "Add services or a category first, so there is something to search from."
+    release_connection(db)  # the seeds are read: no connection is held while Google is asked
     res = keywords.discover(db, b, seeds, [])
     return [{"keyword": x["keyword"], "kind": "google_ideas", "detail": "What people type into Google for " + ", ".join(seeds[:2]), "volume": x.get("volume"), "difficulty": x.get("difficulty"), "cpc": x.get("cpc")}
             for x in res.get("keywords", [])], None
@@ -334,6 +337,7 @@ def from_planner(db: Session, b: Business) -> tuple[list[dict[str, Any]], str | 
     geo = ads.geo_target_for(market.serp_country(b))
     out: list[dict[str, Any]] = []
     failed = ""
+    release_connection(db)  # the seeds are read: no connection is held through the Keyword Planner calls
     for seed in seeds:
         try:
             ideas = ads.keyword_ideas([seed], limit=40, geo_target=geo)
@@ -363,6 +367,7 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
     if not (b.business_brief or {}) and b.website and any(k in kinds for k in ("brief", "area", "ai", "google_ideas")):
         # the business summary feeds several sources: it is built now (the site is read and the AI asked once) instead of sending the owner to another page first
         from . import business_understanding
+        release_connection(db)  # the connection is not held while the website is read and the AI answers
         try:
             business_understanding.build(db, b)
             summary_note = "The business summary was built first, from your website."
@@ -371,19 +376,25 @@ def collect(db: Session, b: Business, kinds: list[str] | None = None) -> dict[st
             db.rollback()
             summary_note = "The business summary could not be built just now, so sources that use it may find less."
     for k in kinds:
+        release_connection(db)  # nothing waits to be saved here: the connection is not held while this source asks Google, the AI or the website
         try:
             found, note = COLLECTORS[k](db, b)
         except Exception as exc:  # noqa: BLE001 - never lose the other sources
             log.exception("keyword source %s failed", k)
             found, note = [], f"This source failed: {str(exc)[:150]}"
-        report[k] = {"label": SOURCES[k], "found": len(found), "new": _add(db, b, found, existing) if found else 0, "note": note}
+        new = _add(db, b, found, existing) if found else 0
+        if found:
+            db.commit()  # this source's keywords are saved as soon as they are found, so the next source starts with no connection in use
+        report[k] = {"label": SOURCES[k], "found": len(found), "new": new, "note": note}
     if summary_note:
         report["summary"] = {"label": "Business summary", "found": 0, "new": 0, "note": summary_note}
     tidied = tidy(db, b, list(existing.values()))
+    db.commit()  # the wording check is saved: the volumes, the history and the relevance check below each start with no connection in use
     if tidied:
         report["tidy"] = {"label": "Wording check", "found": tidied, "new": 0, "note": f"{tidied} phrases set aside because they are not keywords (slogans, cut-off sentences, a place on its own, off-topic words)"}
     fill_metrics(db, b)
     fill_trends(db, b)
+    db.commit()  # the figures are saved before the AI relevance check, which can take a while
     from . import keyword_fit
     try:  # hide what does not fit this business (another brand, another service, another place), with the reason
         checked = keyword_fit.judge(db, b, list(existing.values()))
@@ -416,6 +427,7 @@ def fill_trends(db: Session, b: Business, limit: int = 500) -> dict[str, Any]:
     todo = [r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.trend.is_(None), KeywordCandidate.dismissed.is_(False)).limit(limit))]
     if not todo:
         return out
+    release_connection(db)  # the keywords are read: no connection is held while Google Ads answers
     try:
         got = ads.historical_metrics(list(dict.fromkeys(r.keyword.lower() for r in todo)), geo_target=ads.geo_target_for(market.serp_country(b)))
     except ads.GoogleAdsError as exc:
@@ -464,11 +476,12 @@ def search_planner(db: Session, b: Business, query: str) -> dict[str, Any]:
 def measure_difficulty(db: Session, b: Business, ids: list[int]) -> list[dict[str, Any]]:
     """The keyword difficulty score (the full formula, from the real top 10 on Google) of up to a few keywords at once. Saved on the row, so the list can be sorted by it.
     A keyword whose results could not be read says why and keeps no score."""
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from app.services.fanout import ThreadPoolExecutor  # noqa: PLC0415
 
     from . import keyword_difficulty as kd  # noqa: PLC0415
     rows = [r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.id.in_(ids or [0])))][:6]
     country = market.serp_country(b)
+    release_connection(db)  # the rows are read (the threads only read their loaded values): no connection is held while Google, Apify and Moz are asked
 
     def one(r: KeywordCandidate) -> tuple[KeywordCandidate, dict[str, Any] | None, str | None]:
         try:
@@ -504,6 +517,7 @@ def fill_metrics(db: Session, b: Business, limit: int = 150) -> str | None:
     todo = [r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.volume.is_(None), KeywordCandidate.dismissed.is_(False)).limit(limit))]
     if not todo:
         return None
+    release_connection(db)  # the keywords are read: no connection is held while Google Ads answers
     metrics, why = keyword_metrics.lookup([r.keyword for r in todo], market.serp_country(b))
     for r in todo:
         m = metrics.get(r.keyword)

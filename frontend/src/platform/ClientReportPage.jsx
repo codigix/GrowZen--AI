@@ -126,7 +126,7 @@ export default function ClientReportPage({ token }) {
       .then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'This report link is not valid.'); return r.json(); })
       .then(j => { if (!stop) { setD(j); setError(''); } }).catch(e => { if (!stop) setError(e.message); });
     load();
-    const t = setInterval(load, 60000);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 60000);  // a report left open in a hidden tab asks nothing
     return () => { stop = true; clearInterval(t); };
   }, [token, month, base]);
   useEffect(() => { if (d?.business?.name) document.title = `${d.business.name}: Google profile report`; }, [d]);

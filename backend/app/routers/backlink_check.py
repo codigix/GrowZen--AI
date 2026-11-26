@@ -232,7 +232,8 @@ def _fill_from_apify(b: Business, db: Session, user: User) -> dict[str, Any]:
             job["error"] = str(exc)[:300]
         finally:
             job["running"] = False
-    threading.Thread(target=run, daemon=True, name=f"apify-scores-{biz_id}").start()
+    from ..services.durable import spawn  # noqa: PLC0415
+    spawn(run, name=f"apify-scores-{biz_id}")
     return {"started": True, **_job_view(job)}
 
 

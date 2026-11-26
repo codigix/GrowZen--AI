@@ -1,7 +1,7 @@
 """GET /businesses/{id}/flow: the journey (ten steps in order, what each needs first, and the next thing to do), from stored data only."""
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -11,7 +11,7 @@ from ..auth import User, current_user
 from ..db import SessionLocal, get_db
 from ..deps import get_business, my_business_ids
 from ..models import Business
-from ..services import flow, website_health
+from ..services import flow, lifecycle, website_health
 
 router = APIRouter(prefix="/businesses/{business_id}/flow", tags=["flow"])
 
@@ -53,6 +53,9 @@ def _journey_of(business_id: int) -> dict | None:
         db.close()
 
 
+WARM_MAX = 200  # the start-up head start covers the most recent projects only
+
+
 def _work_out(ids: list[int]) -> None:
     now = time.time()
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -78,7 +81,8 @@ def projects_journey(db: Session = Depends(get_db), user: User = Depends(current
         _refreshing.update(stale)
     if missing:
         _work_out(missing)
-    if stale:
-        threading.Thread(target=_work_out, args=(stale,), daemon=True).start()
+    if stale and not lifecycle.run_single("flow-refresh", _work_out, stale):  # one refresh at a time in this process; the ones asked for now are asked again by the next page load
+        with _journey_lock:
+            _refreshing.difference_update(stale)
     out = {i: _journeys[i][1] for i in mine if i in _journeys and _journeys[i][1]}
     return {"projects": out}

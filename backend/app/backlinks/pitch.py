@@ -250,7 +250,7 @@ def discover(db: Session, b: Business, force: bool = False) -> dict:
     """Search Google (through the search API) with the business's own searches, collect the platforms that come up, and read each one's public email addresses.
     Slow by nature (a dozen sites are opened), so the answer is kept for half an hour. Every email shown was published by the site itself."""
     import time
-    from concurrent.futures import ThreadPoolExecutor
+    from app.services.fanout import ThreadPoolExecutor
     from urllib.parse import urlsplit
 
     from ..config import get_settings

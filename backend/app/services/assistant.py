@@ -15,6 +15,7 @@ from ..backlinks.summary import own_site_links
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..db import release_connection
 from ..models import ActivityLog, AgentTask, Audit, Business, Keyword, Lead, RankScan, Review, Schedule
 from . import ai, geo, market, site_health
 
@@ -490,6 +491,7 @@ def answer(db: Session, b: Business, question: str, history: list[dict[str, str]
         return base | {"mode": "rules"}
     try:
         f = facts(db, b)
+        release_connection(db)  # everything the model is told is read: the connection is not held while the AI answers
         turns = "\n".join(f"{m['role']}: {m['text'][:400]}" for m in (history or [])[-6:])
         text = ai.complete(
             SYSTEM,

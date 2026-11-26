@@ -380,7 +380,10 @@ def build(db, a, b, *, with_ai: bool, previous: dict | None = None) -> dict:
     ai_error = ""
     if with_ai:
         try:
-            ai = ai_review(title=title, meta=meta, body=body, primary=a.keyword, secondary=a.secondary_keywords or [], brand=brand, b=b, pages=_own_pages(db, a, b))
+            pages = _own_pages(db, a, b)
+            from ..db import release_connection  # noqa: PLC0415
+            release_connection(db)  # the article's own pages are read: no connection is held while the AI reviews the article (which can take a minute or more)
+            ai = ai_review(title=title, meta=meta, body=body, primary=a.keyword, secondary=a.secondary_keywords or [], brand=brand, b=b, pages=pages)
         except Exception as exc:  # noqa: BLE001 - the measurable checks are still worth showing
             log.warning("AI review failed for article %s: %s", a.id, exc)
             ai_error = str(exc)[:300]

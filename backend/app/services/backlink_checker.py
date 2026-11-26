@@ -11,7 +11,7 @@ Without them these fields say "not available" and nothing is estimated or invent
 import logging
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit

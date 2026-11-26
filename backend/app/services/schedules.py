@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..db import SessionLocal, release_connection
 from ..errors import DataUnavailable
 from ..models import Business, Schedule
 from . import agent, notify, project_services, audits, gbp, geo, reports, organic, workplan
@@ -60,6 +61,9 @@ def run_job(db: Session, s: Schedule) -> None:
     b = db.get(Business, s.business_id)
     if not b or b.status == "paused" or not project_services.job_enabled(b, s.job):
         return
+    if b.connection_id:
+        b.connection  # the Google account is read now (the reviews job needs it), so a later look at it does not take a connection again
+    release_connection(db)  # the job's slow work (Google, the AI, the website) starts with no connection in use; each step takes one again when it reads or saves
     if s.job in ("growth_daily", "growth_weekly", "growth_monthly"):
         from . import growth_plan
         growth_plan.run_job(db, b, s.job)  # the job decides what to roll: it never creates duplicates
@@ -118,26 +122,33 @@ def run_due(db: Session, limit: int = 20, budget_seconds: float = TICK_BUDGET_SE
     for the rest of the tick. What was not started stays due and goes first on the next tick."""
     import time
     began = time.monotonic()
-    due = list(db.scalars(select(Schedule).where(Schedule.every != "off", Schedule.next_run_at.is_not(None), Schedule.next_run_at <= _now()).order_by(Schedule.next_run_at).limit(limit)))
+    due = [s.id for s in db.scalars(select(Schedule).where(Schedule.every != "off", Schedule.next_run_at.is_not(None), Schedule.next_run_at <= _now()).order_by(Schedule.next_run_at).limit(limit))]
+    release_connection(db)
     ran = 0
-    for s in due:
+    for schedule_id in due:
         if ran and time.monotonic() - began > budget_seconds:
             break
-        ran += 1
-        try:
-            run_job(db, s)
-            s.last_status, s.last_error = "ok", None
-        except DataUnavailable as exc:  # a key is not set up: the job is skipped (and says why), never run on invented data
-            db.rollback()
-            s.last_status, s.last_error = "skipped", exc.message[:500]
-            log(db, "scheduler", "job_skipped", s.business_id, job=s.job, reason=exc.message[:200])
-        except Exception as exc:
-            db.rollback()
-            s.last_status, s.last_error = "failed", str(exc)[:500]
-            log(db, "scheduler", "job_failed", s.business_id, job=s.job, error=str(exc)[:200])
-        s.last_run_at = _now()
-        s.next_run_at = next_run(s.every)
-        db.add(s)
-        db.commit()
+        # every job has a session of its own: a failing job rolls back only itself, and one job's slow call never keeps the tick's session (and its connection) busy
+        with SessionLocal() as job_db:
+            s = job_db.get(Schedule, schedule_id)
+            if s is None or s.every == "off":
+                continue
+            ran += 1
+            try:
+                run_job(job_db, s)
+                s.last_status, s.last_error = "ok", None
+            except DataUnavailable as exc:  # a key is not set up: the job is skipped (and says why), never run on invented data
+                job_db.rollback()
+                s.last_status, s.last_error = "skipped", exc.message[:500]
+                log(job_db, "scheduler", "job_skipped", s.business_id, job=s.job, reason=exc.message[:200])
+            except Exception as exc:
+                job_db.rollback()
+                s.last_status, s.last_error = "failed", str(exc)[:500]
+                log(job_db, "scheduler", "job_failed", s.business_id, job=s.job, error=str(exc)[:200])
+            s.last_run_at = _now()
+            s.next_run_at = next_run(s.every)
+            job_db.add(s)
+            job_db.commit()
+    db.expire_all()  # the jobs saved their results in their own sessions: whatever this session had loaded is read again when it is next needed
     agent.auto_apply_pending(db)
     return ran

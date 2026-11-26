@@ -11,14 +11,14 @@ _backend_dir = str(Path(__file__).resolve().parents[2])
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import case, func, or_, select
+from sqlalchemy.orm import Session, defer
 
 try:
     from ..config import get_settings
-    from ..db import get_db
+    from ..db import SessionLocal, get_db, release_connection
     from ..deps import get_business
     from ..services.durable import durable
     from ..models import Article, Business, SiteIntegration
@@ -26,7 +26,7 @@ try:
     from ..services import articles as svc, crypto, featured_images as fi, site_publish as sp, seo_report as seo
 except (ImportError, ValueError):
     from app.config import get_settings
-    from app.db import get_db
+    from app.db import SessionLocal, get_db, release_connection
     from app.deps import get_business
     from app.services.durable import durable
     from app.models import Article, Business, SiteIntegration
@@ -37,6 +37,10 @@ router = APIRouter(prefix="/businesses/{business_id}/articles", tags=["articles"
 log = logging.getLogger("seo.articles")
 
 MAX_PER_BATCH = 10
+
+
+def finished_status(status: str | None) -> bool:
+    return status in ("completed", "failed")
 
 
 class KeywordPick(BaseModel):
@@ -174,7 +178,7 @@ def site_preview(article_id: int, body: SitePreviewIn, b: Business = Depends(get
 @router.get("")
 def list_articles(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     from ..services import article_schedule as asch
-    found = list(db.scalars(select(Article).where(Article.business_id == b.id).order_by(Article.id.desc())))
+    found = list(db.scalars(select(Article).options(defer(Article.body)).where(Article.business_id == b.id).order_by(Article.id.desc())))  # the list never shows the text: it is not read
     latest = asch.latest_by_article(db, b.id)
     return {"articles": [{**row(a, exclude={"body"}), **asch.state_of(a, latest.get(a.id))} for a in found]}
 
@@ -274,6 +278,22 @@ def get_article(article_id: int, b: Business = Depends(get_business), db: Sessio
     return {**row(a), **asch.state_of(a, asch.latest_by_article(db, b.id, a.id).get(a.id))}
 
 
+@router.get("/{article_id}/progress")
+def article_progress(article_id: int, known_len: int = Query(default=-1, ge=-1), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """What the editor needs while an article is being written, in one small answer: its status, progress line, title, meta and error, and its text.
+    The text is sent only when it is not the one the editor already has (`known_len` is the length of that text) or when the article is finished; otherwise `body` is null.
+    That keeps a poll every second from downloading the whole article each time. GET /articles/{id} still returns the full article."""
+    n = func.coalesce(func.length(Article.body), 0)
+    finished = Article.status.in_(("completed", "failed"))
+    r = db.execute(select(Article.id, Article.status, Article.progress, Article.error, Article.title, Article.meta_description, n.label("body_len"),
+                          case((or_(n != known_len, finished), Article.body), else_=None).label("body"))
+                   .where(Article.id == article_id, Article.business_id == b.id)).first()
+    if r is None:
+        raise HTTPException(404, "Article not found")
+    return {"id": r.id, "status": r.status, "progress": r.progress, "error": r.error, "title": r.title, "meta_description": r.meta_description,
+            "body_len": int(r.body_len or 0), "body": (r.body or "") if r.body is not None or finished_status(r.status) else None}
+
+
 @router.get("/{article_id}/duplicates")
 def duplicates(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Other articles of this project that have the same title or the very same featured image file: each blog should have its own."""
@@ -359,6 +379,7 @@ def regenerate_part(article_id: int, body: RegenerateIn, b: Business = Depends(g
     and the new HTML of that part and the whole new body; the editor applies it only when the user accepts."""
     from ..services import article_regenerate as rg
     a = _get(db, b, article_id)
+    release_connection(db)  # the article is loaded and nothing is saved here: the connection is not held while the AI writes
     try:
         return rg.regenerate(a, b, body.part, body.body, body.section_id,
                              fields=body.model_dump(include={"title", "meta_description", "keyword", "secondary_keywords", "slug"}))
@@ -1006,44 +1027,75 @@ def delete_article(article_id: int, b: Business = Depends(get_business), db: Ses
         db.commit()
 
 
+STREAM_POLL_SECONDS = 1  # how often the stream looks at the article
+STREAM_MAX_POLLS = 360  # so a stream lasts at most 6 minutes
+STREAM_DB_FAILURES = 5  # a poll that fails (the database busy) is tried again at the next tick; this many in a row end the stream
+
+
+def _stream_row(business_id: int, article_id: int, seen_len: int):
+    """One look at the article for the stream, in a session of its own that is closed (and its connection returned to the pool) before this function returns.
+    One query. The body is read only when it has grown past what the stream already sent, or when the article is finished: while it is only being written, a look costs a few bytes
+    instead of the whole text. The row is still limited to this project's article."""
+    from sqlalchemy import case, func, or_  # noqa: PLC0415
+    n = func.coalesce(func.length(Article.body), 0)
+    finished = Article.status.in_(("completed", "failed"))
+    q = select(Article.status, Article.progress, Article.title, Article.meta_description, Article.error,
+               case((or_(n > seen_len, finished), Article.body), else_=None).label("body")).where(Article.id == article_id, Article.business_id == business_id)
+    with SessionLocal() as s:
+        return s.execute(q).first()
+
+
 @router.get("/{article_id}/stream")
-async def stream_article(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+def stream_article(article_id: int, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """SSE endpoint: streams article progress and body chunks while Ollama writes.
     
     Events emitted:
       {"type":"progress","text":"..."} — status message from the writer
       {"type":"body","html":"..."}    — new HTML appended to body (delta only)
       {"type":"done","status":"completed"|"failed","title":"...","meta":"...","body":"...","error":"..."}
+
+    The request's own session is used for the ownership check only and its connection is released before the stream starts. While streaming, every look at the article uses a
+    short session of its own, so no database connection is held while the stream waits for its next look.
     """
     from fastapi.responses import StreamingResponse
+    from starlette.concurrency import run_in_threadpool
     import asyncio
     import json as _json_mod
 
-    a = _get(db, b, article_id)
+    _get(db, b, article_id)  # 404 for an article that is not in this project
+    business_id = b.id
+    db.commit()  # nothing is pending: this only ends the read transaction, so the connection goes back to the pool before the stream starts
 
     async def gen():
         last_body_len = 0
         last_progress = ""
-        for _ in range(360):  # poll up to 6 min (360 * 1s)
-            await asyncio.sleep(1)
+        failures = 0
+        for _ in range(STREAM_MAX_POLLS):  # poll up to 6 min (360 * 1s)
+            await asyncio.sleep(STREAM_POLL_SECONDS)
             try:
-                db.refresh(a)
+                row = await run_in_threadpool(_stream_row, business_id, article_id, last_body_len)
+                failures = 0
             except Exception:
+                failures += 1
+                if failures >= STREAM_DB_FAILURES:
+                    break
+                continue
+            if row is None:  # the article was deleted
                 break
             # progress update
-            prog = (a.progress or "").strip()
+            prog = (row.progress or "").strip()
             if prog and prog != last_progress:
                 last_progress = prog
                 yield f"data: {_json_mod.dumps({'type': 'progress', 'text': prog})}\n\n"
             # body delta
-            body = a.body or ""
+            body = row.body or ""
             if len(body) > last_body_len:
                 delta = body[last_body_len:]
                 last_body_len = len(body)
                 yield f"data: {_json_mod.dumps({'type': 'body', 'html': delta})}\n\n"
             # done
-            if a.status in ("completed", "failed"):
-                yield f"data: {_json_mod.dumps({'type': 'done', 'status': a.status, 'title': a.title or '', 'meta': a.meta_description or '', 'body': a.body or '', 'error': a.error or ''})}\n\n"
+            if row.status in ("completed", "failed"):
+                yield f"data: {_json_mod.dumps({'type': 'done', 'status': row.status, 'title': row.title or '', 'meta': row.meta_description or '', 'body': body, 'error': row.error or ''})}\n\n"
                 break
 
     return StreamingResponse(

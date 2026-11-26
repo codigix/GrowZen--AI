@@ -27,6 +27,7 @@ from ..config import get_settings
 from ..db import utcnow
 from ..models import Article, Business
 from . import ai, durable
+from .fanout import ThreadPoolExecutor as _CallPool
 
 log = logging.getLogger("seo.articles")
 
@@ -227,7 +228,7 @@ def trends_related(topic: str) -> tuple[list[str], str]:
         finally:
             _trends_lock.release()
 
-    pool = ThreadPoolExecutor(max_workers=1)
+    pool = _CallPool(max_workers=1)  # the process-wide limit applies: a call that hangs past its deadline keeps one place until it ends, so hangs cannot pile up threads
     try:
         found = pool.submit(fetch).result(timeout=TRENDS_BUDGET_SECONDS)
     except (FutureTimeout, Exception) as exc:  # 429s, timeouts, a missing pytrends: Ollama carries on alone
@@ -254,7 +255,7 @@ def _planner_call(seeds: list[str], limit: int) -> list[dict]:
     """One Keyword Planner call with a hard deadline, so a slow Google Ads answer never blocks the writer."""
     from . import google_ads_client as ads
 
-    pool = ThreadPoolExecutor(max_workers=1)
+    pool = _CallPool(max_workers=1)  # the process-wide limit applies: a call that hangs past its deadline keeps one place until it ends, so hangs cannot pile up threads
     try:
         return pool.submit(ads.keyword_ideas, seeds, limit=limit).result(timeout=PLANNER_BUDGET_SECONDS)
     finally:
@@ -2638,6 +2639,8 @@ def run_article(db: Session, article_id: int) -> None:
         from .seo_workflow import runner as wf_runner
         b = db.get(Business, a.business_id)
         wf = dict((a.stats or {}).get("workflow") or {})  # research + the confirmed brief, when the article came through the SEO workflow
+        from ..db import release_connection  # noqa: PLC0415
+        release_connection(db)  # the article and its business are read: no connection is held while the AI writes (each progress step takes one for its save)
         try:
             d = write(a.keyword, a.secondary_keywords or [], a.rising_keywords or [], b, a.topic or "", progress, a.length or "standard",
                       title_hint=a.title or None, brief=wf.get("brief"),  # a title picked on the Title step is kept
@@ -2680,7 +2683,13 @@ def run_batch(db: Session, article_ids: list[int]) -> None:
 
 
 def recover_interrupted(db: Session) -> int:
-    stuck = [a for a in db.scalars(select(Article).where(Article.status.in_(["pending", "generating"]))) if not durable.resuming(f"article:{a.id}")]
+    from ..db import release_connection  # noqa: PLC0415
+    release_connection(db)
+    try:
+        live = durable.live_refs()  # jobs another process is running (or is about to take over) are not "interrupted"
+    except Exception:  # noqa: BLE001
+        return 0
+    stuck = [a for a in db.scalars(select(Article).where(Article.status.in_(["pending", "generating"]))) if f"article:{a.id}" not in live]
     for a in stuck:
         a.status, a.error = "failed", "Interrupted by a server restart before it finished. Retry it."
     db.commit()

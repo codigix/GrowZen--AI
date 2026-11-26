@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import statistics
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
@@ -72,15 +72,19 @@ def _median(xs: list[float]) -> float | None:
 
 def analyse(db: Session, b: Business, comps: list[dict[str, Any]], region: str = "IN") -> dict[str, Any]:
     """Read every competitor's listing and this business's own, and say where the profile is behind."""
+    from ..db import release_connection
+    release_connection(db)  # the Google reads below take seconds: no connection is held while they run
+    own_place = getattr(b, "place_id", None)
     with ThreadPoolExecutor(max_workers=5) as pool:
+        own = pool.submit(la.audit_one, own_place) if own_place else None  # this business's own listing is read at the same time as the competitors', not after them
         reads = list(pool.map(lambda it: _read(it, b, region), comps[:MAX_COMPETITORS]))
+        you = None
+        if own is not None:
+            try:
+                you = own.result()
+            except Exception:  # noqa: BLE001
+                you = None
     ok = [r for r in reads if not r.get("error")]
-    you = None
-    if getattr(b, "place_id", None):
-        try:
-            you = la.audit_one(b.place_id)
-        except Exception:  # noqa: BLE001
-            you = None
 
     # the checks side by side
     checks = []

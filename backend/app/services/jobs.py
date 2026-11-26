@@ -25,12 +25,16 @@ def recover_stale(db: Session, startup: bool = False) -> int:
     process did not start can be running (one instance only), so every unfinished run is dead."""
     q = select(Audit).where(Audit.status.in_(("queued", "running")))
     n = 0
+    try:
+        live = durable.live_refs()  # an audit that a job in ANY backend process is running (or is about to take over) is not dead
+    except Exception:  # noqa: BLE001
+        return 0
     for a in db.scalars(q):
         seen = a.updated_at or a.created_at
         if not startup and seen and (_now() - (seen if seen.tzinfo else seen.replace(tzinfo=timezone.utc))) < STALE:
             continue
-        if startup and durable.resuming(f"audit:{a.id}"):
-            continue  # its job is being started again after the restart: the page keeps waiting for it
+        if f"audit:{a.id}" in live:
+            continue  # a job is running it, or is about to be started again after a restart: the page keeps waiting for it
         a.status = "failed"
         a.error = a.error or "Interrupted: the server restarted (or the run stalled) before it finished. Run it again."
         a.finished_at = _now()

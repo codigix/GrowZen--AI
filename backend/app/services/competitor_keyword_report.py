@@ -4,7 +4,7 @@ No website, speed or technical checks of the competitor are made."""
 from __future__ import annotations
 
 import re
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from typing import Any
 
 import httpx

@@ -15,7 +15,7 @@ from .. import access
 from ..auth import User, current_user
 from ..competitors import intel
 from ..config import get_settings
-from ..db import get_db
+from ..db import get_db, release_connection
 from ..deps import get_business
 from ..services.durable import durable
 from ..models import Audit, Business, GeoPrompt, GeoResult, GoogleConnection, Keyword, KeywordRankLog, Competitor
@@ -83,10 +83,14 @@ class CheckIn(BaseModel):
 def check_ranks(body: CheckIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Google's organic position of the site for each tracked keyword (read from Google Search Console), saved so the next
     check shows the change and the history chart grows."""
-    try:
-        out = organic.check(db, b, body.keywords)
-    except organic.RankCheckError as exc:
-        raise HTTPException(400 if "website" in str(exc) or "Google account" in str(exc) or "Search Console" in str(exc) else 502, str(exc)) from exc
+    from ..services import inflight  # noqa: PLC0415
+    with inflight.only_one(("check_ranks", b.id)) as first:
+        if not first:
+            raise HTTPException(409, "A rank check for this project is already running. Wait for it to finish.")
+        try:
+            out = organic.check(db, b, body.keywords)
+        except organic.RankCheckError as exc:
+            raise HTTPException(400 if "website" in str(exc) or "Google account" in str(exc) or "Search Console" in str(exc) else 502, str(exc)) from exc
     log(db, user.name, "ranks_checked", b.id, keywords=out["checked"])
     db.commit()
     return out
@@ -470,7 +474,7 @@ _Q_STARTS = ("what is", "what are", "what does", "how to", "how do", "how does",
 
 def _questions(kw: str, geo: str | None, country: str) -> list[dict]:
     """Questions people type about the keyword: Google's own suggestions for "what is ...", "how to ..." and the rest, then each one's searches a month from the Keyword Planner."""
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from app.services.fanout import ThreadPoolExecutor  # noqa: PLC0415
 
     from ..services import countries, keywords  # noqa: PLC0415
     from ..services import google_ads_client as ads  # noqa: PLC0415
@@ -515,7 +519,7 @@ def _by_country(kw: str, home: str | None) -> list[dict]:
         except Exception:  # noqa: BLE001 -- one country failing must not hide the others
             return None
         return {"code": code, "name": _COUNTRY_NAMES[code], "volume": got["volume"], "cpc": got["cpc"], "index": got["competition_index"], "monthly": [{"year": m["year"], "month": m["month"], "searches": m["searches"]} for m in got.get("monthly") or []]} if got and got.get("volume") else None
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from app.services.fanout import ThreadPoolExecutor  # noqa: PLC0415
     with ThreadPoolExecutor(max_workers=8) as pool:  # the countries are asked together, not one after the other
         out = [r for r in pool.map(ask, codes) if r]
     total = sum(r["volume"] for r in out) or 1
@@ -607,11 +611,12 @@ class BatchIn(BaseModel):
 
 
 @router.post("/keyword-difficulty/batch")
-def keyword_difficulty_batch(body: BatchIn, b: Business = Depends(get_business)):
+def keyword_difficulty_batch(body: BatchIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """The difficulty score of a few keywords at once (the ones listed in the ideas), each read from the real top 10 on Google. Authority figures are kept for a day, so repeats are cheaper."""
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from app.services.fanout import ThreadPoolExecutor  # noqa: PLC0415
 
     from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    release_connection(db)  # nothing more is read from the database: the connection is not held while Google, Apify and Moz are asked
     country = (body.country or "").upper() or market.serp_country(b)
     location, geo = _place_geo(b, country, _wanted(body))
 
@@ -627,10 +632,11 @@ def keyword_difficulty_batch(body: BatchIn, b: Business = Depends(get_business))
 
 
 @router.post("/keyword-difficulty")
-def keyword_difficulty(body: DifficultyIn, b: Business = Depends(get_business)):
+def keyword_difficulty(body: DifficultyIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """The SEO difficulty of one keyword from the real top 10 of Google: Domain Authority, Page Authority and referring domains of those sites, the SERP features, with the top 10, People also ask,
     related searches and ads of that results page."""
     from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    release_connection(db)  # nothing more is read from the database: the connection is not held while Google, Apify and Moz are asked
     country = (body.country or "").upper() or market.serp_country(b)
     location, geo = _place_geo(b, country, _wanted(body))
     try:
@@ -647,6 +653,10 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
     if not keyword_metrics.enabled():
         raise HTTPException(400, "Keyword Overview uses the Google Ads Keyword Planner: set the GOOGLE_ADS_* values on the SEO backend.")
     kw = " ".join(body.keyword.lower().split())
+    saved = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))  # the only database read of this endpoint: done first
+    you = {"tracked": bool(saved and saved.tracked), "rank": saved.rank if saved else None, "prev_rank": saved.prev_rank if saved else None,
+           "checked_at": saved.rank_checked_at if saved else None, "target_url": saved.target_url if saved else None}
+    release_connection(db)  # so the connection is not held through the many Google Ads calls below
     country = (body.country or "").upper() or market.serp_country(b)
     geo, found_as = ads.geo_target_for(country), None
     wanted = _wanted(body)
@@ -692,7 +702,6 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
             exact["three_month_change"] = round((sum(ms[-3:]) - sum(ms[-6:-3])) * 100 / sum(ms[-6:-3]), 1)
         if len(ms) >= 12 and ms[0]:
             exact["yoy_change"] = round((ms[-1] - ms[0]) * 100 / ms[0], 1)
-    saved = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
     listing = [i for i in ideas if not _variant(i["keyword"], kw)]  # the keyword's own spellings and word orders are not ideas
     groups = _idea_groups(kw, listing)
     asked = _questions(kw, geo, country)  # Google rarely lists questions as ideas: the ones people type into Google are asked of its suggestions, then measured
@@ -711,8 +720,7 @@ def keyword_overview(body: OverviewIn, b: Business = Depends(get_business), db: 
                     "three_month_change": (exact or {}).get("three_month_change"), "yoy_change": (exact or {}).get("yoy_change"), "monthly": monthly},
         "ideas": [{"keyword": i["keyword"], "volume": i["avg_monthly_searches"], "competition": i["competition"], "index": i["competition_index"], "cpc": i["high_top_of_page_bid"]} for i in ideas if i["keyword"].lower() != kw][:40],
         "groups": groups, "clusters": _clusters(kw, listing), "countries": world, "world_volume": None if body.lite else _world_volume(kw), "ideas_from": ideas_from,
-        "you": {"tracked": bool(saved and saved.tracked), "rank": saved.rank if saved else None, "prev_rank": saved.prev_rank if saved else None,
-                "checked_at": saved.rank_checked_at if saved else None, "target_url": saved.target_url if saved else None},
+        "you": you,
     }
 
 
@@ -938,6 +946,7 @@ def domain(range: str = "3m", country: str | None = None, device: str | None = N
     pickable = [] if conns else list(db.scalars(select(GoogleConnection).where(GoogleConnection.status == "active", GoogleConnection.refresh_token_enc.is_not(None), GoogleConnection.connected_by == f"user {b.owner_id}").order_by(GoogleConnection.email)))
     out["traffic"]["accounts"] = [{"id": c.id, "email": c.email, "search_console": gsc.has_scope(c)} for c in (conns or pickable)]
     out["traffic"]["linked"] = bool(b.connection_id)
+    release_connection(db)  # the accounts are read: no connection is held while Search Console answers (several requests of up to 40 s)
     if not host:
         out["traffic"] = {"state": "no_website", "message": "Add the project's website first: Search Console is matched by its domain."}
     elif not conns:

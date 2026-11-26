@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, Legend, AreaChart, Area, PieChart, Pie, Cell, ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip } from 'recharts';
 import { ExternalLink, Plus, Check, Info, RefreshCw, ChevronRight } from 'lucide-react';
 import { Card, Badge, Button, useAction, SkList } from './SeoUi';
-import { api, useApi, fmt, fmtDate } from './seoApi';
+import { api, useApi, usePoll, fmt, fmtDate } from './seoApi';
 import { KeywordActs, OpenAct } from './TableBits';
 import { AllPages } from './TopPagesReport';
 import { AXIS, PALETTE, Th, Chg, Empty, Filter, Segmented, path } from './PositionUi';
@@ -87,11 +87,7 @@ export function PagesTab({ b }) {
   const [busy, error, run] = useAction();
   const d = data.data;
   const crawling = Boolean(d?.crawling);
-  useEffect(() => {
-    if (!crawling) return undefined;
-    const t = setInterval(() => data.reload(true), 5000);
-    return () => clearInterval(t);
-  }, [crawling]); // eslint-disable-line react-hooks/exhaustive-deps
+  usePoll(() => data.reload(true), crawling, 5000);  // follows the crawl until it ends; pauses on a hidden tab and never stacks requests
   const crawl = () => run('crawl', async () => { await api(`/businesses/${b.id}/seo/crawl-pages?pages=150`, { method: 'POST' }); data.reload(true); });
   if (data.error) return <Card><p className="text-13 text-rose-600">{data.error.message}</p></Card>;
   if (!d) return <SkList rows={6} />;

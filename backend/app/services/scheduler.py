@@ -7,7 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select, text
 
 from ..config import get_settings
-from ..db import SessionLocal
+from ..db import SessionLocal, release_connection
 from . import intake, jobs, locks, pipeline, schedules, site_publish
 
 log = logging.getLogger("seo.scheduler")
@@ -26,12 +26,21 @@ def tick() -> dict[str, int]:
         if not lock.acquired:
             return out
         out["recovered"] = jobs.recover_stale(db)
+        try:
+            from . import lighthouse_runner
+            out["recovered"] += lighthouse_runner.recover_interrupted(db)  # audits whose process died (the start-up pass only sees the ones that are already quiet)
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            log.warning("Lighthouse recovery failed: %s", exc)
         jobs.prune(db)
+        release_connection(db)  # housekeeping is saved: the tick's session holds no connection between its stages
         try:
             out["emails"] = len(intake.poll_imap(db))
         except Exception as exc:
             log.warning("IMAP poll failed: %s", exc)
+        release_connection(db)
         out["onboarded"] = pipeline.process_waiting(db)
+        release_connection(db)
         try:  # projects created before a job type existed get its schedule row (weekly plan, monthly site research)
             from ..models import Business
             for b in db.scalars(select(Business).where(Business.status != "paused")):
@@ -40,7 +49,9 @@ def tick() -> dict[str, int]:
             db.rollback()
             log.warning("Schedule backfill failed: %s", exc)
         out["jobs"] = schedules.run_due(db)
+        release_connection(db)
         out["posts"] = site_publish.run_due_scheduled(db)  # blog posts held for a chosen time
+        release_connection(db)
         try:
             from . import google_changes
             google_changes.run_due(db)  # tell the owner when Google shows an edit that was waiting for its review

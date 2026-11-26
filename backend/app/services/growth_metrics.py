@@ -222,6 +222,8 @@ def read_own_page(url: str, website: str | None) -> dict[str, Any]:
 def _fresh_xray(db: Session, b: Business) -> tuple[dict[str, Any] | None, str | None]:
     """Run a Page X-Ray of the project's own homepage now (and keep it in the history so the next measurement can reuse it)."""
     from . import page_xray, page_xray_history
+    from ..db import release_connection
+    release_connection(db)  # when nothing is waiting to be saved: the connection is not held while the page is fetched
     try:
         url = page_xray.normalise_url(b.website)
         report = read_own_page(url, b.website)

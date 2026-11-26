@@ -11,13 +11,15 @@ import math
 import socket
 import time
 from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from concurrent.futures import TimeoutError as FutureTimeout
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
+from ..db import release_connection
 from ..models import Business
 from . import hub
 from .models import Backlink, BiDomain
@@ -65,22 +67,41 @@ def _ips(domains: list[str]) -> dict[str, str | None]:
     return out
 
 
-def _gsc_clicks(db: Session, b: Business) -> int | None:
-    """Clicks from Google to the site in the last 28 days (Search Console): its organic traffic."""
+def _gsc_context(db: Session, b: Business) -> tuple[Any, str] | None:
+    """The Search Console client and property of the project's site, or None. It reads `db`, so it runs on the thread that owns the session (the request's), never in a worker.
+    What it returns is plain (a client built from the account's id and stored token, and the property's name)."""
     try:
-        from ..services import google_rank, gsc, gsc_access  # noqa: PLC0415
+        from ..services import google_rank, gsc_access, organic_rankings  # noqa: PLC0415
         host = google_rank.host_of(b.website)
         if not host:
             return None
         state, _msg, sc, site = gsc_access.search_console(db, b, host)
         if state != "ok":
             return None
+        return organic_rankings.plain_search_console(sc), site
+    except Exception as exc:  # noqa: BLE001 -- without Search Console the organic traffic is simply not shown
+        log.info("search console clicks unavailable: %r", exc)
+        return None
+
+
+def _gsc_clicks_of(ctx: tuple[Any, str] | None) -> int | None:
+    """Clicks from Google to the site in the last 28 days (Search Console): its organic traffic. Uses no database session, so it may run in a worker thread."""
+    if ctx is None:
+        return None
+    try:
+        from ..services import gsc  # noqa: PLC0415
+        sc, site = ctx
         end = date.today() - timedelta(days=gsc.LAG_DAYS)
         rows = sc.query(site, gsc._body(end - timedelta(days=27), end, None, 1, None))
         return int(rows[0].get("clicks") or 0) if rows else 0
     except Exception as exc:  # noqa: BLE001 -- without Search Console the organic traffic is simply not shown
         log.info("search console clicks unavailable: %r", exc)
         return None
+
+
+def _gsc_clicks(db: Session, b: Business) -> int | None:
+    """Clicks from Google to the site in the last 28 days (Search Console): its organic traffic."""
+    return _gsc_clicks_of(_gsc_context(db, b))
 
 
 def _similar(db: Session, domain: str, sources: list[str]) -> list[dict[str, Any]]:
@@ -133,7 +154,9 @@ def overview(db: Session, b: Business) -> dict[str, Any]:
     live = [x for x in rows if x["is_live"]]
     now = datetime.now(timezone.utc)
     with ThreadPoolExecutor(max_workers=3) as pool:
-        f_auth, f_clicks = pool.submit(uo.authority, domain), pool.submit(_gsc_clicks, db, b)
+        f_auth = pool.submit(uo.authority, domain)
+        f_clicks = pool.submit(_gsc_clicks_of, _gsc_context(db, b))  # the account is looked up on this thread (it reads `db`); the worker gets plain values only
+        release_connection(db)  # `rows` are read: no connection is held while Moz, Search Console and the DNS lookups are waited for
         doms: dict[str, dict[str, Any]] = {}
         for x in rows:
             d = doms.setdefault(x["source_domain"], {"domain": x["source_domain"], "links": 0, "live": 0, "first": None, "last": None, "cats": Counter(), "da": None, "pa": None, "spam": None})
@@ -499,10 +522,12 @@ def compare(db: Session, b: Business, competitors: list[str]) -> dict[str, Any]:
     with ThreadPoolExecutor(max_workers=6) as pool:
         f_auth = {n: pool.submit(uo.authority, n) for n in names}
         f_vis = {n: pool.submit(_visits, n) for n in names}
-        f_clicks = pool.submit(_gsc_clicks, db, b)
+        f_clicks = pool.submit(_gsc_clicks_of, _gsc_context(db, b))  # the account is looked up on this thread; `db` is used by this thread alone while the workers run
         profiles = []
+        crawls = {n: (_crawler_profile(db, b, n) if n in tracked or n == me else None) for n in names}  # the database work of every site first
+        release_connection(db)  # nothing more is read: no connection is held while Moz and Similarweb are waited for
         for n in names:
-            crawl = _crawler_profile(db, b, n) if n in tracked or n == me else None
+            crawl = crawls[n]
             au = f_auth[n].result()
             au = au if au and not au.get("error") else None
             vis = f_vis[n].result()

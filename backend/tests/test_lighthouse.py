@@ -560,6 +560,7 @@ def test_restart_marks_old_unfinished_audits_failed_and_runs_recent_ones_again(l
     db.add_all([old, recent])
     db.commit()
     db.execute(text("update lighthouse_audits set created_at = :t where id = :i"), {"t": lighthouse_runner._now() - timedelta(hours=2), "i": old.id})
+    db.execute(text("update lighthouse_audits set updated_at = :t where id in (:a, :b)"), {"t": lighthouse_runner._now() - timedelta(hours=1), "a": old.id, "b": recent.id})  # untouched for longer than any run takes
     db.commit()
     db.refresh(old)
     assert lighthouse_runner.recover_interrupted(db) >= 2

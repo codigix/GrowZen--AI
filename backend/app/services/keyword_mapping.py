@@ -54,8 +54,12 @@ BY_HAND = ("optimization", "new_page", "completed")  # the statuses a person set
 
 def plan(db: Session, b: Business) -> dict[str, Any]:
     crawl = gc._crawl(db, b)
+def plan(db: Session, b: Business, kws: list[Any] | None = None, crawl: dict[str, Any] | None = None) -> dict[str, Any]:
+    """`kws` / `crawl` (optional): the project's tracked keywords and its crawl (as `growth_content._crawl` returns it) when the caller has already read them.
+    The keywords then only need keyword, volume, intent, target_url and role. By default both are read here, as before."""
+    crawl = gc._crawl(db, b) if crawl is None else crawl
     pages = [p for p in (crawl.get("pages") or []) if p.get("status") == 200 and p.get("url")]
-    kws = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+    kws = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)))) if kws is None else list(kws)
     kws.sort(key=lambda k: -(k.volume or 0))
     corp = []
     # A site that sends the same title and description on most pages (a single-page app) says nothing about which page is which: those two are ignored there and the web address leads.

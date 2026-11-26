@@ -9,7 +9,7 @@ domain/country/size and reused for the number of days in domain_checks.LIMITS.
 """
 import logging
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 from urllib.parse import urlparse

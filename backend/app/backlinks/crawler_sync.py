@@ -7,14 +7,14 @@ pages are not fetched again here. When the crawler is not set up, bot.run_cycle 
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ..db import utcnow
+from ..db import release_connection, utcnow
 from ..models import Business
 from ..services import crawler_client as cc
 from . import bot, sync, tasks
-from .models import Backlink, BacklinkEvent, BiTrackedTarget
+from .models import Backlink, BacklinkEvent, BiBotConfig, BiTrackedTarget
 from .repository import LinkRecord, upsert_imported_link
 
 log = logging.getLogger("seo.backlinks.crawler_sync")
@@ -146,7 +146,12 @@ def run_cycle(db: Session, business_id: int, **_ignored) -> dict:
         return {"skipped": "already running"}
     prior_run = cfg.last_run_at
     started = utcnow()
-    cfg.running, cfg.run_started_at = True, started
+    # The place is taken with one conditional UPDATE, so two callers (the scheduler and a person pressing the button, or two server processes) can never both start a sync of this business:
+    # only the one that finds the flag down (or a run that crashed long ago: `running` still up but not `is_running`) takes it.
+    claim = [BiBotConfig.business_id == business_id] + ([] if cfg.running else [BiBotConfig.running.is_not(True)])
+    if db.execute(update(BiBotConfig).where(*claim).values(running=True, run_started_at=started)).rowcount != 1:
+        db.rollback()
+        return {"skipped": "already running"}
     db.commit()
     stats = {"source": "crawler", "pages": 0, "errors": 0, "blocked": 0, "queued": 0, "new_backlinks": 0, "new_backlinks_all": 0, "seeded": 0, "rendered": 0,
              "links_read": 0, "domains": 0, "error": None}
@@ -158,6 +163,7 @@ def run_cycle(db: Session, business_id: int, **_ignored) -> dict:
         tracked = [(d, bool(c)) for d, c in rows]
         mine = [d for d, _ in tracked]
         own_domains = [d for d, comp in tracked if not comp]
+        release_connection(db)  # the targets are read: no connection is held while the crawler server answers (up to 90 s a request)
         stats["registered"] = register_domains(own_domains)  # the business's own site: the crawler starts crawling for backlinks to it
         stats["competitors_registered"] = register_competitors(own_domains[0] if own_domains else None, [d for d, comp in tracked if comp])  # and who its competitors are
         for domain in mine:

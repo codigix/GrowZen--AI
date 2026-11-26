@@ -12,11 +12,30 @@ from collections import defaultdict, deque
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
-from ..db import SessionLocal
+from ..db import SessionLocal, engine
 from ..models import LoginFailure, RateHit
 
 log = logging.getLogger("seo.ratelimit")
 _CLEAN_EVERY = 200  # calls between deletions of expired windows
+
+
+def pool_is_full() -> bool:
+    """True when every database connection this process may open is already in use. A caller that is itself holding a connection (a request) must not then wait for a second one for
+    the pool's whole timeout while holding the first: the limiter counts in memory for that call instead, and no connection is taken."""
+    pool = engine.pool
+    try:
+        return pool.checkedout() >= pool.size() + pool._max_overflow
+    except Exception:  # noqa: BLE001 - a pool that does not report this (SQLite in memory, a null pool) is never "full"
+        return False
+
+
+def _upsert():
+    """INSERT ... ON CONFLICT for the database in use (PostgreSQL in production, SQLite in tests)."""
+    if engine.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert  # noqa: PLC0415
+    else:
+        from sqlalchemy.dialects.sqlite import insert  # noqa: PLC0415
+    return insert
 
 
 class Hits:
@@ -29,6 +48,9 @@ class Hits:
     def hit(self, caller: str, limit: int, window: int) -> bool:
         """Count one call. True = allowed, False = over the limit for this window."""
         caller = str(caller)[:120]
+        if pool_is_full():
+            log.info("Rate limit '%s' counted in memory: every database connection is in use", self.name)
+            return self._hit_memory(caller, limit, window)
         try:
             return self._hit_db(caller, limit, window)
         except Exception as exc:  # noqa: BLE001
@@ -36,26 +58,20 @@ class Hits:
             return self._hit_memory(caller, limit, window)
 
     def _hit_db(self, caller: str, limit: int, window: int) -> bool:
+        """One statement, one round trip: the caller's row for this window is created with a count of 1, or its count goes up by one while it is still below the limit.
+        No row comes back when the limit was already reached, and the count is then left as it was. Two processes cannot both take the last place: the database decides."""
+        if limit <= 0:
+            return False
         bucket = int(time.time() // window)
+        stmt = (_upsert()(RateHit).values(name=self.name, caller=caller, window_start=bucket, ends_at=(bucket + 1) * window, count=1)
+                .on_conflict_do_update(index_elements=[RateHit.name, RateHit.caller, RateHit.window_start], set_={"count": RateHit.count + 1}, where=RateHit.count < limit)
+                .returning(RateHit.count))
         with SessionLocal() as db:
-            for attempt in (1, 2):
-                row = db.scalar(select(RateHit).where(RateHit.name == self.name, RateHit.caller == caller, RateHit.window_start == bucket).with_for_update())
-                if row is not None:
-                    break
-                try:
-                    db.add(RateHit(name=self.name, caller=caller, window_start=bucket, ends_at=(bucket + 1) * window, count=0))
-                    db.commit()
-                except IntegrityError:  # another process created it first: read theirs
-                    db.rollback()
-            if row is None:
-                raise RuntimeError("rate row unavailable")
-            if row.count >= limit:
-                db.rollback()
-                return False
-            row.count += 1
+            allowed = db.execute(stmt).first() is not None
             db.commit()
-        self._maybe_clean(window)
-        return True
+        if allowed:
+            self._maybe_clean(window)
+        return allowed
 
     def _maybe_clean(self, window: int) -> None:
         with self._lock:
@@ -103,6 +119,8 @@ class FailureLog:
     def recent(self, key: str, window: float) -> list[float]:
         now = time.time()
         try:
+            if pool_is_full():
+                raise RuntimeError("every database connection is in use")
             with SessionLocal() as db:
                 if now % 50 < 1:  # now and then drop what no window can still need
                     db.execute(delete(LoginFailure).where(LoginFailure.at < now - self.MAX_AGE))
@@ -116,6 +134,8 @@ class FailureLog:
     def add(self, key: str) -> None:
         now = time.time()
         try:
+            if pool_is_full():
+                raise RuntimeError("every database connection is in use")
             with SessionLocal() as db:
                 db.add(LoginFailure(key=key[:320], at=now))
                 db.commit()

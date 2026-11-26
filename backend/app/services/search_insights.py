@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 import re
@@ -899,6 +899,7 @@ def snapshot(db: Session, user: Any, b: Business, kind: str, refresh: bool = Fal
         if start:
             _running[key] = time.time()
     if start:
-        threading.Thread(target=_job, args=(b.id, kind, user), daemon=True).start()
+        from .durable import spawn  # noqa: PLC0415
+        spawn(_job, b.id, kind, user, name=f"insights-{kind}")
     return {"kind": kind, "data": row.payload if row else None, "fetched_at": fetched.isoformat() if fetched else None, "refreshing": busy or start, "error": row.error if row else None,
             "every_hours": TTL[kind] // 3600, "every_minutes": TTL[kind] // 60}

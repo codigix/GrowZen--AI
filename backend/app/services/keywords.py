@@ -9,7 +9,7 @@ Nearby localities come from OpenStreetMap (Photon reverse search).
 """
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date
 from typing import Any
 
@@ -394,16 +394,18 @@ def context_competitors(db: Session, b: Business) -> list[str]:
 MIN_KEYWORDS = 8  # the fewest saved keywords that make a useful list (the same number the journey and the Growth Plan use)
 
 
-def progress(db: Session, b: Business) -> dict[str, Any]:
-    """Where the project is on the keyword path: 1 find, 2 save, 3 group into topics (and give each a page), 4 track. One place for the rule, used by the page, the journey and the reports."""
-    rows = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True))))
+def progress(db: Session, b: Business, rows: list[Any] | None = None, check_research: bool = True) -> dict[str, Any]:
+    """Where the project is on the keyword path: 1 find, 2 save, 3 group into topics (and give each a page), 4 track. One place for the rule, used by the page, the journey and the reports.
+    `rows` (optional): the project's tracked keywords when the caller has already read them (objects or rows with keyword, cluster, target_url, rank_checked_at, uses, rank).
+    `check_research=False` skips the competitor-research read for a caller that does not use `researched` or the "find" step (the journey); the default is unchanged."""
+    rows = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)))) if rows is None else list(rows)
     n = len(rows)
     grouped = sum(1 for k in rows if (k.cluster or "").strip())
     mapped = sum(1 for k in rows if (k.target_url or "").strip())
     checked = sum(1 for k in rows if k.rank_checked_at)
     planned = sum(1 for k in rows if k.uses)
     ranking = sum(1 for k in rows if k.rank)
-    researched = competitor_research(db, b) is not None
+    researched = (competitor_research(db, b) is not None) if check_research else False
     steps = [
         {"key": "find", "title": "Find", "done": n > 0 or researched, "detail": "Competitor research is done: keyword ideas build on it." if researched else "Start with ideas for your business.", "to": "/keyword-management/ai"},
         {"key": "save", "title": "Save", "done": n >= MIN_KEYWORDS, "detail": f"{n} saved" + ("" if n >= MIN_KEYWORDS else f"; aim for at least {MIN_KEYWORDS}."), "to": "/keyword-management/tracked"},

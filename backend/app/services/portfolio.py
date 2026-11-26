@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from statistics import mean
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -34,16 +34,21 @@ def _iso(v: Any) -> str | None:
     return v.isoformat() if v else None
 
 
-def _ai_summary(db: Session, since: date) -> dict[str, Any]:
-    """What the AI side is doing: provider, autopilot rules, and each agent's workload."""
+def _in(col, ids: list[int] | None) -> list:
+    """A `business_id IN (...)` condition for the signed-in user's projects (none for admins, who see every project)."""
+    return [col.in_(ids)] if ids is not None else []
+
+
+def _ai_summary(db: Session, since: date, ids: list[int] | None, pending_by_agent: dict[str, int]) -> dict[str, Any]:
+    """What the AI side is doing: provider, autopilot rules, and each agent's workload (for the user's projects only)."""
     s = get_settings()
     start = datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc)
     pb = db.get(Playbook, 1)  # read only: never create the playbook here
     rules = (pb.approval_rules if pb and pb.approval_rules else DEFAULT_APPROVAL)
     agents = {k: {"label": label, "does": does, "pending": 0, "proposed_30": 0, "applied_30": 0, "rejected_30": 0, "failed_30": 0} for k, (label, does) in AGENTS.items()}
-    for agent_name, status, n in db.execute(select(AgentTask.agent, AgentTask.status, func.count()).where(AgentTask.status == "pending").group_by(AgentTask.agent, AgentTask.status)):
+    for agent_name, n in pending_by_agent.items():  # already read by summary() (one query for both the per-project and the per-agent count)
         agents.setdefault(agent_name, {"label": agent_name.title(), "does": "", "pending": 0, "proposed_30": 0, "applied_30": 0, "rejected_30": 0, "failed_30": 0})["pending"] = n
-    for agent_name, status, n in db.execute(select(AgentTask.agent, AgentTask.status, func.count()).where(AgentTask.created_at >= start).group_by(AgentTask.agent, AgentTask.status)):
+    for agent_name, status, n in db.execute(select(AgentTask.agent, AgentTask.status, func.count()).where(AgentTask.created_at >= start, *_in(AgentTask.business_id, ids)).group_by(AgentTask.agent, AgentTask.status)):
         a = agents.setdefault(agent_name, {"label": agent_name.title(), "does": "", "pending": 0, "proposed_30": 0, "applied_30": 0, "rejected_30": 0, "failed_30": 0})
         a["proposed_30"] += n
         if status in ("applied", "rejected", "failed"):
@@ -64,32 +69,49 @@ def summary(db: Session, ids: list[int] | None = None) -> dict[str, Any]:
     def per_business(stmt) -> dict[int, int]:
         return {bid: n for bid, n in db.execute(stmt).all()}
 
-    pending = per_business(select(AgentTask.business_id, func.count()).where(AgentTask.status == "pending").group_by(AgentTask.business_id))
-    leads = per_business(select(Lead.business_id, func.count()).where(Lead.lead_date > since).group_by(Lead.business_id))
-    unreplied = per_business(select(Review.business_id, func.count()).where(Review.reply_status.in_(["none", "draft"])).group_by(Review.business_id))
-    running = {bid for (bid,) in db.execute(select(Audit.business_id).where(Audit.business_id.is_not(None), Audit.status.in_(["queued", "running"]))).all()}
+    # Every read below is limited to the user's projects (`ids`; None = all, for admins): nothing is computed for other people's clients.
+    # Pending tasks: one query by project and agent feeds both the per-project count and the per-agent count in the AI summary.
+    pending: dict[int, int] = {}
+    pending_by_agent: dict[str, int] = {}
+    for bid, agent_name, n in db.execute(select(AgentTask.business_id, AgentTask.agent, func.count()).where(AgentTask.status == "pending", *_in(AgentTask.business_id, ids)).group_by(AgentTask.business_id, AgentTask.agent)):
+        pending[bid] = pending.get(bid, 0) + n
+        pending_by_agent[agent_name] = pending_by_agent.get(agent_name, 0) + n
+    leads = per_business(select(Lead.business_id, func.count()).where(Lead.lead_date > since, *_in(Lead.business_id, ids)).group_by(Lead.business_id))
+    unreplied = per_business(select(Review.business_id, func.count()).where(Review.reply_status.in_(["none", "draft"]), *_in(Review.business_id, ids)).group_by(Review.business_id))
+    running = {bid for (bid,) in db.execute(select(Audit.business_id).where(Audit.business_id.is_not(None), Audit.status.in_(["queued", "running"]), *_in(Audit.business_id, ids))).all()}
 
-    # Google customer actions: last 30 days and the 30 before, per business, and per day across all.
-    def actions(a: date, z: date) -> dict[int, dict[str, int]]:
-        stmt = (select(InsightDay.business_id, func.sum(InsightDay.calls), func.sum(InsightDay.directions), func.sum(InsightDay.website_clicks))
-                .where(InsightDay.day > a, InsightDay.day <= z).group_by(InsightDay.business_id))
-        return {bid: {"calls": int(c or 0), "directions": int(d or 0), "website_clicks": int(w or 0)} for bid, c, d, w in db.execute(stmt)}
-
+    # Google customer actions: last 30 days and the 30 before, per business (one query, two conditional sums), and per day across the user's projects.
     today = date.today()
-    actions_now, actions_before = actions(since, today), actions(since - timedelta(days=30), since)
+    prev_start = since - timedelta(days=30)
+    now_window = (InsightDay.day > since) & (InsightDay.day <= today)
+    prev_window = (InsightDay.day > prev_start) & (InsightDay.day <= since)
+
+    def window_sum(col, window):
+        return func.sum(case((window, col), else_=0))
+
+    actions_now: dict[int, dict[str, int]] = {}
+    actions_before: dict[int, dict[str, int]] = {}
+    stmt = select(InsightDay.business_id, *[window_sum(c, w) for w in (now_window, prev_window) for c in (InsightDay.calls, InsightDay.directions, InsightDay.website_clicks)]) \
+        .where(InsightDay.day > prev_start, InsightDay.day <= today, *_in(InsightDay.business_id, ids)).group_by(InsightDay.business_id)
+    for bid, c1, d1, w1, c0, d0, w0 in db.execute(stmt):
+        actions_now[bid] = {"calls": int(c1 or 0), "directions": int(d1 or 0), "website_clicks": int(w1 or 0)}
+        actions_before[bid] = {"calls": int(c0 or 0), "directions": int(d0 or 0), "website_clicks": int(w0 or 0)}
     daily = [{"day": d.isoformat(), "calls": int(c or 0), "directions": int(r or 0), "website_clicks": int(w or 0)} for d, c, r, w in db.execute(
         select(InsightDay.day, func.sum(InsightDay.calls), func.sum(InsightDay.directions), func.sum(InsightDay.website_clicks))
-        .where(InsightDay.day > since, *([InsightDay.business_id.in_(ids)] if ids is not None else [])).group_by(InsightDay.day).order_by(InsightDay.day))]
+        .where(InsightDay.day > since, *_in(InsightDay.business_id, ids)).group_by(InsightDay.day).order_by(InsightDay.day))]
 
     schedules: dict[int, list[Schedule]] = {}
-    for s in db.scalars(select(Schedule)):
+    for s in db.scalars(select(Schedule).where(*_in(Schedule.business_id, ids))):
         schedules.setdefault(s.business_id, []).append(s)
 
-    # Newest finished audit per business and area (only the columns needed, not the large results).
+    # Newest finished audit per business and area, picked by the database (a window function), not by reading every audit ever run and keeping the first
+    # of each. Only the columns needed: not the large `result`.
     latest: dict[tuple[int, str], Any] = {}
     cols = (Audit.business_id, Audit.kind, Audit.status, Audit.score, Audit.issues, Audit.error, Audit.finished_at, Audit.data_source)
-    for a in db.execute(select(*cols).where(Audit.business_id.is_not(None), Audit.status.in_(["done", "failed"])).order_by(Audit.created_at.desc(), Audit.id.desc())):
-        latest.setdefault((a.business_id, a.kind), a)
+    rank = func.row_number().over(partition_by=(Audit.business_id, Audit.kind), order_by=(Audit.created_at.desc(), Audit.id.desc())).label("rn")
+    newest = select(Audit.id, rank).where(Audit.business_id.is_not(None), Audit.status.in_(["done", "failed"]), Audit.kind.in_(KINDS), *_in(Audit.business_id, ids)).subquery()
+    for a in db.execute(select(*cols).join(newest, newest.c.id == Audit.id).where(newest.c.rn == 1)):
+        latest[(a.business_id, a.kind)] = a
 
     projects = []
     for b in businesses:
@@ -158,7 +180,7 @@ def summary(db: Session, ids: list[int] | None = None) -> dict[str, Any]:
     upcoming = sorted(((s, by_id[bid]) for bid, rows in schedules.items() if bid in by_id for s in rows
                        if s.every != "off" and s.next_run_at and by_id[bid]["status"] != "paused"), key=lambda x: x[0].next_run_at)[:12]
     return {
-        "ai": _ai_summary(db, since),
+        "ai": _ai_summary(db, since, ids, pending_by_agent),
         "insights": {
             "last_30": {k: sum(v[k] for v in actions_now.values()) for k in ZERO},
             "previous_30": {k: sum(v[k] for v in actions_before.values()) for k in ZERO},

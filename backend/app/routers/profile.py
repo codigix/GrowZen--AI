@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import access
 from ..auth import User, current_user
-from ..db import get_db
+from ..db import get_db, release_connection
 from ..deps import get_business
 from ..models import AgentTask, Business, Post, Review
 from ..schemas import PostIn, ReplyIn
@@ -170,10 +170,11 @@ def _clean_tags(tags, limit: int = 8) -> list[str]:
 
 
 @router.post("/posts/compose")
-def compose_post(body: ComposeIn, b: Business = Depends(get_business)):
+def compose_post(body: ComposeIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """AI text and hashtags for one post, grounded in the profile. Nothing is saved: the editor shows it for a person to check."""
     if not ai.is_configured():
         raise HTTPException(503, "AI is not set up on the SEO platform.")
+    release_connection(db)  # nothing more is read from the database: no connection is held while the AI writes
     kind = body.post_type if body.post_type in ("Update", "Offer", "Event") else "Update"
     out = ai.complete_json(
         f"You write Google Business Profile posts.\n{ai.RULES}\n- Do not put hashtags inside the text; return them separately.",
@@ -221,10 +222,11 @@ def delete_post(post_id: int, b: Business = Depends(get_business), db: Session =
 
 # AI description
 @router.post("/ai/description")
-def ai_description(b: Business = Depends(get_business)):
+def ai_description(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Draft a 600-750 character GBP description from the profile (nothing invented). Not saved."""
     if not ai.is_configured():
         raise HTTPException(503, "AI is not set up on the SEO platform.")
+    release_connection(db)  # nothing more is read from the database: no connection is held while the AI writes
     text = ai.complete(f"You write Google Business Profile descriptions for local businesses.\n{ai.RULES}",
                        f"Business profile:\n{ai.profile_text(b)}\n\nWrite a 600-750 character description: what the business does and where, "
                        "main services and who they serve, what makes them different (only if given). "
@@ -262,12 +264,13 @@ def rule_faqs(b: Business) -> list[dict[str, str]]:
 
 
 @router.post("/ai/faqs")
-def ai_faqs(b: Business = Depends(get_business)):
+def ai_faqs(b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Draft FAQs for the website and Google Q&A from the profile (nothing invented). Not saved.
     AI-written with a key; otherwise template answers built only from the profile's facts."""
     base = rule_faqs(b)
     if not ai.is_configured():
         return {"source": "rules", "faqs": base}
+    release_connection(db)  # nothing more is read from the database: no connection is held while the AI writes
     try:
         out = ai.complete_json(f"You write FAQs for a local business website and its Google Q&A.\n{ai.RULES}\n- Answer only from the facts given; skip a question rather than guess.",
                                f"Business profile:\n{ai.profile_text(b)}\nOpening hours: {_hours_text(b.hours) or 'not given'}\nBooking: {b.booking_url or b.phone or 'not given'}\n\n"
@@ -309,6 +312,7 @@ def draft_reply(review_id: int, body: ReplyIn, b: Business = Depends(get_busines
         raise HTTPException(404, "Review not found")
     if not ai.is_configured():
         raise HTTPException(503, "AI is not set up on the SEO platform.")
+    release_connection(db)  # the review is read: no connection is held while the AI writes the reply (it is saved below)
     text = ai.complete(f"You reply to Google reviews for the owner.\n{ai.RULES}\n- Never offer anything for reviews.",
                        f"Business profile:\n{ai.profile_text(b)}\n\nReview ({r.rating} stars) by {r.author or 'a customer'}:\n\"{r.body or '(rating only)'}\"\n\nReply in {body.language}, 40-90 words. Only the reply.",
                        max_tokens=400)

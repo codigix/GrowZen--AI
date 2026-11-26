@@ -2,7 +2,7 @@
 backlinks, citations. Each audit saves a score, issues and whether the data was live or sample."""
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import mean
@@ -171,30 +171,48 @@ def overall(db: Session, b: Business) -> int | None:
     return round(mean(scores)) if scores else None
 
 
+LIGHTHOUSE_DB_CHECK_SECONDS = 10  # how often the database is looked at while waiting, when the runner has not said the audit is finished
+
+
+def _lighthouse_state(audit_id: int) -> dict[str, Any]:
+    """The audit's status and result fields as plain values, read in a short session that is closed before this returns."""
+    with SessionLocal() as s:
+        lh = s.get(LighthouseAudit, audit_id)
+        if lh is None:
+            return {"status": "failed", "error_message": "The Lighthouse audit was removed.", "raw_json_path": None, "engine_used": None, "fallback_reason": None}
+        return {"status": lh.status, "error_message": lh.error_message, "raw_json_path": lh.raw_json_path, "engine_used": lh.engine_used, "fallback_reason": lh.fallback_reason}
+
+
 def run_lighthouse(url: str, strategy: str = "mobile") -> dict[str, Any]:
     """Google Lighthouse for a website scan, through the Lighthouse engine: PageSpeed Insights, falling back
     to local Chrome when PageSpeed fails or its quota is used up. Returns the scan's summary (pagespeed.normalise
     shape) plus the id of the full Lighthouse audit, whose report has every category's audits and the
-    original HTML/JSON downloads. Runs in its own DB session (called from a worker thread)."""
-    db = SessionLocal()
+    original HTML/JSON downloads. Runs in its own short DB sessions (called from a worker thread): none is held while it waits
+    for the audit, which can take minutes. The runner tells it when the audit is finished; the database is only looked at when
+    that happens, and every LIGHTHOUSE_DB_CHECK_SECONDS otherwise (an audit run by another process or cut off by a restart never signals)."""
+    with SessionLocal() as db:
+        audit_id = lighthouse_runner.create_and_queue(db, url, strategy, "pagespeed").id
+    finished = lighthouse_runner.watch(audit_id)
     try:
-        lh = lighthouse_runner.create_and_queue(db, url, strategy, "pagespeed")
         deadline = time.monotonic() + get_settings().lighthouse_timeout_seconds * 2 + 60  # PageSpeed, then the local fallback
-        while lh.status in ("queued", "running"):
-            if time.monotonic() > deadline:
+        while True:
+            lh = _lighthouse_state(audit_id)
+            if lh["status"] not in ("queued", "running"):
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise pagespeed.PageSpeedTimeoutError("Google Lighthouse took too long")
-            time.sleep(1.5)
-            db.expire_all()
-            lh = db.get(LighthouseAudit, lh.id)
-        if lh.status != "completed":
-            raise pagespeed.PageSpeedError(lh.error_message or "Google Lighthouse failed")
-        raw = json.loads(Path(lh.raw_json_path).read_text(encoding="utf-8")) if lh.raw_json_path and Path(lh.raw_json_path).is_file() else None
-        if not raw:
-            raise pagespeed.PageSpeedError("Google Lighthouse finished without a report")
-        summary = pagespeed.normalise(raw if "lighthouseResult" in raw else {"lighthouseResult": raw}, strategy)  # local runs store the bare Lighthouse JSON
-        return summary | {"lighthouse_audit_id": lh.id, "engine_used": lh.engine_used, "fallback_reason": lh.fallback_reason}
+            finished.wait(timeout=min(LIGHTHOUSE_DB_CHECK_SECONDS, remaining))
+            finished.clear()
     finally:
-        db.close()
+        lighthouse_runner.unwatch(audit_id)
+    if lh["status"] != "completed":
+        raise pagespeed.PageSpeedError(lh["error_message"] or "Google Lighthouse failed")
+    raw = json.loads(Path(lh["raw_json_path"]).read_text(encoding="utf-8")) if lh["raw_json_path"] and Path(lh["raw_json_path"]).is_file() else None
+    if not raw:
+        raise pagespeed.PageSpeedError("Google Lighthouse finished without a report")
+    summary = pagespeed.normalise(raw if "lighthouseResult" in raw else {"lighthouseResult": raw}, strategy)  # local runs store the bare Lighthouse JSON
+    return summary | {"lighthouse_audit_id": audit_id, "engine_used": lh["engine_used"], "fallback_reason": lh["fallback_reason"]}
 
 
 def record_for_business(db: Session, b: Business, web: Audit) -> list[Audit]:

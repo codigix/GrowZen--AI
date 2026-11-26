@@ -16,7 +16,7 @@ import logging
 import re
 import secrets
 import time
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode, urlsplit

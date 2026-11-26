@@ -10,7 +10,9 @@ What this can and cannot do, so nothing here promises more than it delivers:
 import logging
 import re
 import secrets
-from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
+from app.services.fanout import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import quote, urljoin, urlsplit
@@ -21,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Business, IndexPage, IndexSetting, IndexStatDay
 from . import backlink_checker as bc
-from . import sitemap
+from . import lifecycle, sitemap
 from .activity import log
 
 logger = logging.getLogger("seo.indexing")
@@ -279,7 +281,7 @@ def check_pages(db: Session, b: Business, urls: list[str] | None = None, limit: 
     if not todo:
         return {"checked": 0, "indexable": 0, "risky": 0, "blocked": 0}
     robots = _robots_for(todo[0].url)
-    from concurrent.futures import ThreadPoolExecutor
+    from app.services.fanout import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=6) as pool:
         results = list(pool.map(lambda p: check_page(p.url, robots), todo))
     counts = {"indexable": 0, "risky": 0, "blocked": 0}
@@ -743,11 +745,64 @@ def on_published(db: Session, b: Business, url: str) -> None:
         st = setting(db, b)
         db.commit()
         if st.auto and st.key_verified_at:
-            import threading
-            threading.Thread(target=_send_later, args=(b.id, url[:1000]), daemon=True).start()
+            send_later(b.id, url[:1000])
     except Exception:  # noqa: BLE001
         logger.exception("Indexing a published page failed")
         db.rollback()
+
+
+SEND_DELAY_SECONDS = 25.0  # a site needs a moment before a just-published address opens
+_waiting: dict[tuple[int, str], float] = {}  # (project, address) -> when it is to be sent (monotonic seconds)
+_waiting_cv = threading.Condition()
+_sender: threading.Thread | None = None
+
+
+def send_later(business_id: int, url: str, delay: float | None = None) -> bool:
+    """Send a just-published page after a short wait, with ONE sender thread for the whole process (it starts when there is something to send and ends when there is not),
+    not a sleeping thread for every page. The same address waiting twice is sent once. Returns False when it was already waiting."""
+    global _sender, _closing
+    due = time.monotonic() + (SEND_DELAY_SECONDS if delay is None else delay)
+    with _waiting_cv:
+        _closing = False  # work arrived: a sender runs again (the process is not shutting down)
+        if (business_id, url) in _waiting:
+            return False
+        _waiting[(business_id, url)] = due
+        if _sender is None or not _sender.is_alive():
+            _sender = threading.Thread(target=_send_loop, daemon=True, name="indexing-sender")
+            _sender.start()
+        _waiting_cv.notify()
+    return True
+
+
+_closing = False  # set at shutdown so the sender leaves; cleared when a sender is started again
+
+
+def _wake_sender() -> None:
+    global _closing
+    with _waiting_cv:
+        _closing = True
+        _waiting_cv.notify_all()
+
+
+lifecycle.on_stop(_wake_sender)
+
+
+def _send_loop() -> None:
+    global _sender
+    while not _closing:  # at shutdown the sender leaves; what it had not sent is picked up by the daily indexing run
+        with _waiting_cv:
+            if not _waiting:
+                _waiting_cv.wait(60)  # a minute with nothing to send: the thread ends (the next page starts it again)
+                if not _waiting:
+                    _sender = None
+                    return
+            key, due = min(_waiting.items(), key=lambda kv: kv[1])
+            delay = due - time.monotonic()
+            if delay > 0:
+                _waiting_cv.wait(delay)
+                continue
+            del _waiting[key]
+        _send_later(key[0], key[1], wait=0)  # one at a time, each on a session of its own
 
 
 def _send_later(business_id: int, url: str, wait: float = 25.0) -> None:

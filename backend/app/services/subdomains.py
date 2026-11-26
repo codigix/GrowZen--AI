@@ -1,7 +1,7 @@
 """Find the subdomains of a site: certificate transparency logs (every HTTPS certificate issued for the domain), the hosts the
 site's own crawl links to, and Google's ranking results. Each one is then checked: does it resolve, and what does it answer."""
 import socket
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 import httpx

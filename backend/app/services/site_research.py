@@ -405,6 +405,8 @@ def run(db: Session, b: Business, refresh: bool = False) -> SiteProfile:
             if not stack:
                 stack = {"platform": "unknown", "label": "Unknown", "reachable": False, "stack": [], "details": {}}
             pages, crawl = _onpage_pages(db, b, refresh)
+            from ..db import release_connection  # noqa: PLC0415
+            release_connection(db)  # the crawl is read: no connection is held while the site is checked and the AI writes recommendations
             checks = site_checks(b.website, crawl)
             meta = metadata_audit(pages)
             recs = build_recommendations(stack, checks, meta, b, pages)

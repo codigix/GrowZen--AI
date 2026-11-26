@@ -12,10 +12,10 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ..db import utcnow
+from ..db import SessionLocal, release_connection, utcnow
 from ..models import Business
 from ..services import ai
 from ..services.activity import log as activity
@@ -309,8 +309,13 @@ def run_watch(db: Session, fetcher: engine.PageFetcher, b: Business, now: dateti
     if not competitors:
         return {"skipped": "no competitors tracked"}
     since = _aw(cfg.watch_last_run_at) or (now - INTERVAL)
-    cfg.watch_running, cfg.watch_started_at = True, now
+    # the place is taken with one conditional UPDATE: two callers (or two processes) can never both visit the same competitors
+    claim = [BiBotConfig.business_id == b.id] + ([] if cfg.watch_running else [BiBotConfig.watch_running.is_not(True)])
+    if db.execute(update(BiBotConfig).where(*claim).values(watch_running=True, watch_started_at=now)).rowcount != 1:
+        db.rollback()
+        return {"skipped": "already running"}
     db.commit()
+    release_connection(db)
     deadline = now + TIME_BUDGET
     visits, baseline_all = [], True
     budget = renderer.RenderBudget(10) if cfg.render_js and renderer.available() else None
@@ -344,7 +349,7 @@ def run_watch(db: Session, fetcher: engine.PageFetcher, b: Business, now: dateti
 def run_due(db: Session, fetcher: engine.PageFetcher, now: datetime | None = None) -> int:
     """Scheduler entry point: run the watch for every business whose last visit was a week or more ago."""
     now = now or utcnow()
-    ran = 0
+    due: list[int] = []
     for cfg in list(db.scalars(select(BiBotConfig))):
         if cfg.watch_enabled is False or is_running(cfg):
             continue
@@ -354,9 +359,18 @@ def run_due(db: Session, fetcher: engine.PageFetcher, now: datetime | None = Non
         b = db.get(Business, cfg.business_id)
         if b is None or not competitor_domains(db, b.id):
             continue
-        run_watch(db, fetcher, b, now)
-        ran += 1
-    return ran
+        due.append(b.id)
+    release_connection(db)
+    for business_id in due:  # every business is visited in a session of its own (a visit takes minutes): one failing never touches another
+        try:
+            with SessionLocal() as job_db:
+                b = job_db.get(Business, business_id)
+                if b is not None:
+                    run_watch(job_db, fetcher, b, now)
+        except Exception:  # noqa: BLE001 - one business failing must not stop the others
+            log.exception("Competitor watch failed for business %s", business_id)
+    db.expire_all()
+    return len(due)
 
 
 def _site(u: str | None) -> str:

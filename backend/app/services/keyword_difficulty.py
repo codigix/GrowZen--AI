@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import math
+import threading
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -69,7 +70,15 @@ def _serper(keyword: str, country: str, location: str | None = None) -> dict[str
 HEDGE_AFTER = 70  # seconds: a Google results run that is still going then is probably one of the slow ones (up to 8 minutes), so a second identical run is started and the first answer wins
 
 
+_APIFY_SLOTS = threading.BoundedSemaphore(8)  # Apify Google scrapes running at once in this process (each is a paid run that can take minutes, and a hedged copy is a second one)
+
+
 def _apify_once(tok: str, keyword: str, country: str) -> tuple[dict[str, Any] | None, str]:
+    with _APIFY_SLOTS:
+        return _apify_run(tok, keyword, country)
+
+
+def _apify_run(tok: str, keyword: str, country: str) -> tuple[dict[str, Any] | None, str]:
     try:
         r = httpx.post(SERP_URL, params={"token": tok, "memory": 4096}, json={"queries": keyword, "countryCode": countries.gl(country).lower(), "languageCode": "en", "maxPagesPerQuery": 1,
                                                                               "saveHtml": False, "saveHtmlToKeyValueStore": False, "resultsPerPage": 10, "mobileResults": False}, timeout=170)
@@ -111,7 +120,7 @@ def resolve_goto(url: str) -> str | None:
 
 def _open_gotos(organic: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Results whose address Google hid behind a redirect get their real address (looked up together), so they count like any other result."""
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from app.services.fanout import ThreadPoolExecutor  # noqa: PLC0415
     hidden = [o for o in organic if "google.com/goto" in o["url"]]
     if hidden:
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -387,7 +396,7 @@ def _volume(keyword: str, country: str, geo: str | None = None) -> int | None:
 
 
 def score(keyword: str, country: str, volume: int | None = None, use_cache: bool = False, location: str | None = None, geo: str | None = None, domain: str | None = None) -> dict[str, Any]:
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from app.services.fanout import ThreadPoolExecutor  # noqa: PLC0415
     with ThreadPoolExecutor(max_workers=2) as ex:  # the volume is asked while Google's results page is read
         vol = ex.submit(_volume, keyword, country, geo) if volume is None else None
         page = serp(keyword, country, location)
@@ -399,7 +408,7 @@ def score(keyword: str, country: str, volume: int | None = None, use_cache: bool
     for o in page["organic"]:
         m = metrics.get(o["site"]) or {}
         rows.append({**o, "da": m.get("da"), "pa": m.get("pa"), "rd": m.get("rd"), "spam": m.get("spam"), "rk": m.get("rk"), "as": authority_score(m.get("da"), m.get("rd"), m.get("spam"), m.get("rk"))})
-    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    from app.services.fanout import ThreadPoolExecutor  # noqa: PLC0415
     with ThreadPoolExecutor(max_workers=8) as pool:  # the pages are read together
         for r, sig in zip(rows, pool.map(lambda r: page_signals(r["url"], keyword), rows)):
             r.update({"words": sig.get("words"), "relevant": sig.get("relevant"), "age_days": sig.get("age_days")})

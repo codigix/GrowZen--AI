@@ -120,6 +120,8 @@ def suggest(db: Session, b: Business, topic: str = "") -> dict[str, Any]:
     if not ai.is_configured():
         raise ai.AiUnavailable("AI is not set up on the SEO platform, so keywords cannot be suggested. Add an AI key to the backend .env.")
     ev = evidence(db, b)
+    from ..db import release_connection  # noqa: PLC0415
+    release_connection(db)  # the evidence is read: no connection is held while the AI suggests keywords
     out = ai.complete_json(SYSTEM, _prompt(b, ev, topic), temperature=0.4, max_tokens=4000)
     items = normalise(out.get("items") or [], {k["keyword"] for k in ev["saved"]})
     return {"items": items, "topic": topic or None, "horizons": HORIZON, "uses": USES, "source": "ai",

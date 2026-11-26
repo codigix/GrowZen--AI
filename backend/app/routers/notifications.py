@@ -1,6 +1,6 @@
 """The header bell and the Overview alerts: what happened on the user's own projects (new Google reviews, ...)."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..auth import User, current_user
@@ -32,6 +32,12 @@ def list_notifications(business_id: int | None = None, unread: bool = False, lim
     found = list(db.scalars(q.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(max(1, min(limit, 200)))))
     names = dict(db.execute(select(Business.id, Business.name).where(Business.id.in_({n.business_id for n in found}))).all()) if found else {}
     return [r | {"business_name": names.get(r["business_id"])} for r in rows(found)]
+
+
+@router.get("/unread-count")
+def unread_count(business_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """How many alerts are unread, for the header bell: one number, not the list."""
+    return {"count": int(db.scalar(_scope(db, user, select(func.count(Notification.id)), business_id).where(Notification.read.is_(False))) or 0)}
 
 
 @router.post("/read-all")

@@ -148,7 +148,12 @@ export function SiteScan({ b, onOpen, onDone }) {
   useEffect(() => { setJob(undefined); refresh(); }, [refresh]);
   useEffect(() => {
     if (!running) return undefined;
-    timer.current = setInterval(async () => { const j = await refresh(); if (j && j.status !== 'running') { clearInterval(timer.current); onDone?.(); } }, 3000);
+    let busy = false;
+    timer.current = setInterval(async () => {
+      if (busy || document.visibilityState === 'hidden') return;  // not while the tab is hidden, and never two at once
+      busy = true;
+      try { const j = await refresh(); if (j && j.status !== 'running') { clearInterval(timer.current); onDone?.(); } } finally { busy = false; }
+    }, 3000);
     return () => clearInterval(timer.current);
   }, [running, refresh, onDone]);
 

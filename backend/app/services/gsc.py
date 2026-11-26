@@ -7,7 +7,7 @@ Needs the Search Console API enabled in the Google Cloud project and the read-on
 """
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from app.services.fanout import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
 from urllib.parse import quote, urlparse
