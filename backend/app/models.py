@@ -202,6 +202,18 @@ class Competitor(TimestampMixin, Base):
     domain: Mapped[str | None] = mapped_column(String(255), index=True)  # the website's host with no www or path: one competitor per domain
     kind: Mapped[str | None] = mapped_column(String(10))  # direct | indirect | NULL = not judged yet. A Maps business is not automatically an organic SEO competitor
     discovery: Mapped[list[str] | None] = mapped_column(JSON)  # every way it was found: google_places | organic_serp | manual
+    # What the last successful analysis found, kept on the competitor itself so the whole record is in one place and survives when the detailed rows change. A figure is only ever replaced by a newer real one, never emptied.
+    da: Mapped[int | None] = mapped_column(Integer)  # Domain Authority
+    pa: Mapped[int | None] = mapped_column(Integer)  # home-page Page Authority
+    spam_score: Mapped[int | None] = mapped_column(Integer)
+    ref_domains: Mapped[int | None] = mapped_column(Integer)  # linking root domains
+    kw_count: Mapped[int | None] = mapped_column(Integer)  # keywords it ranks for (in the kept ranked-keywords read)
+    traffic_est: Mapped[int | None] = mapped_column(Integer)  # estimated organic visits a month
+    top3: Mapped[int | None] = mapped_column(Integer)
+    top10: Mapped[int | None] = mapped_column(Integer)
+    avg_position: Mapped[float | None] = mapped_column(Float)
+    analysis_status: Mapped[str | None] = mapped_column(String(12))  # analyzed | partial
+    analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when these figures were last refreshed
 
 
 class CompetitorAnalysisRun(Base):

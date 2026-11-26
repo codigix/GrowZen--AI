@@ -348,6 +348,11 @@ def list_for_business(business_id: int, db: Session = Depends(get_db), user: Use
     """Competitors already registered against a business, for picking one to audit or compare."""
     b = owned_business(db, user, business_id)
     _adopt_backlink_competitors(db, b)
+    try:  # copies what was already read onto each competitor once; asks no provider
+        from ..services import competitor_analysis as _ca  # noqa: PLC0415
+        _ca.backfill_snapshots(db, b)
+    except Exception:  # noqa: BLE001 -- the list must open
+        db.rollback()
     q = select(Competitor).where(Competitor.business_id == business_id).order_by(Competitor.name)
     out = []
     for c in db.scalars(q):

@@ -43,7 +43,7 @@ export function useRatings(b, location, ids) {
     let on = true;
     setLoading(true);
     api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/ratings`, { method: 'POST', body: { location: location || null }, timeout: 180000 })
-      .then(r => on && setData(r)).catch(() => {}).finally(() => on && setLoading(false));
+      .then(r => on && setData(r)).catch(() => { }).finally(() => on && setLoading(false));
     return () => { on = false; };
   }, [b.id, key]); // eslint-disable-line react-hooks/exhaustive-deps
   return { ...data, loading };
@@ -61,18 +61,18 @@ export function useAutoAnalysis(b, analysis, pending) {
   const done = useRef(0);
   const key = pending.join('|');
   const base = `/businesses/${b.id}/keyword-workspace/competitor-analysis`;
-  const toggle = (v) => { setOn(v); try { localStorage.setItem(AUTO_KEY, v ? 'on' : 'off'); } catch { /* not remembered */ } api(`${base}/config`, { method: 'PUT', body: { auto_analyze: v } }).catch(() => {}); };
-  useEffect(() => { api(`${base}/config`).then(c => setOn(c.auto_analyze !== false)).catch(() => {}); }, [base]);
+  const toggle = (v) => { setOn(v); try { localStorage.setItem(AUTO_KEY, v ? 'on' : 'off'); } catch { /* not remembered */ } api(`${base}/config`, { method: 'PUT', body: { auto_analyze: v } }).catch(() => { }); };
+  useEffect(() => { api(`${base}/config`).then(c => setOn(c.auto_analyze !== false)).catch(() => { }); }, [base]);
 
   // pick up a run that is already going (another visit, another tab)
-  useEffect(() => { api(`${base}/progress`).then(setProg).catch(() => {}); }, [base]);
+  useEffect(() => { api(`${base}/progress`).then(setProg).catch(() => { }); }, [base]);
   // start one when something is pending
   useEffect(() => {
     if (!on || !analysis.loaded || !pending.length || prog.running) return;
     const fresh = pending.filter(d => !tried.current.has(d));
     if (!fresh.length) return;
     fresh.forEach(d => tried.current.add(d));
-    api(`${base}/auto`, { method: 'POST', body: { domains: fresh } }).then(setProg).catch(() => {});
+    api(`${base}/auto`, { method: 'POST', body: { domains: fresh } }).then(setProg).catch(() => { });
   }, [on, analysis.loaded, key, prog.running]); // eslint-disable-line react-hooks/exhaustive-deps
   // follow it, and show each result as it arrives
   useEffect(() => {
@@ -85,7 +85,7 @@ export function useAutoAnalysis(b, analysis, pending) {
     }, 2500);
     return () => clearInterval(t);
   }, [prog.running, base]); // eslint-disable-line react-hooks/exhaustive-deps
-  const stop = () => api(`${base}/stop`, { method: 'POST' }).then(setProg).catch(() => {});
+  const stop = () => api(`${base}/stop`, { method: 'POST' }).then(setProg).catch(() => { });
   return { on, toggle, prog, stop, b, base, setOn };
 }
 
@@ -150,7 +150,7 @@ function MatchDrawer({ c, rating, onClose, onProfile }) {
         <tbody className="divide-y divide-slate-100">
           {used.sort((a, b2) => W[b2] * f[b2] - W[a] * f[a]).map(k => (
             <tr key={k}><td className="py-1.5"><div className="text-slate-900">{L[k] || k}</div><div className="h-1.5 w-40 rounded-full bg-slate-100 mt-1 overflow-hidden"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.max(0, Math.min(100, f[k]))}%` }} /></div></td>
-              <td className="text-right tabular-nums">{f[k]}</td><td className="text-right tabular-nums text-slate-500">{Math.round((W[k] / total) * 100)}%</td><td className="text-right tabular-nums font-semibold">{((f[k] * W[k]) / total).toFixed(1)}</td></tr>))}
+              <td className=" tabular-nums">{f[k]}</td><td className=" tabular-nums text-slate-500">{Math.round((W[k] / total) * 100)}%</td><td className=" tabular-nums font-semibold">{((f[k] * W[k]) / total).toFixed(1)}</td></tr>))}
         </tbody>
       </table>
       {missing.length > 0 && <p className="mt-2 text-12 text-slate-500">Not measured, so left out (the others count for more): {missing.map(k => L[k] || k).join(', ')}.</p>}
@@ -190,7 +190,7 @@ function AutoSettings({ auto, onClose }) {
             <Num k="max_retries" label="Tries in a row" min={1} max={10} />
             <label className="flex items-center gap-3 py-1.5 text-13 text-slate-900"><span className="flex-1">Read analyzed competitors again</span>
               <Select value={cfg.refresh_days} onChange={e => save({ refresh_days: Number(e.target.value) })} aria-label="Refresh period" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13">{REFRESH.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></label>
-            <Num k="cache_hours" label="Keep a read as fresh for (hours)" min={0} max={720} hint="A competitor read more recently is not requested again, unless you press Analyze on its row." />
+            <Num k="cache_hours" label="Keep a read as fresh for (hours)" min={0} max={720} hint="A competitor read more recently is not requested again; its saved figures are shown instead. Only Refresh on its row reads it again. Default 168 (7 days)." />
             <Num k="daily_limit" label="Most automatic reads a day" min={1} max={500} hint="Each read is paid at Apify (about $0.04 plus $0.003 a keyword)." />
           </div>
           {use && (
@@ -200,7 +200,7 @@ function AutoSettings({ auto, onClose }) {
               {Object.keys(use.paused || {}).length > 0 && <p className="mt-1 text-12.5 text-amber-700">Paused after a quota or rate-limit answer: {Object.entries(use.paused).map(([k, v]) => `${PROVIDER[k] || k} until ${v}`).join(', ')}. Reads in that time are skipped, not failed.</p>}
               {use.providers.length ? (
                 <table className="mt-2 w-full text-12.5"><thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Provider</th><th className="font-medium text-right">Calls</th><th className="font-medium text-right">Failed</th><th className="font-medium text-right">Cost</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">{use.providers.map(p => <tr key={p.provider}><td className="py-1">{PROVIDER[p.provider] || p.provider}</td><td className="text-right tabular-nums">{p.calls}</td><td className={`text-right tabular-nums ${p.failed ? 'text-rose-600 font-semibold' : ''}`}>{p.failed}</td><td className="text-right tabular-nums">{p.cost ? `$${p.cost.toFixed(2)}` : '—'}</td></tr>)}</tbody></table>
+                  <tbody className="divide-y divide-slate-100">{use.providers.map(p => <tr key={p.provider}><td className="py-1">{PROVIDER[p.provider] || p.provider}</td><td className=" tabular-nums">{p.calls}</td><td className={` tabular-nums ${p.failed ? 'text-rose-600 font-semibold' : ''}`}>{p.failed}</td><td className=" tabular-nums">{p.cost ? `$${p.cost.toFixed(2)}` : '—'}</td></tr>)}</tbody></table>
               ) : <p className="mt-2 text-12.5 text-slate-500">No calls made yet for this project.</p>}
               {use.latest.length > 0 && <details className="mt-2"><summary className="text-12.5 text-indigo-700 cursor-pointer">Latest {Math.min(10, use.latest.length)} calls</summary>
                 <ul className="mt-1 text-12 text-slate-600 space-y-0.5">{use.latest.slice(0, 10).map((c, i) => <li key={i}><span className={c.ok ? 'text-emerald-700' : 'text-rose-600'}>{c.ok ? 'ok' : 'failed'}</span> · {PROVIDER[c.provider] || c.provider} · {c.target} · {fdate(c.at)}{c.detail ? ` · ${c.detail}` : ''}</li>)}</ul></details>}
@@ -323,9 +323,12 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
   const Icon = ({ label, onClick, children, disabled, tone = 'text-slate-500 hover:text-indigo-700' }) => <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className={`p-1 cursor-pointer disabled:opacity-30 disabled:cursor-default ${tone}`}>{children}</button>;
 
   const cols = [
-    { id: 'sel', header: <input type="checkbox" aria-label="Choose every competitor shown" title="Tick to choose every competitor shown: they are followed in Competitor Watch" checked={allOn} onChange={e => choose(view.filter(c => c.chosen !== e.target.checked), e.target.checked)} className="accent-indigo-600" />, csv: false,
-      cell: c => <input type="checkbox" aria-label={`Choose ${c.name} for Competitor Watch`} title={c.chosen ? 'Chosen: followed in Competitor Watch. Untick to take it out.' : 'Tick to choose it: it is then followed in Competitor Watch'} checked={c.chosen} onChange={() => choose([c], !c.chosen)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8' },
-    { id: 'name', header: 'Competitor', first: 'asc', value: c => [c.name, c.host, city(c), c.maps?.distance_m != null ? `${(c.maps.distance_m / 1000).toFixed(1)} km` : ''].filter(Boolean).join(' · '), className: 'px-3 py-2.5 min-w-[220px] max-w-[280px]',
+    {
+      id: 'sel', header: <input type="checkbox" aria-label="Choose every competitor shown" title="Tick to choose every competitor shown: they are followed in Competitor Watch" checked={allOn} onChange={e => choose(view.filter(c => c.chosen !== e.target.checked), e.target.checked)} className="accent-indigo-600" />, csv: false,
+      cell: c => <input type="checkbox" aria-label={`Choose ${c.name} for Competitor Watch`} title={c.chosen ? 'Chosen: followed in Competitor Watch. Untick to take it out.' : 'Tick to choose it: it is then followed in Competitor Watch'} checked={c.chosen} onChange={() => choose([c], !c.chosen)} className="accent-indigo-600" />, className: 'pl-3 pr-1 py-2.5 w-8', thClass: 'pl-3 pr-1 py-3 w-8'
+    },
+    {
+      id: 'name', header: 'Competitor', first: 'asc', value: c => [c.name, c.host, city(c), c.maps?.distance_m != null ? `${(c.maps.distance_m / 1000).toFixed(1)} km` : ''].filter(Boolean).join(' · '), className: 'px-3 py-2.5 min-w-[220px] max-w-[280px]',
       tip: { what: 'The competitor, its website and where it is. The distance is from the place you are searching. Press the name for its full profile.', from: 'Google Places' },
       cell: c => (
         <div className="flex items-center gap-2.5">
@@ -335,13 +338,18 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
             {c.host ? <a href={`https://${c.host}`} target="_blank" rel="noreferrer" title={`Open ${c.host} in a new tab`} className="text-12.5 text-blue-700 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.host}</span><ExternalLink size={10} className="shrink-0" /></a> : <span className="block text-12 text-slate-400">no website</span>}
             <span className="flex items-center gap-1 text-12 text-slate-500 min-w-0"><MapPin size={11} className="text-slate-400 shrink-0" />{c.maps?.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${c.name} ${c.maps.address}`)}`} target="_blank" rel="noreferrer" title={`${c.maps.address}. Open it on Google Maps in a new tab`} className="truncate hover:text-indigo-700 hover:underline">{city(c)}</a> : <span className="truncate text-slate-400">location not available</span>}{c.maps?.distance_m != null && <span className="shrink-0 text-slate-400">· {c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</span>}</span>
           </div>
-        </div>) },
-    { id: 'source', header: 'Found by', value: c => (c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', '), className: 'px-3 py-2.5 text-12.5 text-slate-600', hide: true,
+        </div>)
+    },
+    {
+      id: 'source', header: 'Found by', value: c => (c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', '), className: 'px-3 py-2.5 text-12.5 text-slate-600', hide: true,
       tip: { what: 'How it was found. A business found on Google Maps is a local competitor; it is not automatically a competitor for organic search.', from: 'Google Places, organic search or added by hand' },
-      cell: c => <span>{(c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', ') || <span className="text-slate-300">Not available</span>}</span> },
-    { id: 'kind', header: 'Type', value: c => (KIND[kindOf(c)] || ['Not judged'])[0], className: 'px-3 py-2.5 whitespace-nowrap',
+      cell: c => <span>{(c.reg?.discovery?.length ? c.reg.discovery : [c.reg?.source || (c.maps ? 'google_places' : '')]).filter(Boolean).map(x => SOURCE[x] || x).join(', ') || <span className="text-slate-300">Not available</span>}</span>
+    },
+    {
+      id: 'kind', header: 'Type', value: c => (KIND[kindOf(c)] || ['Not judged'])[0], className: 'px-3 py-2.5 whitespace-nowrap',
       tip: { what: 'Your own judgement: a direct competitor sells what you sell to the same customers; an indirect one overlaps only in part. Press to change it.' },
-      cell: c => { const k = kindOf(c); const next = k === 'direct' ? 'indirect' : k === 'indirect' ? '' : 'direct'; return <button type="button" onClick={() => setKind(c, next)} title={`Press to set: ${next ? KIND[next][0] : 'not judged'}`} className={`text-12 font-semibold px-2 py-0.5 rounded-full ring-1 cursor-pointer ${k ? KIND[k][1] : 'text-slate-400 ring-slate-200 bg-white'}`}>{k ? KIND[k][0] : 'Not judged'}</button>; } },
+      cell: c => { const k = kindOf(c); const next = k === 'direct' ? 'indirect' : k === 'indirect' ? '' : 'direct'; return <button type="button" onClick={() => setKind(c, next)} title={`Press to set: ${next ? KIND[next][0] : 'not judged'}`} className={`text-12 font-semibold px-2 py-0.5 rounded-full ring-1 cursor-pointer ${k ? KIND[k][1] : 'text-slate-400 ring-slate-200 bg-white'}`}>{k ? KIND[k][0] : 'Not judged'}</button>; }
+    },
     { id: 'da', header: 'DA', value: c => c.m.da ?? null, first: 'desc', tip: { what: 'Domain Authority, 0 to 100: how strongly a site is likely to rank. It is not the Match score.', from: 'Moz, read through Apify' }, className: 'px-3 py-2.5 text-center', thClass: 'px-3 py-3', cell: c => <Go tip={`Domain Authority of ${c.host || c.name}: ${c.m.da ?? 'not read yet'}. Open the backlink comparison for it`} onClick={() => onGo('backlinks', c.host)}><span className={`inline-flex items-center justify-center min-w-[34px] h-7 px-2 rounded-md text-13 font-bold ${daTone(c.m.da)}`}>{c.m.da ?? '—'}</span></Go> },
     { id: 'kw', header: 'Keywords', right: true, first: 'desc', value: c => c.m.keywords ?? null, tip: { what: 'How many keywords it ranks for in a ranked-keywords read, for the market below. Not available until analyzed.', from: 'Ranked-keywords read (Apify)' }, cell: c => <Go tip={`See the ${num0(c.m.keywords)} keywords ${c.name} ranks for, and where you stand against it`} onClick={() => onGo('keywords', c.host)}>{num0(c.m.keywords)}</Go> },
     { id: 'top3', hide: true, header: 'Top 3', right: true, first: 'desc', value: c => c.m.top3 ?? null, tip: { what: 'Keywords where it holds one of the first three positions.', from: 'Counted from its ranked keywords' }, cell: c => <Go tip={`See the keywords where ${c.name} is in the top 3`} onClick={() => onGo('keywords', c.host, 'top3')}>{num0(c.m.top3)}</Go> },
@@ -349,28 +357,36 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
     { id: 'avg', hide: true, header: 'Avg position', right: true, value: c => c.m.avg_position ?? null, tip: { what: 'Average position across its ranked keywords. Lower is better.', from: 'Counted from its ranked keywords' }, cell: c => <Go tip={`Average position of ${c.name} across its ranked keywords. Open them`} onClick={() => onGo('keywords', c.host)}>{c.m.avg_position == null ? '—' : `#${c.m.avg_position}`}</Go> },
     { id: 'traffic', header: 'Traffic', right: true, first: 'desc', value: c => c.m.traffic ?? null, tip: { what: 'Estimated organic visits a month. An estimate, not verified traffic.', from: 'Estimated from ranked keywords' }, cell: c => <Go tip={`Estimated monthly visits to ${c.name}. Open the traffic comparison`} onClick={() => onGo('traffic', c.host)}>{kfmt(c.m.traffic)}</Go> },
     { id: 'rd', hide: true, header: 'Ref. domains', right: true, first: 'desc', value: c => c.m.rd ?? null, cell: c => <Go tip={`Websites linking to ${c.name}. Open the backlink comparison`} onClick={() => onGo('backlinks', c.host)}>{kfmt(c.m.rd)}</Go>, tip: { what: 'Websites linking to it. Not available until analyzed.', from: 'Moz' } },
-    { id: 'match', header: 'Match', first: 'desc', value: c => c.maps?.relevance?.score ?? null, tip: { what: 'Match score, 0 to 100: how closely it competes with your business. Press the score for the factors. It is not Domain Authority.', from: 'Calculated here from its Maps listing and site' },
-      cell: c => (!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <Go tip={`${c.maps.relevance.label_text || 'Match'}, score ${c.maps.relevance.score}/100. Press to see which factors make it up`} onClick={() => setWhy(c)}><span className="inline-flex items-center gap-1.5"><b className="tabular-nums">{c.maps.relevance.score}</b><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span></Go> : <span className="text-slate-300">—</span>) },
-    { id: 'last', hide: true, header: 'Last analyzed', first: 'desc', value: c => c.m.kw_read_at || c.m.site_read_at || null, className: 'px-3 py-2.5 whitespace-nowrap text-12.5 text-slate-600', tip: { what: 'When its figures were last read. Not available until it has been analyzed.' },
-      cell: c => { const t = c.m.kw_read_at || c.m.site_read_at; return t ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : <span className="text-slate-300">Not available</span>; } },
-    { id: 'status', header: 'Status', value: c => (STATUS[c.status] || STATUS.pending)[0], className: 'px-3 py-2.5 whitespace-nowrap',
+    {
+      id: 'match', header: 'Match', first: 'desc', value: c => c.maps?.relevance?.score ?? null, tip: { what: 'Match score, 0 to 100: how closely it competes with your business. Press the score for the factors. It is not Domain Authority.', from: 'Calculated here from its Maps listing and site' },
+      cell: c => (!c.maps?.relevance && rating?.loading ? <span className="inline-flex items-center gap-1 text-12 text-slate-400"><Loader2 size={12} className="animate-spin" />rating…</span> : c.maps?.relevance ? <Go tip={`${c.maps.relevance.label_text || 'Match'}, score ${c.maps.relevance.score}/100. Press to see which factors make it up`} onClick={() => setWhy(c)}><span className="inline-flex items-center gap-1.5"><b className="tabular-nums">{c.maps.relevance.score}</b><span className={`w-2 h-2 rounded-full ${c.maps.relevance.label === 'direct' ? 'bg-emerald-500' : c.maps.relevance.label === 'related' ? 'bg-amber-400' : 'bg-slate-300'}`} /></span></Go> : <span className="text-slate-300">—</span>)
+    },
+    {
+      id: 'last', hide: true, header: 'Last analyzed', first: 'desc', value: c => c.m.kw_read_at || c.m.site_read_at || null, className: 'px-3 py-2.5 whitespace-nowrap text-12.5 text-slate-600', tip: { what: 'When its figures were last read. Not available until it has been analyzed.' },
+      cell: c => { const t = c.m.kw_read_at || c.m.site_read_at; return t ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : <span className="text-slate-300">Not available</span>; }
+    },
+    {
+      id: 'status', header: 'Status', value: c => (STATUS[c.status] || STATUS.pending)[0], className: 'px-3 py-2.5 whitespace-nowrap',
       cell: c => {
         const done = c.status === 'analyzed' || c.status === 'partial';
         const busy = c.status === 'running' || c.status === 'queued';
         const tip = failedBy[c.host] && !done ? `Last try failed: ${failedBy[c.host]}. Press to analyze again` : done ? `${c.name} is analyzed. Open its traffic comparison` : busy ? 'It is being read now' : c.host ? 'Not analyzed yet. Press to read its Domain Authority and ranked keywords now' : 'It has no website to analyze';
         return <Go tip={tip} onClick={() => (done ? onGo('traffic', c.host) : busy || !c.host ? null : analyze([c], true))}><Badge tone={failedBy[c.host] && c.status !== 'analyzed' ? 'amber' : (STATUS[c.status] || STATUS.pending)[1]}>{c.status === 'running' && <Loader2 size={11} className="animate-spin" />}{(STATUS[c.status] || STATUS.pending)[0]}</Badge></Go>;
-      } },
+      }
+    },
     { id: 'chosen', header: 'Selected', value: c => (c.chosen ? 'Yes' : 'No'), hide: true },
-    { id: 'actions', header: 'Actions', right: true, csv: false, className: 'px-2 py-1.5 text-right whitespace-nowrap',
+    {
+      id: 'actions', header: 'Actions', right: true, csv: false, className: 'px-2 py-1.5 text-right whitespace-nowrap',
       cell: c => (
         <span className="inline-flex items-center">
           <Icon label={`View ${c.name}`} onClick={() => onDetail(c)}><Eye size={16} /></Icon>
-          <Icon label="Analyze now: Domain Authority and ranked keywords" disabled={!c.host || c.status === 'running'} onClick={() => analyze([c], true)}><BarChart3 size={16} /></Icon>
+          <Icon label={c.status === 'analyzed' ? 'Refresh: read it again (uses Apify credit). Its figures are already saved and shown.' : 'Analyze now: Domain Authority and ranked keywords'} disabled={!c.host || c.status === 'running'} onClick={() => analyze([c], true)}><BarChart3 size={16} /></Icon>
           <Icon label="Its keywords" onClick={() => onGo('keywords', c.host)}><Layers size={16} /></Icon>
           <Icon label="Analysis history: every earlier read of this competitor" disabled={!c.host} onClick={() => openHistory(c)}><Clock size={16} /></Icon>
           <Icon label={c.chosen ? 'Remove from selected competitors' : 'Select as a competitor'} onClick={() => choose([c], !c.chosen)} tone={c.chosen ? 'text-emerald-600 hover:text-emerald-800' : 'text-slate-500 hover:text-emerald-700'}><CheckCircle2 size={16} /></Icon>
           {c.reg && <Icon label="Remove this competitor" onClick={() => { setSel(new Set([c.key])); setConfirm(true); }} tone="text-slate-400 hover:text-rose-600"><Trash2 size={16} /></Icon>}
-        </span>) },
+        </span>)
+    },
   ];
   const toolbar = (
     <>
@@ -419,14 +435,14 @@ export function CompetitorsPanel({ b, auto, rating, rows, scope, setScope, nearC
       <Modal open={!!hist} onClose={() => setHist(null)} title={hist ? `Analysis history: ${hist.c.name}` : ''} width="max-w-2xl" footer={<Button onClick={() => setHist(null)}>Close</Button>}>
         {hist?.loading ? <p className="text-13 text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Loading…</p>
           : hist?.error ? <ErrorNote>{hist.error}</ErrorNote>
-          : !hist?.runs.length ? <p className="text-13 text-slate-500">Not analyzed yet. Each analysis is kept here; a refresh adds a new line and never replaces an old one.</p>
-          : <ul className="space-y-2">{hist.runs.map(r => (
-            <li key={r.id ?? 'earlier'} className="rounded-lg ring-1 ring-slate-200 px-3 py-2 text-12.5">
-              <div className="flex flex-wrap items-center gap-2"><Badge tone={(STATUS[r.status] || STATUS.pending)[1]}>{(STATUS[r.status] || [r.status])[0]}</Badge><span className="text-slate-600">{fdate(r.finished_at || r.started_at)}</span><span className="text-slate-400">{r.earlier ? 'read before history was kept' : r.trigger === 'auto' ? 'automatic' : 'by hand'}</span></div>
-              <div className="mt-1 text-slate-600">{Object.entries(r.parts || {}).map(([k, v]) => `${k === 'authority' ? 'Domain Authority' : 'Ranked keywords'}: ${v.status === 'ok' ? 'read' : 'not read'} (${v.provider})`).join(' · ') || '—'}</div>
-              {r.error && <div className="mt-1 text-amber-700">{r.error}</div>}
-              {r.snapshot && Object.values(r.snapshot).some(v => v != null) && <div className="mt-1 text-slate-500">DA {r.snapshot.da ?? '—'} · keywords {num(r.snapshot.keywords)} · top 10 {num(r.snapshot.top10)} · traffic {kfmt(r.snapshot.traffic)} · ref. domains {kfmt(r.snapshot.rd)}</div>}
-            </li>))}</ul>}
+            : !hist?.runs.length ? <p className="text-13 text-slate-500">Not analyzed yet. Each analysis is kept here; a refresh adds a new line and never replaces an old one.</p>
+              : <ul className="space-y-2">{hist.runs.map(r => (
+                <li key={r.id ?? 'earlier'} className="rounded-lg ring-1 ring-slate-200 px-3 py-2 text-12.5">
+                  <div className="flex flex-wrap items-center gap-2"><Badge tone={(STATUS[r.status] || STATUS.pending)[1]}>{(STATUS[r.status] || [r.status])[0]}</Badge><span className="text-slate-600">{fdate(r.finished_at || r.started_at)}</span><span className="text-slate-400">{r.earlier ? 'read before history was kept' : r.trigger === 'auto' ? 'automatic' : 'by hand'}</span></div>
+                  <div className="mt-1 text-slate-600">{Object.entries(r.parts || {}).map(([k, v]) => `${k === 'authority' ? 'Domain Authority' : 'Ranked keywords'}: ${v.status === 'ok' ? 'read' : 'not read'} (${v.provider})`).join(' · ') || '—'}</div>
+                  {r.error && <div className="mt-1 text-amber-700">{r.error}</div>}
+                  {r.snapshot && Object.values(r.snapshot).some(v => v != null) && <div className="mt-1 text-slate-500">DA {r.snapshot.da ?? '—'} · keywords {num(r.snapshot.keywords)} · top 10 {num(r.snapshot.top10)} · traffic {kfmt(r.snapshot.traffic)} · ref. domains {kfmt(r.snapshot.rd)}</div>}
+                </li>))}</ul>}
       </Modal>
       {toastNode}
     </div>
@@ -441,7 +457,7 @@ function Bars({ rows, value, fmt = kfmt, color = '#6366f1' }) {
     <ul className="space-y-2.5">{rows.map(r => (
       <li key={r.host} className="flex items-center gap-3"><span className={`w-44 truncate text-13 ${r.you ? 'font-semibold text-slate-900' : 'text-slate-700'}`} title={r.host}>{r.you ? `${r.host} (you)` : r.name}</span>
         <div className="flex-1 h-3 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${Math.max(r.v ? 2 : 0, ((r.v || 0) / max) * 100)}%`, background: r.you ? '#059669' : color }} /></div>
-        <span className="w-20 text-right tabular-nums text-13 font-semibold">{r.v == null ? <span className="text-slate-300 font-normal">not read</span> : fmt(r.v)}</span></li>
+        <span className="w-20  tabular-nums text-13 font-semibold">{r.v == null ? <span className="text-slate-300 font-normal">not read</span> : fmt(r.v)}</span></li>
     ))}</ul>
   );
 }
@@ -526,10 +542,12 @@ export function TrafficTab({ b, rows, analysis, focus = '' }) {
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Traffic over time" sub="At the end of each analysis. Nothing is filled in between.">{trend ? <TrendChart trend={trend} hosts={list.map(c => c.host)} /> : <Loader2 size={16} className="animate-spin text-slate-400" />}</Panel>
         <Panel title="Keywords that bring the most traffic" sub="Estimated visits a month for each keyword." action={<Select value={kwOf || list.find(c => topKw?.[c.host])?.host || ''} onChange={e => setKwOf(e.target.value)} aria-label="Competitor" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13">{list.filter(c => topKw?.[c.host]).map(c => <option key={c.host} value={c.host}>{c.host}</option>)}</Select>}>
-          {!topKw ? <Loader2 size={16} className="animate-spin text-slate-400" /> : (() => { const h = kwOf || list.find(c => topKw[c.host])?.host; const ks = h ? topKw[h] || [] : []; return ks.length ? (
-            <table className="w-full text-12.5"><thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Keyword</th><th className="font-medium text-right">Position</th><th className="font-medium text-right">Searches</th><th className="font-medium text-right">Est. visits</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">{ks.map(k => <tr key={k.keyword}><td className="py-1 text-slate-900">{k.keyword}</td><td className="text-right tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className="text-right tabular-nums">{num(k.volume)}</td><td className="text-right tabular-nums font-semibold">{kfmt(Math.round(k.traffic))}</td></tr>)}</tbody></table>
-          ) : <p className="text-13 text-slate-500">No keywords read yet. Analyze a competitor on the Competitors tab.</p>; })()}
+          {!topKw ? <Loader2 size={16} className="animate-spin text-slate-400" /> : (() => {
+            const h = kwOf || list.find(c => topKw[c.host])?.host; const ks = h ? topKw[h] || [] : []; return ks.length ? (
+              <table className="w-full text-12.5"><thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Keyword</th><th className="font-medium text-right">Position</th><th className="font-medium text-right">Searches</th><th className="font-medium text-right">Est. visits</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{ks.map(k => <tr key={k.keyword}><td className="py-1 text-slate-900">{k.keyword}</td><td className=" tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className=" tabular-nums">{num(k.volume)}</td><td className=" tabular-nums font-semibold">{kfmt(Math.round(k.traffic))}</td></tr>)}</tbody></table>
+            ) : <p className="text-13 text-slate-500">No keywords read yet. Analyze a competitor on the Competitors tab.</p>;
+          })()}
         </Panel>
       </div>
     </div>
@@ -595,7 +613,7 @@ function PageDrawer({ b, pg, all, onClose }) {
       toast(`${res.added} new keyword${res.added === 1 ? '' : 's'} added to My Keywords${res.existing?.length ? `. ${res.existing.length} already there, not duplicated` : ''}`);
     } catch (e) { toast(e.message || 'The keywords could not be added.'); } finally { setBusy(false); }
   };
-  const Kw = ({ k }) => <tr><td className="py-1 text-slate-900">{k.keyword}</td><td className="text-right tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className="text-right tabular-nums">{num(k.volume)}</td><td className="text-right tabular-nums" title={k.kd != null ? 'SEO difficulty from the real top 10 on Google' : 'Not read yet. Use Read KD above.'}>{kdOf[k.keyword] ?? k.kd ?? '—'}</td><td className="text-right tabular-nums">{k.yours ? `#${k.yours}` : <span className="text-slate-400">Not ranking</span>}</td><td className="text-right"><button type="button" onClick={() => add([k])} title="Add to My Keywords" aria-label={`Add ${k.keyword} to My Keywords`} className="p-1 text-slate-400 hover:text-emerald-700 cursor-pointer"><Plus size={14} /></button></td></tr>;
+  const Kw = ({ k }) => <tr><td className="py-1 text-slate-900">{k.keyword}</td><td className=" tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className=" tabular-nums">{num(k.volume)}</td><td className=" tabular-nums" title={k.kd != null ? 'SEO difficulty from the real top 10 on Google' : 'Not read yet. Use Read KD above.'}>{kdOf[k.keyword] ?? k.kd ?? '—'}</td><td className=" tabular-nums">{k.yours ? `#${k.yours}` : <span className="text-slate-400">Not ranking</span>}</td><td className="text-right"><button type="button" onClick={() => add([k])} title="Add to My Keywords" aria-label={`Add ${k.keyword} to My Keywords`} className="p-1 text-slate-400 hover:text-emerald-700 cursor-pointer"><Plus size={14} /></button></td></tr>;
   return (
     <Modal open onClose={onClose} width="max-w-3xl" title={pg.url.replace(/^https?:\/\/(www\.)?/, '')} footer={<Button onClick={onClose}>Close</Button>}>
       {pg.live === false && <div role="alert" className="mb-2 rounded-lg bg-rose-50 ring-1 ring-rose-200 px-3 py-2 text-13 text-rose-900"><b>This page no longer exists</b> (it answered {pg.page_status}). The rankings below were read {pg.read_at ? `on ${fdate(pg.read_at)}` : 'earlier'}, when Google still showed it, so they are out of date and its traffic is not counted.</div>}

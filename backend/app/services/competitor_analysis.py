@@ -53,6 +53,8 @@ def metrics(db: Session, b: Business, domains: list[str]) -> dict[str, dict[str,
     last: dict[str, Any] = {}
     for run in db.scalars(select(CompetitorAnalysisRun).where(CompetitorAnalysisRun.business_id == b.id, CompetitorAnalysisRun.domain.in_(domains or [""])).order_by(CompetitorAnalysisRun.id)):
         last[run.domain] = run  # the newest run of each domain wins
+    from ..models import Competitor  # noqa: PLC0415
+    kept_record = {_site_host(c.website): c for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if c.website and c.analysis_status}
     out: dict[str, dict[str, Any]] = {}
     for d in domains:
         rows = by.get(d, [])
@@ -67,6 +69,10 @@ def metrics(db: Session, b: Business, domains: list[str]) -> dict[str, dict[str,
         run = last.get(d)
         if run and out[d]["status"] == "pending" and run.status in ("failed", "retry"):
             out[d]["status"] = run.status  # tried and nothing could be read: say so instead of Pending
+        if out[d]["status"] == "pending":  # nothing detailed is kept, but the competitor's own record may hold what an earlier analysis found
+            kept = kept_record.get(d)
+            if kept is not None and kept.analysis_status:
+                out[d].update({k: getattr(kept, col) for k, col in SNAPSHOT.items() if getattr(kept, col) is not None}, status=kept.analysis_status, site_read_at=kept.analyzed_at.isoformat() if kept.analyzed_at else None)
         out[d]["last_run"] = {"status": run.status, "finished_at": run.finished_at.isoformat() if run.finished_at else None, "missing": run.missing or [], "error": run.error} if run else None
     return out
 
@@ -78,7 +84,7 @@ DEFAULTS: dict[str, Any] = {
     "retry_failed": True,   # try again when a read failed or only half worked
     "max_retries": 3,       # at most this many tries in a row
     "refresh_days": 0,      # read analyzed competitors again after this many days; 0 = never by itself
-    "cache_hours": 24,      # a competitor read this recently is not read again unless asked with force
+    "cache_hours": 168,     # a competitor read in the last 7 days is not read again unless asked with force (Refresh)
     "daily_limit": 30,      # most automatic reads a day for the project (each is paid at Apify)
 }
 RETRY_WAIT = 30 * 60        # seconds before a failed competitor is tried again
@@ -199,6 +205,72 @@ def _call(db: Session, b: Business, provider: str, domain: str, fn) -> tuple[Any
     return out, str(err)[:200]
 
 
+SNAPSHOT = {"da": "da", "pa": "pa", "spam": "spam_score", "rd": "ref_domains", "keywords": "kw_count", "traffic": "traffic_est", "top3": "top3", "top10": "top10", "avg_position": "avg_position"}
+
+
+def _site_host(url: str | None) -> str:
+    """The host of a saved competitor's website address (with or without the scheme), without www."""
+    from urllib.parse import urlsplit  # noqa: PLC0415
+    raw = (url or "").strip()
+    return _host(urlsplit(raw if "//" in raw else f"//{raw}").hostname or "")
+
+
+def _competitor_row(db: Session, b: Business, domain: str):
+    from ..models import Competitor  # noqa: PLC0415
+    for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)):
+        if c.website and _site_host(c.website) == domain:
+            return c
+    return None
+
+
+def save_snapshot(db: Session, b: Business, domain: str, m: dict[str, Any] | None = None) -> bool:
+    """Keeps the figures of a competitor on the competitor itself. Only real figures are written (a missing one never empties what was kept); nothing is written when nothing was read."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+    domain = _host(domain)
+    c = _competitor_row(db, b, domain)
+    if c is None:
+        return False
+    m = m or metrics(db, b, [domain]).get(domain) or {}
+    if m.get("status") not in ("analyzed", "partial"):
+        return False
+    changed = False
+    for key, col in SNAPSHOT.items():
+        v = m.get(key)
+        if v is not None and getattr(c, col) != v:
+            setattr(c, col, v)
+            changed = True
+    if c.analysis_status != m["status"]:
+        c.analysis_status, changed = m["status"], True
+    if changed or c.analyzed_at is None:
+        c.analyzed_at = datetime.now(timezone.utc)
+        changed = True
+    if not c.domain:
+        c.domain, changed = domain, True
+    if changed:
+        db.commit()
+    return changed
+
+
+def backfill_snapshots(db: Session, b: Business) -> int:
+    """Competitors analyzed before the record was kept on the competitor: their kept figures are copied there once (no provider is asked), and a missing domain is filled."""
+    from ..models import Competitor  # noqa: PLC0415
+    todo = [c for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id)) if c.website and (c.analyzed_at is None or not c.domain)]
+    if not todo:
+        return 0
+    hosts = [_site_host(c.website) for c in todo]
+    got = metrics(db, b, hosts)
+    n = 0
+    for c in todo:
+        h = _site_host(c.website)
+        if not c.domain:
+            c.domain = h
+            n += 1
+        if c.analyzed_at is None and save_snapshot(db, b, h, got.get(h)):
+            n += 1
+    db.commit()
+    return n
+
+
 def analyze_one(db: Session, b: Business, domain: str, limit: int = 100, trigger: str = "manual", force: bool = False) -> dict[str, Any]:
     """Read one competitor: its site strength (Moz, through Apify) and the keywords it ranks for. Each part reports its own reason when it could not be read, and every run is kept
     (status, provider per part, what was missing, the figures at the end), so a refresh never overwrites the history. analyzed = both parts read; partial = one, or one switched off in the
@@ -257,6 +329,10 @@ def analyze_one(db: Session, b: Business, domain: str, limit: int = 100, trigger
     run.snapshot = {k: m.get(k) for k in ("da", "pa", "spam", "rd", "keywords", "traffic", "top3", "top10", "avg_position")}
     db.commit()
     m = metrics(db, b, [domain])[domain]
+    try:
+        save_snapshot(db, b, domain, m)  # the whole record is kept on the competitor
+    except Exception:  # noqa: BLE001 -- keeping the copy must never fail an analysis
+        db.rollback()
     return {"domain": domain, "metrics": m, "notes": notes, "cost": cost, "keywords_read": rows_read, "cached": False, "run": {"id": run.id, "status": run.status, "missing": missing}}
 
 

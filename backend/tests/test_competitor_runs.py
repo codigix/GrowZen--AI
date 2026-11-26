@@ -270,3 +270,27 @@ def test_competitor_watch_shows_data_only_for_the_chosen_competitors(client):
     assert client.patch(f"/api/v1/competitors/{a['id']}", json={"selected": False}).status_code == 200
     d = client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()
     assert [c["domain"] for c in d["competitors"]] == ["left-out.example"] and [e["domain"] for e in d["events"]] == ["left-out.example"]
+
+
+def test_the_whole_record_is_kept_on_the_competitor_and_survives_when_the_rows_go(client):
+    from app.db import SessionLocal
+    from app.models import Business, Competitor, CompetitorKeyword
+    from app.services import competitor_analysis as ca
+    bid = client.post("/api/v1/businesses", json={"name": "Record Co", "website": "https://record.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add(Competitor(business_id=bid, website="https://kept-rival.com", name="Kept", source="manual", selected=True))
+    db.add_all([CompetitorKeyword(business_id=bid, domain="kept-rival.com", keyword=f"kw {i}", position=i + 1, volume=100, traffic=10.0) for i in range(4)])
+    db.commit()
+    b = db.get(Business, bid)
+    assert ca.backfill_snapshots(db, b) >= 1  # copied from what was already read, no provider asked
+    c = db.query(Competitor).filter_by(business_id=bid).one()
+    assert c.domain == "kept-rival.com" and c.kw_count == 4 and c.traffic_est == 40 and c.top3 == 3 and c.analysis_status == "partial" and c.analyzed_at
+    for r in db.query(CompetitorKeyword).filter_by(business_id=bid):
+        db.delete(r)
+    db.commit()
+    m = ca.metrics(db, b, ["kept-rival.com"])["kept-rival.com"]
+    assert m["keywords"] == 4 and m["traffic"] == 40 and m["status"] == "partial"  # the record answers when the detailed rows are gone
+    assert ca.save_snapshot(db, b, "kept-rival.com", {"status": "pending"}) is False  # nothing read: nothing written, nothing emptied
+    db.close()
+    rows = client.get(f"/api/v1/competitors?business_id={bid}").json()
+    assert len(rows) == 1 and rows[0]["kw_count"] == 4 and rows[0]["traffic_est"] == 40
