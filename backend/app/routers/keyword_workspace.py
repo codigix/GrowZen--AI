@@ -353,6 +353,14 @@ def competitor_pages(body: AnalysisIn, b: Business = Depends(get_business), db: 
     return {"pages": ca.pages(db, b, body.domains)}
 
 
+@router.post("/competitor-analysis/pages/check")
+def competitor_pages_check(body: AnalysisIn, force: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Asks whether the ranking pages of these competitors still exist, and keeps the answer. Pages that are gone stop counting toward traffic."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    out = ca.check_pages(db, b, body.domains, force=force)
+    return {**out, "pages": ca.pages(db, b, body.domains), "metrics": ca.metrics(db, b, body.domains)}
+
+
 @router.post("/competitor-analysis/auto")
 def competitor_auto(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Start analyzing, in the background, the listed competitors that were not analyzed yet (Domain Authority and ranked keywords). Nothing about their websites is audited."""

@@ -587,6 +587,8 @@ function PageDrawer({ b, pg, all, onClose }) {
   const Kw = ({ k }) => <tr><td className="py-1 text-slate-900">{k.keyword}</td><td className="text-right tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className="text-right tabular-nums">{num(k.volume)}</td><td className="text-right tabular-nums">{k.difficulty ?? '—'}</td><td className="text-right tabular-nums">{k.yours ? `#${k.yours}` : <span className="text-slate-400">Not ranking</span>}</td><td className="text-right"><button type="button" onClick={() => add([k])} title="Add to My Keywords" aria-label={`Add ${k.keyword} to My Keywords`} className="p-1 text-slate-400 hover:text-emerald-700 cursor-pointer"><Plus size={14} /></button></td></tr>;
   return (
     <Modal open onClose={onClose} width="max-w-3xl" title={pg.url.replace(/^https?:\/\/(www\.)?/, '')} footer={<Button onClick={onClose}>Close</Button>}>
+      {pg.live === false && <div role="alert" className="mb-2 rounded-lg bg-rose-50 ring-1 ring-rose-200 px-3 py-2 text-13 text-rose-900"><b>This page no longer exists</b> (it answered {pg.page_status}). The rankings below were read {pg.read_at ? `on ${fdate(pg.read_at)}` : 'earlier'}, when Google still showed it, so they are out of date and its traffic is not counted.</div>}
+      {pg.live !== false && pg.read_at && <p className="mb-2 text-12 text-slate-500">Rankings read on {fdate(pg.read_at)}.</p>}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
         {[['Est. traffic', kfmt(pg.traffic)], ['Ranking keywords', num(pg.keywords)], ['Best position', pg.best ? `#${pg.best}` : '—'], ['Backlinks to the page', 'Not available']].map(([k, v]) => <div key={k} className="rounded-lg bg-slate-50 px-3 py-2"><div className="text-11.5 text-slate-500">{k}</div><div className="text-14 font-semibold text-slate-900">{v}</div></div>)}
       </div>
@@ -614,13 +616,30 @@ export function TopPagesTab({ b, rows, focus = '' }) {
   const list = all && (fh ? all.filter(p => sameSite(p.domain, fh)) : all);
   const domains = rows.map(c => c.host).filter(Boolean);
   useEffect(() => { let on = true; api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/pages`, { method: 'POST', body: { domains }, timeout: 120000 }).then(r => on && setList(r.pages || [])).catch(() => on && setList([])); return () => { on = false; }; }, [b.id, domains.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [checking, setChecking] = useState(false);
+  const [note, setNote] = useState('');
+  const checkPages = async (force = false, quiet = false) => {
+    setChecking(true);
+    try {
+      const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-analysis/pages/check${force ? '?force=true' : ''}`, { method: 'POST', body: { domains }, timeout: 180000 });
+      setList(r.pages || []);
+      if (!quiet || r.gone) setNote(r.checked ? `${r.checked} page${r.checked === 1 ? '' : 's'} checked${r.gone ? `: ${r.gone} no longer exist${r.gone === 1 ? 's' : ''} and ${r.gone === 1 ? 'its' : 'their'} traffic is not counted` : ': all still exist'}${r.unreachable ? `, ${r.unreachable} could not be reached` : ''}.` : 'Every page was already checked today.');
+    } catch { if (!quiet) setNote('The pages could not be checked just now.'); } finally { setChecking(false); }
+  };
+  const autoChecked = useRef('');
+  useEffect(() => { // the first time the pages are shown, the ones never checked are checked once
+    const key = domains.join('|');
+    if (list && list.length && autoChecked.current !== key && list.some(p => p.live === undefined || (p.page_status == null))) { autoChecked.current = key; checkPages(false, true); }
+  }, [list && list.length, domains.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!list) return <div className="flex items-center justify-center gap-2 py-14 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Loading…</div>;
   const NA = <span className="text-slate-300">Not available</span>;
   const cols = [
     { id: 'url', header: 'Page URL', first: 'asc', value: p => p.url, className: 'px-3 py-2.5 max-w-[340px]', cell: p => <button type="button" onClick={() => setOpen(p)} title={`Open the details of ${p.url}`} className="text-left text-blue-700 hover:underline max-w-full truncate cursor-pointer block">{p.url.replace(/^https?:\/\/(www\.)?/, '')}</button> },
     { id: 'title', header: 'Page title', value: p => p.title || '', cell: p => p.title || NA, hide: true, tip: { what: 'The page title is not read by any data source connected here.' } },
     { id: 'domain', header: 'Competitor', value: p => p.domain },
-    { id: 'traffic', header: 'Est. organic traffic', right: true, first: 'desc', value: p => p.traffic, cell: p => kfmt(p.traffic), tip: { what: 'Estimated visits a month to the page from the keywords it ranks for. An estimate, not verified traffic.', from: 'Ranked keywords (Apify)' } },
+    { id: 'live', header: 'Page', value: p => (p.live === false ? 'Gone' : p.live ? 'Live' : 'Not checked'), cell: p => (p.live === false ? <Badge tone="red" title={`The page answered ${p.page_status}: it no longer exists, so its traffic is not counted`}>Gone</Badge> : p.live ? <Badge tone="green" title="The page answers">Live</Badge> : <span className="text-slate-300" title={p.checked_at ? 'It could not be reached when asked' : 'Not checked yet'}>—</span>), tip: { what: 'Whether the page still exists, asked directly (a plain page request). A page that answers 404 or 410 is gone: its ranking is out of date and its traffic is not counted.' } },
+    { id: 'read', header: 'Rankings read', value: p => p.read_at || '', cell: p => (p.read_at ? fdate(p.read_at) : '—'), hide: true, tip: { what: 'When the ranked keywords of this page were read from the data provider. Rankings change, and a page can disappear after that day.' } },
+    { id: 'traffic', header: 'Est. organic traffic', right: true, first: 'desc', value: p => p.traffic, cell: p => (p.live === false ? <span title={`It was credited with about ${kfmt(p.traffic_was)} before the page was found gone`} className="text-slate-400">0 <span className="text-11 line-through">{kfmt(p.traffic_was)}</span></span> : kfmt(p.traffic)), tip: { what: 'Estimated visits a month to the page from the keywords it ranks for. An estimate, not verified traffic.', from: 'Ranked keywords (Apify)' } },
     { id: 'keywords', header: 'Ranking keywords', right: true, first: 'desc', value: p => p.keywords },
     { id: 'top', header: 'Top keyword', value: p => p.top_keyword || '', tip: { what: 'The most searched keyword the page ranks for.' } },
     { id: 'toppos', header: 'Top keyword position', right: true, value: p => p.top_position ?? null, cell: p => (p.top_position ? `#${p.top_position}` : '—') },
@@ -634,7 +653,7 @@ export function TopPagesTab({ b, rows, focus = '' }) {
     { id: 'traffic', label: 'Traffic', options: [['100', '100+ a month'], ['1000', '1,000+ a month']], test: (p, v) => p.traffic >= Number(v) },
     { id: 'opp', label: 'Opportunity', options: [['yes', 'Has keywords you do not rank for']], test: (p, v) => (p.list || []).some(k => !k.yours) },
   ];
-  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} /><DataTable columnsKey="pages" key={fh} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} collapseFilters initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />
+  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} />{note && <p className="mb-2 rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3 py-2 text-13 text-slate-700">{note}</p>}<DataTable columnsKey="pages" key={fh} toolbar={<Button size="sm" icon={Eye} busy={checking} onClick={() => checkPages(true)} title="Asks each page whether it still exists. Pages that are gone stop counting toward traffic.">Check pages are live</Button>} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} collapseFilters initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />
     {open && <PageDrawer b={b} pg={open} all={all} onClose={() => setOpen(null)} />}</>;
 }
 

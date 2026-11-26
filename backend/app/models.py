@@ -1010,5 +1010,7 @@ class CompetitorKeyword(Base):
     traffic: Mapped[float | None] = mapped_column(Float)
     kd: Mapped[int | None] = mapped_column(Integer)  # the SEO difficulty, 0-100, worked out from the real top 10 on Google (services/keyword_difficulty.py); `difficulty` is Google Ads' competition index
     kd_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when the SEO difficulty was read
+    page_status: Mapped[int | None] = mapped_column(Integer)  # what the ranking page answered when it was checked: its HTTP status, 0 = could not be reached, empty = not checked
+    page_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metrics_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when Google Keyword Planner was last asked about this keyword (difficulty, volume, cost per click), whether or not it had a figure
     read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

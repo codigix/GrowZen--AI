@@ -39,6 +39,9 @@ def _site_metrics(db: Session, domains: list[str]) -> dict[str, dict[str, Any]]:
     return out
 
 
+GONE = (404, 410)  # a ranking page that answers like this no longer exists: the traffic it was credited with is not counted
+
+
 def metrics(db: Session, b: Business, domains: list[str]) -> dict[str, dict[str, Any]]:
     """{domain: {da, pa, spam, rd, keywords, traffic, top3, top10, avg_position, kw_read_at, status}} from what was kept. Status: analyzed (both read), partial (one), pending (none)."""
     domains = list(dict.fromkeys(_host(d) for d in domains if d))
@@ -57,7 +60,7 @@ def metrics(db: Session, b: Business, domains: list[str]) -> dict[str, dict[str,
         pos = [r.position for r in rows if r.position]
         has_kw, has_site = bool(rows), s.get("da") is not None
         out[d] = {"da": s.get("da"), "pa": s.get("pa"), "spam": s.get("spam"), "rd": s.get("rd"), "site_read_at": s.get("read_at"),
-                  "keywords": len(rows) if has_kw else None, "traffic": round(sum(r.traffic or 0 for r in rows)) if has_kw else None,
+                  "keywords": len(rows) if has_kw else None, "traffic": round(sum(r.traffic or 0 for r in rows if r.page_status not in GONE)) if has_kw else None,
                   "top3": sum(1 for p in pos if p <= 3) if has_kw else None, "top10": sum(1 for p in pos if p <= 10) if has_kw else None,
                   "avg_position": round(sum(pos) / len(pos), 1) if pos else None, "kw_read_at": max((r.read_at for r in rows), default=None).isoformat() if rows else None,
                   "status": "analyzed" if has_kw and has_site else "partial" if has_kw or has_site else "pending"}
@@ -303,7 +306,11 @@ def pages(db: Session, b: Business, domains: list[str], limit: int = 200) -> lis
             continue
         e = agg.setdefault((r.domain, r.url), {"domain": r.domain, "url": r.url, "keywords": 0, "traffic": 0.0, "best": None, "top_keyword": None, "top_volume": -1, "top_position": None, "list": []})
         e["keywords"] += 1
-        e["traffic"] += r.traffic or 0
+        gone = r.page_status in GONE
+        e["traffic"] += 0 if gone else (r.traffic or 0)
+        e["traffic_was"] = e.get("traffic_was", 0) + (r.traffic or 0)
+        e["read_at"] = max(filter(None, [e.get("read_at"), r.read_at]), default=None)
+        e["page_status"], e["checked_at"] = r.page_status, (r.page_checked_at if r.page_status is not None else e.get("checked_at"))
         if r.position and (e["best"] is None or r.position < e["best"]):
             e["best"] = r.position
         if (r.volume or 0) > e["top_volume"]:
@@ -316,6 +323,10 @@ def pages(db: Session, b: Business, domains: list[str], limit: int = 200) -> lis
     mine = ck._own_positions(db, b, wanted) if wanted else {}
     for e in out:
         e["traffic"] = round(e["traffic"])
+        e["traffic_was"] = round(e.get("traffic_was") or 0)
+        e["read_at"] = e["read_at"].isoformat() if e.get("read_at") else None
+        e["checked_at"] = e["checked_at"].isoformat() if e.get("checked_at") else None
+        e["live"] = None if e.get("page_status") is None else (False if e["page_status"] in GONE else True if e["page_status"] < 400 else None)  # None = not checked, or answered something that says nothing (a block, a timeout)
         e.pop("top_volume", None)
         for k in e["list"]:
             k["yours"] = mine.get(k["keyword"])
@@ -516,3 +527,43 @@ def ratings(db: Session, b: Business, location: str | None) -> dict[str, Any]:
         out["by_id"][str(x["_id"])] = {"address": x.get("address"), "distance_m": x.get("distance_m"), "relevance": x.get("relevance")}
     _rated[key] = (time.time(), out)
     return out
+
+
+def check_pages(db: Session, b: Business, domains: list[str], limit: int = 40, force: bool = False) -> dict[str, Any]:
+    """Asks each ranking page of the chosen competitors whether it still exists (a plain page request, no paid service; the top pages by traffic first, at most `limit`).
+    A page checked in the last day is not asked again unless `force`. 404 and 410 mean it is gone: its traffic is no longer counted. The answer is kept on every keyword row of that page."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    import httpx  # noqa: PLC0415
+
+    from .url_safety import SSRFSafeTransport  # noqa: PLC0415
+    cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+    rows = list(db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain.in_(list(dict.fromkeys(_host(d) for d in domains if d)) or [""]), CompetitorKeyword.url.is_not(None))))
+    traffic: dict[str, float] = {}
+    for r in rows:
+        traffic[r.url] = traffic.get(r.url, 0) + (r.traffic or 0)
+
+    def recent(r: CompetitorKeyword) -> bool:
+        at = r.page_checked_at
+        return bool(at) and (at if at.tzinfo else at.replace(tzinfo=timezone.utc)) >= cutoff
+    skip = set() if force else {r.url for r in rows if recent(r)}
+    urls = [u for u, _t in sorted(traffic.items(), key=lambda x: -x[1]) if u not in skip][:max(1, min(limit, 80))]
+    status: dict[str, int] = {}
+    if urls:
+        def one(u: str) -> tuple[str, int]:
+            try:
+                with httpx.Client(transport=SSRFSafeTransport(retries=0), timeout=10, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (compatible; GrowZenPageCheck/1.0)"}) as c:
+                    with c.stream("GET", u) as resp:
+                        return u, resp.status_code
+            except Exception:  # noqa: BLE001 -- unreachable: not a verdict on the page
+                return u, 0
+        from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            status = dict(pool.map(one, urls))
+        now = datetime.now(timezone.utc)
+        for r in rows:
+            if r.url in status:
+                r.page_status, r.page_checked_at = status[r.url], now
+        db.commit()
+    gone = sum(1 for v in status.values() if v in GONE)
+    return {"checked": len(status), "gone": gone, "unreachable": sum(1 for v in status.values() if v == 0), "kept": len(skip)}
