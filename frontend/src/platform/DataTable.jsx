@@ -84,7 +84,7 @@ export function useSorted(rows, valueOf, initial = null) {
 export function SortTh({ id, sort, onSort, right = false, first, children, className = 'px-3 py-3', tip = {}, ...rest }) {
   const on = sort?.key === id;
   return (
-    <th scope="col" aria-sort={on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'} className={`${className} font-semibold ${right ? 'text-right' : 'text-left'}`} {...rest}>
+    <th scope="col" aria-sort={on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'} className={`${className} font-semibold ${right ? 'text-left' : 'text-left'}`} {...rest}>
       <button type="button" onClick={() => onSort(id, first)} className={`inline-flex items-center gap-1 cursor-pointer hover:text-slate-900 ${on ? 'text-slate-900' : ''}`}>
         <Head right={right} {...tip}>{children}</Head>
         {on ? (sort.dir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-slate-300" />}
@@ -146,11 +146,11 @@ export default function DataTable({
   const exportable = columns.filter(c => c.csv !== false && c.value);
   const bar = search || filters.length > 0 || exportName || columnsMenu || toolbar;
   const filterEls = filters.map(f => (
-<label key={f.id} className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">{f.label}
-              <Select value={fv[f.id] || ''} onChange={e => setFv(x => ({ ...x, [f.id]: e.target.value }))} aria-label={`Filter by ${f.label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer max-w-[11rem] ${fv[f.id] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
-                <option value="">All</option>{f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
-            </label>));
+    <label key={f.id} className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">{f.label}
+      <Select value={fv[f.id] || ''} onChange={e => setFv(x => ({ ...x, [f.id]: e.target.value }))} aria-label={`Filter by ${f.label.toLowerCase()}`} className={`h-8 rounded-md border text-12.5 font-medium cursor-pointer max-w-[11rem] ${fv[f.id] ? 'border-indigo-400 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700'}`}>
+        <option value="">All</option>{f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </Select>
+    </label>));
   const box = (
     <>
       {bar && (
@@ -184,7 +184,7 @@ export default function DataTable({
             {pager.rows.map((r, i) => (
               <tr key={rowKey(r, pager.from + i)} className={rowClass ? rowClass(r) : 'hover:bg-slate-50'}>
                 {serial && <td className="pl-4 pr-1 py-2.5 text-12 text-slate-400 tabular-nums">{pager.from + i + 1}</td>}
-                {cols.map(c => <td key={c.id} className={c.className || `px-3 py-2.5 ${c.right ? 'text-right tabular-nums' : ''}`}>{c.cell ? c.cell(r) : (c.value ? (c.value(r) ?? '—') : '')}</td>)}
+                {cols.map(c => <td key={c.id} className={c.className || `px-3 py-2.5 ${c.right ? ' tabular-nums' : ''}`}>{c.cell ? c.cell(r) : (c.value ? (c.value(r) ?? '—') : '')}</td>)}
               </tr>))}
             {!pager.rows.length && <tr><td colSpan={Math.max(1, cols.length + (serial ? 1 : 0))} className="px-5 py-10 text-center text-13 text-slate-500">{active ? <>Nothing matches. <button type="button" onClick={() => { setQ(''); setFv({}); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></> : empty}</td></tr>}
           </tbody>

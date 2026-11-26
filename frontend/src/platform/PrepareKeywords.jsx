@@ -27,7 +27,7 @@ function Group({ g, state, set }) {
           <thead>
             <tr className="text-12 uppercase tracking-wide text-slate-500 bg-slate-50/70">
               <th className="px-4 py-2 w-8" /><th className="px-3 py-2 text-left">Keyword</th><th className="px-3 py-2 text-left">Kind</th>
-              <th className="px-3 py-2 text-right">Searches / mo</th><th className="px-3 py-2 text-right">Index</th><th className="px-3 py-2 text-right">CPC</th>
+              <th className="px-3 py-2 ">Searches / mo</th><th className="px-3 py-2 ">Index</th><th className="px-3 py-2 ">CPC</th>
               <th className="px-3 py-2 text-left">Competitors</th><th className="px-3 py-2 text-left">Role</th><th className="px-3 py-2 text-left">Priority</th>
             </tr>
           </thead>
@@ -39,9 +39,9 @@ function Group({ g, state, set }) {
                   <td className="px-4 py-2"><input type="checkbox" aria-label={`Keep ${r.keyword}`} checked={!!s.on} disabled={r.saved} onChange={e => set(r.keyword, { on: e.target.checked })} className="h-4 w-4 accent-indigo-600 cursor-pointer" /></td>
                   <td className="px-3 py-2 font-medium text-slate-900">{r.keyword} {r.saved && <Badge tone="green">In My Keywords</Badge>}</td>
                   <td className="px-3 py-2 text-slate-500">{FORM[r.form]}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.volume == null ? '—' : r.volume === 0 ? <span className="text-slate-400" title="Google has no measured searches for this exact wording">0</span> : num(r.volume)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.difficulty ?? '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.cpc ? `₹${r.cpc}` : '—'}</td>
+                  <td className="px-3 py-2  tabular-nums">{r.volume == null ? '—' : r.volume === 0 ? <span className="text-slate-400" title="Google has no measured searches for this exact wording">0</span> : num(r.volume)}</td>
+                  <td className="px-3 py-2  tabular-nums">{r.difficulty ?? '—'}</td>
+                  <td className="px-3 py-2  tabular-nums">{r.cpc ? `₹${r.cpc}` : '—'}</td>
                   <td className="px-3 py-2 text-12 text-slate-500">{r.competitors?.length ? <span title="Competitors found with this keyword in your workspace">{r.competitors.join(', ')}</span> : '—'}</td>
                   <td className="px-3 py-2"><Seg label="Role" value={s.role} onChange={v => set(r.keyword, { role: v, on: true })} options={[['primary', 'Primary', 'bg-indigo-600 text-white'], ['secondary', 'Secondary', 'bg-slate-700 text-white']]} /></td>
                   <td className="px-3 py-2"><Seg label="Priority" value={s.priority} onChange={v => set(r.keyword, { priority: v, on: true })} options={PRIO.map(p => [p, p, p === 'High' ? 'bg-rose-600 text-white' : p === 'Medium' ? 'bg-amber-500 text-white' : 'bg-slate-500 text-white'])} /></td>

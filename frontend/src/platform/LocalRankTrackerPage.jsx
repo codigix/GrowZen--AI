@@ -107,7 +107,7 @@ function CompetitorsTable({ competitors, name = 'competitors' }) {
       <div className="px-5 py-2.5 border-b border-slate-100 flex justify-end"><CsvButton disabled={!sorted.length} onClick={() => downloadCsv(name, ['Business', 'Average rank', 'Points in the top 3'], sorted.map(c => [c.name, c.avg_rank ?? '', c.top3 ?? '']))} /></div>
       <table className="w-full text-13">
         <thead className="bg-slate-50 text-11.5  tracking-wide text-slate-500"><tr><SortTh id="name" sort={sort} onSort={onSort} className="px-5 py-2">Business</SortTh><SortTh id="avg_rank" sort={sort} onSort={onSort} right className="px-3 py-2">Avg</SortTh><SortTh id="top3" sort={sort} onSort={onSort} right first="desc" className="px-5 py-2">Top 3</SortTh></tr></thead>
-        <tbody className="divide-y divide-slate-100">{pager.rows.map(c => <tr key={c.name}><td className="px-5 py-2 text-slate-800 max-w-[200px] truncate" title={c.name}>{c.name}</td><td className="px-3 py-2 text-right tabular-nums">{c.avg_rank}</td><td className="px-5 py-2 text-right tabular-nums">{c.top3}</td></tr>)}</tbody>
+        <tbody className="divide-y divide-slate-100">{pager.rows.map(c => <tr key={c.name}><td className="px-5 py-2 text-slate-800 max-w-[200px] truncate" title={c.name}>{c.name}</td><td className="px-3 py-2  tabular-nums">{c.avg_rank}</td><td className="px-5 py-2  tabular-nums">{c.top3}</td></tr>)}</tbody>
       </table>
       <Pager p={pager} label="businesses" />
     </>
@@ -140,7 +140,7 @@ function KeywordsTable({ rows, kwNow, waiting, start, onPick, name = 'maps-keywo
                 <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.latest ? fmtDateTime(r.latest.created_at) : <span className="text-slate-400">Not scanned</span>}</td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap">{r.latest ? <><span className="font-semibold tabular-nums">{r.latest.avg_rank ?? '—'}</span> <Delta now={r.latest.avg_rank} before={r.previous?.avg_rank} better="down" /></> : '—'}</td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap">{r.latest ? <><span className="font-semibold tabular-nums">{topPct(r.latest)}%</span> <Delta now={topPct(r.latest)} before={topPct(r.previous)} better="up" unit="%" /></> : '—'}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{r.latest ? `${foundPct(r.latest)}%` : '—'}</td>
+                <td className="px-3 py-2.5  tabular-nums">{r.latest ? `${foundPct(r.latest)}%` : '—'}</td>
                 <td className="px-3 py-2.5"><Spark values={r.history.map(s => s.avg_rank).filter(v => v != null)} /></td>
                 <td className="px-5 py-2.5 text-right"><Button size="sm" icon={RotateCw} disabled={waiting != null} onClick={e => { e.stopPropagation(); start(r.keyword); }}>Scan</Button></td>
               </tr>
@@ -363,10 +363,12 @@ function Page({ b }) {
       <div ref={sentinel} aria-hidden="true" className="h-px !mt-3 -mb-6" />
       <div className={`sticky top-2 z-20 bg-white rounded-xl border border-slate-200 transition-shadow ${stuck ? 'shadow-md' : 'shadow-sm'}`}>
         <div role="tablist" aria-label="Position tracking views" onKeyDown={onKey} className="flex flex-nowrap overflow-x-auto px-2" style={{ scrollbarWidth: 'none' }}>
-          {all.map(t => { const on = tab === t.id; return (
-            <button key={t.id} id={`pos-tab-${t.id}`} type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} onClick={() => setTab(t.id)}
-              className={`shrink-0 h-12 px-4 text-14 whitespace-nowrap border-b-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${on ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>{t.label}</button>
-          ); })}
+          {all.map(t => {
+            const on = tab === t.id; return (
+              <button key={t.id} id={`pos-tab-${t.id}`} type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} onClick={() => setTab(t.id)}
+                className={`shrink-0 h-12 px-4 text-14 whitespace-nowrap border-b-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${on ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>{t.label}</button>
+            );
+          })}
         </div>
       </div>
       <div role="tabpanel" aria-labelledby={`pos-tab-${tab}`} className="min-w-0">

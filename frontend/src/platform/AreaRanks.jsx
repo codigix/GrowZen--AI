@@ -109,15 +109,17 @@ export default function AreaRanks({ b }) {
 
       {d && areas.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-          {areas.map(a => { const s = stat(a); return (
-            <button key={a.id} type="button" onClick={() => setOpenArea(openArea === a.id ? null : a.id)} className={`text-left rounded-xl bg-white ring-1 p-3 cursor-pointer min-w-0 ${openArea === a.id ? 'ring-2 ring-indigo-500' : 'ring-slate-200 hover:ring-indigo-300'}`}>
-              <div className="text-12.5 font-semibold text-slate-900 truncate flex items-center gap-1"><MapPin size={12} className="text-indigo-500 shrink-0" />{a.name}</div>
-              {s.measured ? (
-                <div className="mt-1.5 flex items-end justify-between gap-2">
-                  <div><div className="text-22 leading-none font-bold tabular-nums text-slate-900">{s.avg ?? '—'}</div><div className="text-11 text-slate-500">average position</div></div>
-                  <div className="text-right text-11.5 text-slate-600"><div className="flex items-center gap-1 justify-end"><Trophy size={11} className="text-emerald-600" />{s.top3} in top 3</div><div className="flex items-center gap-1 justify-end"><Target size={11} className="text-indigo-500" />{s.found} of {s.measured} found</div></div>
-                </div>) : <div className="mt-1.5 text-12 text-slate-400">Not measured yet</div>}
-            </button>); })}
+          {areas.map(a => {
+            const s = stat(a); return (
+              <button key={a.id} type="button" onClick={() => setOpenArea(openArea === a.id ? null : a.id)} className={`text-left rounded-xl bg-white ring-1 p-3 cursor-pointer min-w-0 ${openArea === a.id ? 'ring-2 ring-indigo-500' : 'ring-slate-200 hover:ring-indigo-300'}`}>
+                <div className="text-12.5 font-semibold text-slate-900 truncate flex items-center gap-1"><MapPin size={12} className="text-indigo-500 shrink-0" />{a.name}</div>
+                {s.measured ? (
+                  <div className="mt-1.5 flex items-end justify-between gap-2">
+                    <div><div className="text-22 leading-none font-bold tabular-nums text-slate-900">{s.avg ?? '—'}</div><div className="text-11 text-slate-500">average position</div></div>
+                    <div className="text-right text-11.5 text-slate-600"><div className="flex items-center gap-1 justify-end"><Trophy size={11} className="text-emerald-600" />{s.top3} in top 3</div><div className="flex items-center gap-1 justify-end"><Target size={11} className="text-indigo-500" />{s.found} of {s.measured} found</div></div>
+                  </div>) : <div className="mt-1.5 text-12 text-slate-400">Not measured yet</div>}
+              </button>);
+          })}
         </div>)}
 
       {d && areas.length > 0 && keywordsShown.length > 0 && (
@@ -125,8 +127,10 @@ export default function AreaRanks({ b }) {
           <DataTable bare rows={keywordsShown.map(k => ({ keyword: k }))} rowKey={r => r.keyword} pageSize={15} sizes={[15, 30, 60]} exportName={`area-ranks-${b.name}`} label="keywords" searchPlaceholder="Search keywords" minWidth={Math.max(640, 200 + areas.length * 110)} columnsMenu={false} headClass="bg-slate-100 text-slate-700"
             columns={[
               { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2 font-medium text-slate-900 min-w-[200px]', cell: r => r.keyword },
-              ...areas.map(a => ({ id: `a${a.id}`, header: a.name, right: true, first: 'asc', value: r => { const c = cell[`${a.id}|${r.keyword}`]; return c?.now ? (c.now.rank ?? 99) : null; }, className: 'px-3 py-2 text-right', csv: true,
-                cell: r => <RankChip cell={cell[`${a.id}|${r.keyword}`]} /> })),
+              ...areas.map(a => ({
+                id: `a${a.id}`, header: a.name, right: true, first: 'asc', value: r => { const c = cell[`${a.id}|${r.keyword}`]; return c?.now ? (c.now.rank ?? 99) : null; }, className: 'px-3 py-2 ', csv: true,
+                cell: r => <RankChip cell={cell[`${a.id}|${r.keyword}`]} />
+              })),
             ]} />
         </Card>)}
 
@@ -136,8 +140,8 @@ export default function AreaRanks({ b }) {
           <DataTable bare rows={keywordsShown.map(k => ({ keyword: k, c: cell[`${detail.id}|${k}`] })).filter(r => r.c)} rowKey={r => r.keyword} pageSize={15} sizes={[15, 30]} exportName={`area-${detail.name}-${b.name}`} label="keywords" columnsMenu={false} headClass="bg-slate-100 text-slate-700" empty="Nothing measured here yet."
             columns={[
               { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2 font-medium text-slate-900', cell: r => r.keyword },
-              { id: 'rank', header: 'Position', right: true, first: 'asc', value: r => r.c.now.rank ?? 99, className: 'px-3 py-2 text-right', cell: r => <RankChip cell={r.c} /> },
-              { id: 'before', header: 'Before', right: true, value: r => (r.c.before ? (r.c.before.rank ?? 99) : null), className: 'px-3 py-2 text-right tabular-nums text-slate-500', cell: r => (r.c.before ? (r.c.before.rank ?? '—') : '—') },
+              { id: 'rank', header: 'Position', right: true, first: 'asc', value: r => r.c.now.rank ?? 99, className: 'px-3 py-2 ', cell: r => <RankChip cell={r.c} /> },
+              { id: 'before', header: 'Before', right: true, value: r => (r.c.before ? (r.c.before.rank ?? 99) : null), className: 'px-3 py-2  tabular-nums text-slate-500', cell: r => (r.c.before ? (r.c.before.rank ?? '—') : '—') },
               { id: 'top', header: 'Shown ahead of you', value: r => (r.c.now.top || []).join(', '), className: 'px-3 py-2 text-12.5 text-slate-700', cell: r => ((r.c.now.top || []).length ? (r.c.now.top || []).join(' · ') : <Badge tone="green">Nobody listed first</Badge>) },
               { id: 'at', header: 'Measured', first: 'desc', value: r => Date.parse(r.c.now.at) || null, className: 'px-3 py-2 whitespace-nowrap text-12 text-slate-500', cell: r => fmtDateTime(r.c.now.at) },
             ]} />

@@ -190,18 +190,18 @@ function OrganicResearch({ intel }) {
           {(d) => (
             <>
               <RowsTable rows={d.rows} cols={[{ id: 'keyword', label: 'Keyword', value: r => r.keyword }, { id: 'intent', label: 'Intent', value: r => (r.intent || 'unknown').toLowerCase() }, { id: 'position', label: 'Pos.', value: r => r.position, right: true, first: 'asc' }, { id: 'volume', label: 'Volume', value: r => r.volume, right: true }, { id: 'cpc', label: 'CPC (USD)', value: r => r.cpc, right: true }, { id: 'traffic', label: 'Traffic', value: r => r.traffic, right: true }]} label="keywords" searchText={r => r.keyword} row={r => {
-                      const I = INTENT[(r.intent || 'unknown').toLowerCase()] || INTENT.unknown;
-                      return (
-                        <tr key={r.keyword + r.position} className="hover:bg-slate-50">
-                          <td className="px-4 py-2.5 max-w-[240px] truncate text-indigo-700 font-medium" title={r.keyword}>{r.keyword}</td>
-                          <td className="px-4 py-2.5"><span title={I[2]} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center text-white" style={{ background: I[1] }}>{I[0]}</span></td>
-                          <td className="px-4 py-2.5 text-right tabular-nums">{r.position ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums">{r.cpc != null ? r.cpc.toFixed(2) : '—'}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{num1(r.traffic)}</td>
-                        </tr>
-                      );
-                    }} />
+                const I = INTENT[(r.intent || 'unknown').toLowerCase()] || INTENT.unknown;
+                return (
+                  <tr key={r.keyword + r.position} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5 max-w-[240px] truncate text-indigo-700 font-medium" title={r.keyword}>{r.keyword}</td>
+                    <td className="px-4 py-2.5"><span title={I[2]} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center text-white" style={{ background: I[1] }}>{I[0]}</span></td>
+                    <td className="px-4 py-2.5  tabular-nums">{r.position ?? '—'}</td>
+                    <td className="px-4 py-2.5  tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
+                    <td className="px-4 py-2.5  tabular-nums">{r.cpc != null ? r.cpc.toFixed(2) : '—'}</td>
+                    <td className="px-4 py-2.5  tabular-nums text-indigo-700">{num1(r.traffic)}</td>
+                  </tr>
+                );
+              }} />
             </>
           )}
         </Panel>
@@ -212,8 +212,10 @@ function OrganicResearch({ intel }) {
               <div className="flex h-3 rounded-full overflow-hidden bg-slate-100 mb-4">{kw.intents.map(i => <span key={i.intent} title={`${(INTENT[i.intent] || INTENT.unknown)[2]}: ${i.keywords}`} style={{ width: `${(i.keywords / totalKw) * 100}%`, background: (INTENT[i.intent] || INTENT.unknown)[1] }} />)}</div>
               <table className="w-full text-13">
                 <thead className="text-11.5 text-slate-500"><tr><Th>Intent</Th><Th c="text-right">Keywords</Th><Th c="text-right">Share</Th><Th c="text-right">Traffic</Th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{kw.intents.map(i => { const m = INTENT[i.intent] || INTENT.unknown; return (
-                  <tr key={i.intent}><td className="px-4 py-2"><span className="inline-block w-2.5 h-2.5 rounded-full mr-2" style={{ background: m[1] }} />{m[2]}</td><td className="px-4 py-2 text-right tabular-nums text-indigo-700">{i.keywords}</td><td className="px-4 py-2 text-right tabular-nums">{Math.round((i.keywords / totalKw) * 1000) / 10}%</td><td className="px-4 py-2 text-right tabular-nums">{totalTr ? `${Math.round((i.traffic / totalTr) * 100)}%` : '—'}</td></tr>); })}</tbody>
+                <tbody className="divide-y divide-slate-100">{kw.intents.map(i => {
+                  const m = INTENT[i.intent] || INTENT.unknown; return (
+                    <tr key={i.intent}><td className="px-4 py-2"><span className="inline-block w-2.5 h-2.5 rounded-full mr-2" style={{ background: m[1] }} />{m[2]}</td><td className="px-4 py-2  tabular-nums text-indigo-700">{i.keywords}</td><td className="px-4 py-2  tabular-nums">{Math.round((i.keywords / totalKw) * 1000) / 10}%</td><td className="px-4 py-2  tabular-nums">{totalTr ? `${Math.round((i.traffic / totalTr) * 100)}%` : '—'}</td></tr>);
+                })}</tbody>
               </table>
             </>
           ) : <Empty intel={intel} why={section(intel, 'keywords').why} off={section(intel, 'keywords').off} noun="keywords" />}
@@ -228,7 +230,7 @@ function OrganicResearch({ intel }) {
         </Card>
         <Card title="Top pages" subtitle="Pages that bring the most estimated organic traffic" pad={false}>
           {section(intel, 'pages').data?.length ? (
-            <RowsTable exportName={`top-pages-${intel.domain}`} exportCols={[['Page address', p => p.url], ['Keywords', p => p.keywords], ['Traffic', p => p.traffic]]} rows={section(intel, 'pages').data} cols={[{ id: 'page', label: 'Page', value: p => p.url }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }, { id: 'traffic', label: 'Traffic', value: p => p.traffic, right: true }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[300px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{path(p.url)}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(p.keywords)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{num1(p.traffic)}</td></tr>} />
+            <RowsTable exportName={`top-pages-${intel.domain}`} exportCols={[['Page address', p => p.url], ['Keywords', p => p.keywords], ['Traffic', p => p.traffic]]} rows={section(intel, 'pages').data} cols={[{ id: 'page', label: 'Page', value: p => p.url }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }, { id: 'traffic', label: 'Traffic', value: p => p.traffic, right: true }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[300px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{path(p.url)}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5  tabular-nums">{fmt(p.keywords)}</td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{num1(p.traffic)}</td></tr>} />
           ) : <Empty intel={intel} why={section(intel, 'pages').why} off={section(intel, 'pages').off} noun="pages" />}
         </Card>
       </div>
@@ -236,7 +238,7 @@ function OrganicResearch({ intel }) {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <Card title={<span>Main organic competitors <span className="text-slate-400 font-normal">{comp.length || ''}</span></span>} pad={false}>
           {comp.length ? (
-            <RowsTable exportName={`organic-competitors-${intel.domain}`} exportCols={[['Competitor', c => c.domain], ['Common keywords', c => c.common], ['Search engine keywords', c => c.keywords]]} rows={comp} cols={[{ id: 'domain', label: 'Competitor', value: c => c.domain }, { id: 'level', label: 'Com. level', value: c => c.common }, { id: 'common', label: 'Com. keywords', value: c => c.common, right: true }, { id: 'keywords', label: 'SE keywords', value: c => c.keywords, right: true }]} label="competitors" searchText={c => c.domain} row={c => <tr key={c.domain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.domain}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 w-28"><span className="block h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400" style={{ width: `${(c.common / maxCommon) * 100}%` }} /></span></td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(c.common)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(c.keywords)}</td></tr>} />
+            <RowsTable exportName={`organic-competitors-${intel.domain}`} exportCols={[['Competitor', c => c.domain], ['Common keywords', c => c.common], ['Search engine keywords', c => c.keywords]]} rows={comp} cols={[{ id: 'domain', label: 'Competitor', value: c => c.domain }, { id: 'level', label: 'Com. level', value: c => c.common }, { id: 'common', label: 'Com. keywords', value: c => c.common, right: true }, { id: 'keywords', label: 'SE keywords', value: c => c.keywords, right: true }]} label="competitors" searchText={c => c.domain} row={c => <tr key={c.domain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.domain}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 w-28"><span className="block h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400" style={{ width: `${(c.common / maxCommon) * 100}%` }} /></span></td><td className="px-4 py-2.5  tabular-nums">{fmt(c.common)}</td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{fmt(c.keywords)}</td></tr>} />
           ) : <Empty intel={intel} why={section(intel, 'competitors').why} off={section(intel, 'competitors').off} noun="competitors" />}
         </Card>
         <Card title="Competitive positioning map" subtitle="Organic keywords (across) against estimated organic traffic (up)">
@@ -263,7 +265,7 @@ function Advertising({ intel }) {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <Card title="Top paid keywords" pad={false}>
           {rows.length ? (
-            <RowsTable exportName={`paid-keywords-${intel.domain}`} exportCols={[['Keyword', r => r.keyword], ['Position', r => r.position], ['Searches per month', r => r.volume], ['Cost per click (USD)', r => r.cpc], ['Traffic', r => r.traffic]]} rows={rows} cols={[{ id: 'keyword', label: 'Keyword', value: r => r.keyword }, { id: 'position', label: 'Pos.', value: r => r.position, right: true, first: 'asc' }, { id: 'volume', label: 'Volume', value: r => r.volume, right: true }, { id: 'cpc', label: 'CPC (USD)', value: r => r.cpc, right: true }, { id: 'traffic', label: 'Traffic', value: r => r.traffic, right: true }]} label="keywords" searchText={r => r.keyword} row={r => <tr key={r.keyword + r.position}><td className="px-4 py-2.5 max-w-[220px] truncate text-indigo-700 font-medium">{r.keyword}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.position ?? '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{usd(r.cpc)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num1(r.traffic)}</td></tr>} />
+            <RowsTable exportName={`paid-keywords-${intel.domain}`} exportCols={[['Keyword', r => r.keyword], ['Position', r => r.position], ['Searches per month', r => r.volume], ['Cost per click (USD)', r => r.cpc], ['Traffic', r => r.traffic]]} rows={rows} cols={[{ id: 'keyword', label: 'Keyword', value: r => r.keyword }, { id: 'position', label: 'Pos.', value: r => r.position, right: true, first: 'asc' }, { id: 'volume', label: 'Volume', value: r => r.volume, right: true }, { id: 'cpc', label: 'CPC (USD)', value: r => r.cpc, right: true }, { id: 'traffic', label: 'Traffic', value: r => r.traffic, right: true }]} label="keywords" searchText={r => r.keyword} row={r => <tr key={r.keyword + r.position}><td className="px-4 py-2.5 max-w-[220px] truncate text-indigo-700 font-medium">{r.keyword}</td><td className="px-4 py-2.5  tabular-nums">{r.position ?? '—'}</td><td className="px-4 py-2.5  tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td><td className="px-4 py-2.5  tabular-nums">{usd(r.cpc)}</td><td className="px-4 py-2.5  tabular-nums">{num1(r.traffic)}</td></tr>} />
           ) : Nothing}
         </Card>
         <Card title="Paid position distribution">
@@ -271,7 +273,7 @@ function Advertising({ intel }) {
         </Card>
         <Card title="Main paid competitors" pad={false}>
           {pc.data?.length ? (
-            <RowsTable exportName={`paid-competitors-${intel.domain}`} exportCols={[['Competitor', c => c.domain], ['Common keywords', c => c.common], ['Advertising keywords', c => c.keywords]]} rows={pc.data} cols={[{ id: 'domain', label: 'Competitor', value: c => c.domain }, { id: 'common', label: 'Com. keywords', value: c => c.common, right: true }, { id: 'keywords', label: 'Ad keywords', value: c => c.keywords, right: true }]} label="competitors" searchText={c => c.domain} row={c => <tr key={c.domain}><td className="px-4 py-2.5 text-indigo-700">{c.domain}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(c.common)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(c.keywords)}</td></tr>} />
+            <RowsTable exportName={`paid-competitors-${intel.domain}`} exportCols={[['Competitor', c => c.domain], ['Common keywords', c => c.common], ['Advertising keywords', c => c.keywords]]} rows={pc.data} cols={[{ id: 'domain', label: 'Competitor', value: c => c.domain }, { id: 'common', label: 'Com. keywords', value: c => c.common, right: true }, { id: 'keywords', label: 'Ad keywords', value: c => c.keywords, right: true }]} label="competitors" searchText={c => c.domain} row={c => <tr key={c.domain}><td className="px-4 py-2.5 text-indigo-700">{c.domain}</td><td className="px-4 py-2.5  tabular-nums">{fmt(c.common)}</td><td className="px-4 py-2.5  tabular-nums">{fmt(c.keywords)}</td></tr>} />
           ) : Nothing}
         </Card>
         <Card title="Sample text ads">
@@ -298,11 +300,11 @@ function Backlinks({ intel }) {
           action={list.data?.length ? <Button size="sm" icon={Download} onClick={() => csv(`backlinks-${intel.domain}`, ['Referring page title', 'Referring page address', 'Anchor text', 'Target page address', 'Follow'], list.data.map(r => [r.title, r.url_from, r.anchor, r.url_to, r.follow ? 'follow' : 'nofollow']))}>Export</Button> : null}>
           {list.data?.length ? (
             <RowsTable rows={list.data} cols={[{ id: 'page', label: 'Referring page', value: r => (r.title || host(r.url_from)) }, { id: 'anchor', label: 'Anchor text / target', value: r => (r.anchor || r.url_to) }, { id: 'type', label: 'Type', value: r => (r.follow ? 'follow' : 'nofollow'), right: true }]} size={25} sticky wrap="overflow-auto max-h-[330px]" label="backlinks" searchText={r => `${r.title} ${r.url_from} ${r.anchor} ${r.url_to}`} row={(r, i) => (
-                  <tr key={r.url_from + i} className="hover:bg-slate-50 align-top">
-                    <td className="px-4 py-2.5 max-w-[320px]"><div className="truncate font-medium text-slate-900" title={r.title}>{r.title || host(r.url_from)}</div><a href={r.url_from} target="_blank" rel="noreferrer" className="text-12 text-indigo-700 hover:underline block truncate">{r.url_from}</a></td>
-                    <td className="px-4 py-2.5 max-w-[300px]"><div className="truncate text-slate-800" title={r.anchor}>{r.anchor || '—'}</div><div className="text-12 text-slate-500 truncate">{r.url_to}</div></td>
-                    <td className="px-4 py-2.5 text-right"><Badge tone={r.follow ? 'green' : 'gray'}>{r.follow ? 'follow' : 'nofollow'}</Badge></td>
-                  </tr>)} />
+              <tr key={r.url_from + i} className="hover:bg-slate-50 align-top">
+                <td className="px-4 py-2.5 max-w-[320px]"><div className="truncate font-medium text-slate-900" title={r.title}>{r.title || host(r.url_from)}</div><a href={r.url_from} target="_blank" rel="noreferrer" className="text-12 text-indigo-700 hover:underline block truncate">{r.url_from}</a></td>
+                <td className="px-4 py-2.5 max-w-[300px]"><div className="truncate text-slate-800" title={r.anchor}>{r.anchor || '—'}</div><div className="text-12 text-slate-500 truncate">{r.url_to}</div></td>
+                <td className="px-4 py-2.5 text-right"><Badge tone={r.follow ? 'green' : 'gray'}>{r.follow ? 'follow' : 'nofollow'}</Badge></td>
+              </tr>)} />
           ) : <Empty intel={intel} why={list.why} off={list.off} noun="backlinks" />}
         </Card>
         <div className="space-y-4">
@@ -315,23 +317,23 @@ function Backlinks({ intel }) {
             ) : <Empty intel={intel} why={section(intel, 'links').why} off={section(intel, 'links').off} noun="links" />}
           </Card>
           <Card title="Backlink types">
-            {links?.types?.length ? <div className="space-y-2.5">{links.types.map(t => <div key={t.type} className="flex items-center gap-3 text-13"><span className="w-16 text-slate-700">{t.type}</span><span className="flex-1 h-2 rounded-full bg-violet-100 overflow-hidden"><span className="block h-full bg-violet-500" style={{ width: `${Math.min(100, t.share)}%` }} /></span><span className="w-10 text-right tabular-nums text-slate-500">{t.share}%</span><span className="w-14 text-right tabular-nums text-indigo-700">{fmt(t.count)}</span></div>)}</div>
+            {links?.types?.length ? <div className="space-y-2.5">{links.types.map(t => <div key={t.type} className="flex items-center gap-3 text-13"><span className="w-16 text-slate-700">{t.type}</span><span className="flex-1 h-2 rounded-full bg-violet-100 overflow-hidden"><span className="block h-full bg-violet-500" style={{ width: `${Math.min(100, t.share)}%` }} /></span><span className="w-10  tabular-nums text-slate-500">{t.share}%</span><span className="w-14  tabular-nums text-indigo-700">{fmt(t.count)}</span></div>)}</div>
               : <Empty intel={intel} why={section(intel, 'links').why} off={section(intel, 'links').off} noun="link types" />}
           </Card>
         </div>
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <Card title="Anchors" pad={false}>
-          {anc.data?.length ? <RowsTable exportName={`backlink-anchors-${intel.domain}`} exportCols={[['Anchor text', a => a.anchor], ['Linking domains', a => a.domains], ['Backlinks', a => a.backlinks]]} rows={anc.data} cols={[{ id: 'anchor', label: 'Anchor', value: a => a.anchor }, { id: 'domains', label: 'Domains', value: a => a.domains, right: true }, { id: 'backlinks', label: 'Backlinks', value: a => a.backlinks, right: true }]} label="anchors" searchText={a => a.anchor} row={a => <tr key={a.anchor}><td className="px-4 py-2.5 max-w-[320px] truncate" title={a.anchor}>{a.anchor}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(a.domains)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(a.backlinks)}</td></tr>} />
+          {anc.data?.length ? <RowsTable exportName={`backlink-anchors-${intel.domain}`} exportCols={[['Anchor text', a => a.anchor], ['Linking domains', a => a.domains], ['Backlinks', a => a.backlinks]]} rows={anc.data} cols={[{ id: 'anchor', label: 'Anchor', value: a => a.anchor }, { id: 'domains', label: 'Domains', value: a => a.domains, right: true }, { id: 'backlinks', label: 'Backlinks', value: a => a.backlinks, right: true }]} label="anchors" searchText={a => a.anchor} row={a => <tr key={a.anchor}><td className="px-4 py-2.5 max-w-[320px] truncate" title={a.anchor}>{a.anchor}</td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{fmt(a.domains)}</td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{fmt(a.backlinks)}</td></tr>} />
             : <Empty intel={intel} why={anc.why} off={anc.off} noun="anchors" />}
         </Card>
         <Card title="Root domains" pad={false}>
-          {refs.data?.length ? <RowsTable exportName={`referring-domains-${intel.domain}`} exportCols={[['Referring domain', r => r.domain], ['Country', r => r.country || ''], ['Authority', r => r.authority], ['Backlinks', r => r.backlinks]]} rows={refs.data} cols={[{ id: 'domain', label: 'Root domain', value: r => r.domain }, { id: 'country', label: 'Country', value: r => r.country }, { id: 'authority', label: 'Authority', value: r => r.authority, right: true }, { id: 'backlinks', label: 'Backlinks', value: r => r.backlinks, right: true }]} label="domains" searchText={r => `${r.domain} ${r.country || ''}`} row={r => <tr key={r.domain}><td className="px-4 py-2.5"><a href={`https://${r.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{r.domain}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5">{r.country ? `${flag(r.country)} ${r.country}` : '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.authority}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(r.backlinks)}</td></tr>} />
+          {refs.data?.length ? <RowsTable exportName={`referring-domains-${intel.domain}`} exportCols={[['Referring domain', r => r.domain], ['Country', r => r.country || ''], ['Authority', r => r.authority], ['Backlinks', r => r.backlinks]]} rows={refs.data} cols={[{ id: 'domain', label: 'Root domain', value: r => r.domain }, { id: 'country', label: 'Country', value: r => r.country }, { id: 'authority', label: 'Authority', value: r => r.authority, right: true }, { id: 'backlinks', label: 'Backlinks', value: r => r.backlinks, right: true }]} label="domains" searchText={r => `${r.domain} ${r.country || ''}`} row={r => <tr key={r.domain}><td className="px-4 py-2.5"><a href={`https://${r.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{r.domain}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5">{r.country ? `${flag(r.country)} ${r.country}` : '—'}</td><td className="px-4 py-2.5  tabular-nums">{r.authority}</td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{fmt(r.backlinks)}</td></tr>} />
             : <Empty intel={intel} why={refs.why} off={refs.off} noun="referring domains" />}
         </Card>
       </div>
       <Card title="Indexed pages" subtitle="Pages of this domain that other sites link to" pad={false}>
-        {idx.data?.length ? <RowsTable exportName={`linked-pages-${intel.domain}`} exportCols={[['Page title', p => p.title || ''], ['Page address', p => p.url], ['Linking domains', p => p.domains], ['Backlinks', p => p.backlinks]]} rows={idx.data} cols={[{ id: 'title', label: 'Title and URL', value: p => p.title || p.url }, { id: 'domains', label: 'Domains', value: p => p.domains, right: true }, { id: 'backlinks', label: 'Backlinks', value: p => p.backlinks, right: true }]} label="pages" searchText={p => `${p.title || ''} ${p.url}`} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[560px]"><div className="truncate text-slate-900">{p.title || '-'}</div><a href={p.url} target="_blank" rel="noreferrer" className="text-12 text-indigo-700 hover:underline block truncate">{p.url}</a></td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(p.domains)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(p.backlinks)}</td></tr>} />
+        {idx.data?.length ? <RowsTable exportName={`linked-pages-${intel.domain}`} exportCols={[['Page title', p => p.title || ''], ['Page address', p => p.url], ['Linking domains', p => p.domains], ['Backlinks', p => p.backlinks]]} rows={idx.data} cols={[{ id: 'title', label: 'Title and URL', value: p => p.title || p.url }, { id: 'domains', label: 'Domains', value: p => p.domains, right: true }, { id: 'backlinks', label: 'Backlinks', value: p => p.backlinks, right: true }]} label="pages" searchText={p => `${p.title || ''} ${p.url}`} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[560px]"><div className="truncate text-slate-900">{p.title || '-'}</div><a href={p.url} target="_blank" rel="noreferrer" className="text-12 text-indigo-700 hover:underline block truncate">{p.url}</a></td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{fmt(p.domains)}</td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{fmt(p.backlinks)}</td></tr>} />
           : <Empty intel={intel} why={idx.why} off={idx.off} noun="indexed pages" />}
       </Card>
     </div>
@@ -344,7 +346,7 @@ function Markets({ intel }) {
     <Card title="Keywords and traffic by market" subtitle="Estimated, in each country this business targets" pad={false}>
       {rows.length ? (
         <RowsTable exportName={`markets-${intel.domain}`} exportCols={[['Country', r => r.name], ['Organic keywords', r => (r.error ? '' : r.organic.count)], ['Organic traffic', r => (r.error ? '' : r.organic.traffic)], ['Paid keywords', r => (r.error ? '' : r.paid.count)], ['Paid traffic', r => (r.error ? '' : r.paid.traffic)]]} rows={rows} cols={[{ id: 'country', label: 'Country', value: r => r.name }, { id: 'ok', label: 'Organic keywords', value: r => r.error ? null : r.organic.count, right: true }, { id: 'ot', label: 'Organic traffic', value: r => r.error ? null : r.organic.traffic, right: true }, { id: 'pk', label: 'Paid keywords', value: r => r.error ? null : r.paid.count, right: true }, { id: 'pt', label: 'Paid traffic', value: r => r.error ? null : r.paid.traffic, right: true }]} label="markets" searchText={r => r.name} row={r => <tr key={r.code}><td className="px-4 py-2.5 font-medium text-slate-900">{flag(r.code)} {r.name}</td>{r.error ? <td colSpan={4} className="px-4 py-2.5 text-amber-700">{r.error}</td> : <>
-            <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(r.organic.count)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num1(r.organic.traffic)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(r.paid.count)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num1(r.paid.traffic)}</td></>}</tr>} />
+          <td className="px-4 py-2.5  tabular-nums text-indigo-700">{fmt(r.organic.count)}</td><td className="px-4 py-2.5  tabular-nums">{num1(r.organic.traffic)}</td><td className="px-4 py-2.5  tabular-nums">{fmt(r.paid.count)}</td><td className="px-4 py-2.5  tabular-nums">{num1(r.paid.traffic)}</td></>}</tr>} />
       ) : <Empty intel={intel} off={intel?.state !== 'ok'} noun="market data" />}
     </Card>
   );

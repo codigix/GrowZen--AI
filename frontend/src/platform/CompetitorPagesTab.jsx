@@ -53,7 +53,7 @@ export default function CompetitorPagesTab({ b }) {
             <div key={c.domain} className="flex items-center gap-3 text-13">
               <span className={`w-44 truncate font-semibold ${c.me ? 'text-indigo-700' : 'text-slate-800'}`}>{c.domain}</span>
               <div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${c.me ? 'bg-indigo-600' : 'bg-slate-400'}`} style={{ width: `${(c.est_visits / top) * 100}%` }} /></div>
-              <span className="w-24 text-right tabular-nums">{n0(c.est_visits)}</span><span className="w-24 text-right text-12 text-slate-500">{c.keywords_top10} in top 10</span>
+              <span className="w-24  tabular-nums">{n0(c.est_visits)}</span><span className="w-24 text-right text-12 text-slate-500">{c.keywords_top10} in top 10</span>
             </div>))}
         </div>
       </Card>

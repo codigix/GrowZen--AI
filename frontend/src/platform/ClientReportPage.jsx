@@ -57,11 +57,12 @@ export function Growth({ rows, current }) {
           columns={[
             { id: 'month', header: 'Month', value: r => r.month, className: 'px-3 py-2 whitespace-nowrap font-medium text-slate-900', cell: r => monthName(r.month) },
             ...[['views', 'Profile views'], ['calls', 'Calls'], ['directions', 'Directions'], ['website_clicks', 'Website clicks'], ['actions', 'All actions']].map(([k, label]) => ({
-              id: k, header: label, right: true, value: r => r[k], className: 'px-3 py-2 text-right tabular-nums', cell: r => (
-                <span>{fmt(r[k])}{r.change && <span className={`ml-1.5 text-11.5 font-semibold ${r.change[k] > 0 ? 'text-emerald-600' : r.change[k] < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{r.change[k] > 0 ? '▲' : r.change[k] < 0 ? '▼' : '–'} {pct(Math.abs(r.change[k]))}</span>}</span>) })),
-            { id: 'new_reviews', header: 'New reviews', right: true, value: r => r.new_reviews, className: 'px-3 py-2 text-right tabular-nums', cell: r => r.new_reviews },
-            { id: 'rating', header: 'Rating', right: true, value: r => r.rating ?? null, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.rating ? `${r.rating} ★` : '—') },
-            { id: 'posts', header: 'Posts', right: true, value: r => r.posts, className: 'px-3 py-2 text-right tabular-nums', cell: r => r.posts },
+              id: k, header: label, right: true, value: r => r[k], className: 'px-3 py-2  tabular-nums', cell: r => (
+                <span>{fmt(r[k])}{r.change && <span className={`ml-1.5 text-11.5 font-semibold ${r.change[k] > 0 ? 'text-emerald-600' : r.change[k] < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{r.change[k] > 0 ? '▲' : r.change[k] < 0 ? '▼' : '–'} {pct(Math.abs(r.change[k]))}</span>}</span>)
+            })),
+            { id: 'new_reviews', header: 'New reviews', right: true, value: r => r.new_reviews, className: 'px-3 py-2  tabular-nums', cell: r => r.new_reviews },
+            { id: 'rating', header: 'Rating', right: true, value: r => r.rating ?? null, className: 'px-3 py-2  tabular-nums', cell: r => (r.rating ? `${r.rating} ★` : '—') },
+            { id: 'posts', header: 'Posts', right: true, value: r => r.posts, className: 'px-3 py-2  tabular-nums', cell: r => r.posts },
           ]} />
       </div>
     </div>
@@ -102,8 +103,8 @@ export function ReportBody({ d }) {
             <DataTable bare rows={d.keywords} rowKey={k => k.keyword} pageSize={6} sizes={[6]} search={false} columnsMenu={false} serial={false} headClass="bg-slate-100 text-slate-700"
               columns={[
                 { id: 'kw', header: 'Search', value: k => k.keyword, className: 'px-3 py-2 text-13 text-slate-900', cell: k => k.keyword },
-                { id: 'rank', header: 'Position', right: true, value: k => k.rank, className: 'px-3 py-2 text-right tabular-nums font-semibold', cell: k => k.rank },
-                { id: 'move', header: 'Moved', right: true, value: k => (k.prev_rank ? k.prev_rank - k.rank : 0), className: 'px-3 py-2 text-right tabular-nums text-12', cell: k => (!k.prev_rank ? <span className="text-slate-400">new</span> : k.prev_rank === k.rank ? <span className="text-slate-400">–</span> : <span className={k.prev_rank > k.rank ? 'text-emerald-600 font-semibold' : 'text-rose-600 font-semibold'}>{k.prev_rank > k.rank ? '▲' : '▼'} {Math.abs(k.prev_rank - k.rank)}</span>) },
+                { id: 'rank', header: 'Position', right: true, value: k => k.rank, className: 'px-3 py-2  tabular-nums font-semibold', cell: k => k.rank },
+                { id: 'move', header: 'Moved', right: true, value: k => (k.prev_rank ? k.prev_rank - k.rank : 0), className: 'px-3 py-2  tabular-nums text-12', cell: k => (!k.prev_rank ? <span className="text-slate-400">new</span> : k.prev_rank === k.rank ? <span className="text-slate-400">–</span> : <span className={k.prev_rank > k.rank ? 'text-emerald-600 font-semibold' : 'text-rose-600 font-semibold'}>{k.prev_rank > k.rank ? '▲' : '▼'} {Math.abs(k.prev_rank - k.rank)}</span>) },
               ]} />)}
         </div>
       </div>

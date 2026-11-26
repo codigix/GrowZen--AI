@@ -203,15 +203,15 @@ export default function PositionChanges({ research }) {
                     <td className="pl-3 pt-3 w-8"><button type="button" aria-label="Show the position chart" onClick={() => toggleRow(x.keyword)} className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer"><ChevronRight size={15} className={`transition-transform ${open.has(x.keyword) ? 'rotate-90' : ''}`} /></button></td>
                     <td className="px-4 py-3 max-w-[260px]"><button type="button" onClick={() => toggleRow(x.keyword)} className="text-indigo-700 hover:underline text-left cursor-pointer">{x.keyword}</button></td>
                     {cols.has('intent') && <td className="px-4 py-3">{x.intent && INTENT[x.intent] ? <span title={x.intent} className={`inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center ${INTENT_STYLE[x.intent]}`}>{INTENT[x.intent]}</span> : dash}</td>}
-                    {cols.has('prev') && <td className="px-4 py-3 text-right tabular-nums">{x.was ?? dash}</td>}
-                    <td className="px-4 py-3 text-right tabular-nums">{x.rank ?? dash}</td>
+                    {cols.has('prev') && <td className="px-4 py-3  tabular-nums">{x.was ?? dash}</td>}
+                    <td className="px-4 py-3  tabular-nums">{x.rank ?? dash}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">{x.type === 'new' ? <span className="text-emerald-600 font-medium">new</span> : x.type === 'lost' ? <span className="text-red-500 font-medium">lost</span> : x.change ? <Chg v={x.change} d={0} /> : <span className="text-slate-500">0</span>}</td>
-                    {cols.has('traffic') && <td className="px-4 py-3 text-right tabular-nums">{x.traffic_diff == null ? dash : x.traffic_diff ? <Chg v={x.traffic_diff} /> : <span className="text-slate-500">0</span>}</td>}
-                    {cols.has('share') && <td className="px-4 py-3 text-right tabular-nums">{x.share == null ? dash : x.share < 0.01 ? '< 0.01' : x.share.toFixed(2)}</td>}
+                    {cols.has('traffic') && <td className="px-4 py-3  tabular-nums">{x.traffic_diff == null ? dash : x.traffic_diff ? <Chg v={x.traffic_diff} /> : <span className="text-slate-500">0</span>}</td>}
+                    {cols.has('share') && <td className="px-4 py-3  tabular-nums">{x.share == null ? dash : x.share < 0.01 ? '< 0.01' : x.share.toFixed(2)}</td>}
                     {cols.has('serp') && <td className="px-4 py-3">{x.serp?.length ? <span className="inline-flex flex-wrap gap-1">{x.serp.slice(0, 3).map(s => <Badge key={s.feature + s.kind} tone={s.kind === 'new' ? 'green' : 'red'}><Sparkles size={10} /> {s.kind === 'new' ? '+' : '−'} {s.feature}</Badge>)}</span> : dash}</td>}
-                    {cols.has('vol') && <td className="px-4 py-3 text-right tabular-nums">{x.volume != null ? fmt(x.volume) : dash}</td>}
-                    {cols.has('kd') && <td className="px-4 py-3 text-right tabular-nums">{x.kd ?? dash}</td>}
-                    {cols.has('cpc') && <td className="px-4 py-3 text-right tabular-nums">{x.cpc ?? dash}</td>}
+                    {cols.has('vol') && <td className="px-4 py-3  tabular-nums">{x.volume != null ? fmt(x.volume) : dash}</td>}
+                    {cols.has('kd') && <td className="px-4 py-3  tabular-nums">{x.kd ?? dash}</td>}
+                    {cols.has('cpc') && <td className="px-4 py-3  tabular-nums">{x.cpc ?? dash}</td>}
                     {cols.has('url') && <td className="px-4 py-3 max-w-[260px]">{x.url ? <a href={x.url} target="_blank" rel="noreferrer" title={x.url} className="text-indigo-700 hover:underline inline-flex items-start gap-1 break-all">{path(x.url)}<ExternalLink size={10} className="shrink-0 mt-1.5" /></a> : dash}</td>}
                     {cols.has('updated') && <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">{ago(x.checked) || dash}</td>}
                     <td className="px-4 py-3 text-right whitespace-nowrap"><KeywordActs keyword={x.keyword} url={x.url} /></td>

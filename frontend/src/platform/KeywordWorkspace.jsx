@@ -52,7 +52,7 @@ function IndexCell({ i }) {
   const has = g.views != null;
   const perf = has ? `${SHORT(g.views)} views · ${g.clicks ?? 0} click${g.clicks === 1 ? '' : 's'}` : '';
   const tip = [i.index != null ? `Index value ${i.index} out of 100: ${IDX_WORD(i.index)} competition (Google Keyword Planner)` : 'No index value from Google for this keyword',
-    has ? `Search Console, last 90 days: ${g.views} views, ${g.clicks ?? 0} clicks${g.ctr != null ? `, click rate ${g.ctr}%` : ''}${g.position != null ? `, average position ${Math.round(g.position * 10) / 10}` : ''}` : 'No Search Console data: your site has not shown for this keyword'].join('\n');
+  has ? `Search Console, last 90 days: ${g.views} views, ${g.clicks ?? 0} clicks${g.ctr != null ? `, click rate ${g.ctr}%` : ''}${g.position != null ? `, average position ${Math.round(g.position * 10) / 10}` : ''}` : 'No Search Console data: your site has not shown for this keyword'].join('\n');
   return (
     <div className="inline-flex flex-col items-end gap-0.5" title={tip}>
       {i.index == null ? <span className="text-slate-300">—</span> : <span className="inline-flex items-center gap-1.5"><span className="tabular-nums font-semibold" style={{ color: IDX_COLOR(i.index) }}>{i.index}</span><span className="text-11.5 text-slate-500">{IDX_WORD(i.index)}</span></span>}
@@ -81,7 +81,7 @@ function KdChip({ v, detail }) {
 
 /** Where your site stands on Google for a keyword: the average position as a whole place, and which page of Google that is. */
 const BANDS = [['top3', 'Top 3', (n) => n <= 3, 'bg-emerald-100 text-emerald-800'], ['page1', 'Page 1', (n) => n > 3 && n <= 10, 'bg-green-50 text-green-800'], ['page2', 'Page 2', (n) => n > 10 && n <= 20, 'bg-amber-50 text-amber-800'],
-  ['page3', 'Page 3+', (n) => n > 20, 'bg-slate-100 text-slate-600']];
+['page3', 'Page 3+', (n) => n > 20, 'bg-slate-100 text-slate-600']];
 const bandOf = (rank) => (rank == null ? null : BANDS.find(b => b[2](Math.max(1, Math.round(rank)))) || null);
 const FIRST = { keyword: 'asc', rank: 'asc', difficulty: 'asc' }; // the first click on these puts the best first: A to Z, position 1 first, easiest first
 
@@ -209,13 +209,13 @@ export default function KeywordWorkspace({ b, onUse }) {
   useEffect(() => {
     if (!d?.items?.length || indexAsked.current === wordsKey) return;
     indexAsked.current = wordsKey;
-    api(`/businesses/${b.id}/keyword-workspace/search-console`, { method: 'POST', timeout: 120000 }).then(res => { if (res.performance) r.reload(true); }).catch(() => {});
+    api(`/businesses/${b.id}/keyword-workspace/search-console`, { method: 'POST', timeout: 120000 }).then(res => { if (res.performance) r.reload(true); }).catch(() => { });
   }, [wordsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // the last 12 months of searches are asked of Google Ads by themselves for the keywords that have none (one request for hundreds)
   useEffect(() => {
     if (!d?.items?.length || !d.items.some(i => i.trend == null) || trendsAsked.current === wordsKey) return;
     trendsAsked.current = wordsKey;
-    api(`/businesses/${b.id}/keyword-workspace/trends`, { method: 'POST', timeout: 120000 }).then(res => { if (res.filled) r.reload(true); }).catch(() => {});
+    api(`/businesses/${b.id}/keyword-workspace/trends`, { method: 'POST', timeout: 120000 }).then(res => { if (res.filled) r.reload(true); }).catch(() => { });
   }, [wordsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Only keywords that belong to this project stay in the list: the ones not checked yet are checked against the business by themselves (another company's brand, another service or place is set aside with the reason)
   const [fit, setFit] = useState({ busy: false, hidden: 0 });
@@ -347,14 +347,14 @@ export default function KeywordWorkspace({ b, onUse }) {
           </div>
         </div>
         {!empty && (
-      <div role="tablist" aria-label="Which keywords" className="flex overflow-x-auto px-2 border-t border-slate-200">
-        <View on={view === 'open'} onClick={() => go('open')} count={d.totals.open}>To look at</View>
-        <View on={view === 'suggested'} onClick={() => go('suggested')} count={d.totals.suggested || 0} tone="indigo"><Sparkles size={13} className="text-amber-500" />Suggested</View>
-        <View on={view === 'gap'} onClick={() => go('gap')} count={count('gap')} tone="red">Gaps</View>
-        <View on={view === 'almost'} onClick={() => go('almost')} count={count('almost')} tone="amber">Almost there</View>
-        <View on={view === 'picked'} onClick={() => go('picked')} count={d.totals.picked} tone="green">Picked</View>
-        {d.totals.dismissed > 0 && <View on={view === 'dismissed'} onClick={() => go('dismissed')} count={d.totals.dismissed}>Set aside</View>}
-      </div>
+          <div role="tablist" aria-label="Which keywords" className="flex overflow-x-auto px-2 border-t border-slate-200">
+            <View on={view === 'open'} onClick={() => go('open')} count={d.totals.open}>To look at</View>
+            <View on={view === 'suggested'} onClick={() => go('suggested')} count={d.totals.suggested || 0} tone="indigo"><Sparkles size={13} className="text-amber-500" />Suggested</View>
+            <View on={view === 'gap'} onClick={() => go('gap')} count={count('gap')} tone="red">Gaps</View>
+            <View on={view === 'almost'} onClick={() => go('almost')} count={count('almost')} tone="amber">Almost there</View>
+            <View on={view === 'picked'} onClick={() => go('picked')} count={d.totals.picked} tone="green">Picked</View>
+            {d.totals.dismissed > 0 && <View on={view === 'dismissed'} onClick={() => go('dismissed')} count={d.totals.dismissed}>Set aside</View>}
+          </div>
         )}
       </div>
 
@@ -423,7 +423,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <SortTh id="index" sort={sort} setSort={setSort} right what="The keyword's index value: Google's competition index, 0 to 100 (higher means more advertisers compete for it). Under it, how the keyword performs in Google Search Console: views, clicks and average position in the last 90 days." why="A high index means a crowded, costly keyword; many views and few clicks mean the title needs work." from="Google Keyword Planner (index value) and Google Search Console (views, clicks, position).">Index</SortTh>
                       <th className="px-3 py-2 text-left"><Head what="Where it stands: Competitors only (a gap: they use it, you do not), You and competitors, Only you, a New idea from Google or AI, a Top 3 win, or Almost (page 2). Under it, the places it was found." why="Start with the competitors-only gaps and the page-2 keywords." from="comparing your own places (website, profile, Search Console) with the competitor sites, Google and AI. Hover for the detail.">Where it stands</Head></th>
                       <SortTh id="rank" sort={sort} setSort={setSort} right what="Your average position on Google for it, last 90 days." why="Shows where you already show up." from="Google Search Console. Blank when Google has not shown your site for it.">Your rank</SortTh>
-                      <th className="px-3 py-2 text-right"><Head right what="Things you can do with this keyword right here." why="Pick saves it to your list; Set aside hides it; Check opens its numbers.">Actions</Head></th>
+                      <th className="px-3 py-2 "><Head right what="Things you can do with this keyword right here." why="Pick saves it to your list; Set aside hides it; Check opens its numbers.">Actions</Head></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">

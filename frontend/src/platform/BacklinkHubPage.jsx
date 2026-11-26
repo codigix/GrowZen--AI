@@ -159,7 +159,7 @@ function LinksTable({ d, showScores, resetKey, site }) {
   const { sorted, sort, onSort } = useSorted(d.links || NONE, linkValue);
   const pg = usePager(sorted, { size: 25, resetKey });
   const csv = () => sorted.map(x => [x.source_url, x.source_domain, x.is_live ? 'Live' : x.status_label, x.anchor || '', x.target_url, (FOLLOW[x.follow] || FOLLOW.dofollow)[0], x.category?.label || '',
-    ...(showScores ? [num(x.metrics?.da), num(x.metrics?.pa), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.first_seen || '']);
+  ...(showScores ? [num(x.metrics?.da), num(x.metrics?.pa), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.first_seen || '']);
   return (
     <>
       <CsvBar name={`backlinks-${site}`} head={['Linking page', 'Linking site', 'Status', 'Anchor text', 'Goes to', 'Follow', 'Category', ...(showScores ? ['DA', 'PA', 'Spam score'] : []), 'Links from this site', 'Pages with the links', 'Useful?', 'Why', 'First seen']} rows={csv} tip={`Exports the ${sorted.length} loaded links (the page loads at most 100 at a time)`} />
@@ -176,7 +176,7 @@ function LinksTable({ d, showScores, resetKey, site }) {
             {d.state === 'no_target' && <Empty>Add the project's website first.</Empty>}
             {pg.rows.map(x => (
               <tr key={x.id} className="hover:bg-slate-50 align-middle">
-                <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800">{x.authority ?? <span className="text-slate-300 font-normal">—</span>}</td>
+                <td className="px-3 py-3  tabular-nums font-semibold text-slate-800">{x.authority ?? <span className="text-slate-300 font-normal">—</span>}</td>
                 <td className="px-3 py-3 max-w-[260px]"><a href={x.source_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate font-semibold">{x.source_domain}</span><ExternalLink size={11} className="shrink-0" /></a><span className="block truncate text-11.5 text-slate-400" title={x.source_url}>{path(x.source_url)}</span>{!x.is_live && <Badge tone="red">{x.status_label}</Badge>}</td>
                 <td className="px-3 py-3 max-w-[200px]"><span className="block truncate" title={x.anchor || ''}>{x.anchor || <span className="text-slate-300">no text</span>}</span><span className="inline-flex items-center gap-1.5 text-11.5 text-slate-400">{ANCHOR[x.anchor_type] || x.anchor_type}{isNew(x) && <span className="rounded bg-emerald-50 px-1.5 text-emerald-700 font-medium">New</span>}</span></td>
                 <td className="px-3 py-3 max-w-[160px]"><span className="block truncate text-slate-600" title={x.target_url}>{path(x.target_url)}</span></td>
@@ -255,7 +255,7 @@ function DomainsTable({ d, resetKey, site }) {  // the DA / PA / Spam columns ar
   const pg = usePager(sorted, { size: 25, resetKey });
   const moz = hasMoz(d.domains) || !!d.scores?.configured;
   const csv = () => sorted.map(x => [x.domain, x.sample_url || '', num(x.live), num(x.lost), num(x.dofollow), num(x.nofollow), x.category?.label || '', (x.anchors || []).join(', '),
-    ...(moz ? [num(x.metrics?.da), num(x.metrics?.pa), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), num(x.quality?.relevance), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.last_seen || '']);
+  ...(moz ? [num(x.metrics?.da), num(x.metrics?.pa), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), num(x.quality?.relevance), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.last_seen || '']);
   return (
     <>
       <CsvBar name={`referring-domains-${site}`} head={['Domain', 'Example linking page', 'Live links', 'Lost links', 'Follow links', 'Other links', 'Category', 'Top anchors', ...(moz ? ['DA', 'PA', 'Spam score'] : []), 'Links from this site', 'Pages with the links', 'Relevance', 'Useful?', 'Why', 'Last seen']} rows={csv} tip={`Exports all ${sorted.length} loaded referring domains`} />
@@ -268,12 +268,12 @@ function DomainsTable({ d, resetKey, site }) {  // the DA / PA / Spam columns ar
             {pg.rows.map(x => (
               <tr key={x.domain} className="hover:bg-slate-50 align-middle">
                 <td className="px-3 py-3 font-semibold text-slate-900"><a href={x.sample_url} target="_blank" rel="noreferrer" className="hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} /></a>{x.lost > 0 && <span className="block text-11.5 font-normal text-red-600">{x.lost} lost</span>}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{x.live}</td>
+                <td className="px-3 py-3  tabular-nums">{x.live}</td>
                 <td className="px-3 py-3 text-12 text-slate-600">{x.dofollow} follow · {x.nofollow} other</td>
                 <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
                 <td className="px-3 py-3 max-w-[220px]"><span className="block truncate text-slate-600" title={x.anchors.join(', ')}>{x.anchors.join(', ') || '—'}</span></td>
                 {moz ? <><td className="px-3 py-3 text-right" title={x.metrics?.source === 'apify' ? 'Figure from Apify (Moz checker): the site DA' : undefined}><Num v={x.metrics?.da} /></td><td className="px-3 py-3 text-right" title={x.metrics?.source === 'apify' ? 'Home page authority of the site' : undefined}><Num v={x.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={x.metrics?.spam} bad={(x.metrics?.spam ?? 0) >= 50} /></td></> : <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={x.metrics} /></td>}
-                <td className="px-3 py-3 text-right tabular-nums">{x.quality ? x.quality.relevance : <span className="text-slate-300">—</span>}</td>
+                <td className="px-3 py-3  tabular-nums">{x.quality ? x.quality.relevance : <span className="text-slate-300">—</span>}</td>
                 <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
                 <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(x.last_seen)}</td>
                 <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
@@ -396,9 +396,11 @@ function EmailPanel({ b, item, message, onChanged }) {
           <h4 className="text-12 font-semibold uppercase tracking-wide text-slate-500">After they post it</h4>
           <div className="flex gap-2"><input value={posted} onChange={e => setPosted(e.target.value)} placeholder={`Address of the page on ${item.domain} that has your link`} aria-label="Page with your link" className={inp} />
             <Button size="sm" icon={Search} busy={busy === 'check'} disabled={posted.trim().length < 8} onClick={check}>Check the link</Button></div>
-          {(checked || row.link_checked_at) && (() => { const f = checked ? checked.found : row.link_found; const rel = checked ? checked.rel : row.link_rel; return f
-            ? <p className="rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2 text-12.5">Your link is there{rel && rel !== 'dofollow' ? ` (rel: ${rel}: it passes little ranking value)` : ' and it is followed'}. Marked as “Got the link”.</p>
-            : <p className="rounded-lg bg-amber-50 text-amber-800 px-3 py-2 text-12.5">{checked?.note || 'Your link was not on the page the last time we looked.'} Reply to them politely or check again later.</p>; })()}
+          {(checked || row.link_checked_at) && (() => {
+            const f = checked ? checked.found : row.link_found; const rel = checked ? checked.rel : row.link_rel; return f
+              ? <p className="rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2 text-12.5">Your link is there{rel && rel !== 'dofollow' ? ` (rel: ${rel}: it passes little ranking value)` : ' and it is followed'}. Marked as “Got the link”.</p>
+              : <p className="rounded-lg bg-amber-50 text-amber-800 px-3 py-2 text-12.5">{checked?.note || 'Your link was not on the page the last time we looked.'} Reply to them politely or check again later.</p>;
+          })()}
         </div>
       )}
       {toastNode}
@@ -416,7 +418,7 @@ function AdviceModal({ b, item, onClose, onChanged }) {
   useEffect(() => { if (item) { setAdv(null); setNote(item.note || ''); load(false); } }, [item?.domain]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!item) return null;
   const mark = (status) => run('mark', async () => { await api(`${base}/plan`, { method: 'POST', body: { domain: item.domain, status, note, source: item.source || 'competitor', name: item.name } }); toast(`Marked: ${WORK[status][0]}`); onChanged(); });
-    const [el, et] = EFFORT[adv?.effort] || EFFORT.medium;
+  const [el, et] = EFFORT[adv?.effort] || EFFORT.medium;
   return (
     <Modal open title={item.name || item.domain} onClose={onClose} width="max-w-2xl"
       footer={<div className="flex flex-wrap items-center gap-2 w-full">
@@ -453,34 +455,34 @@ function AiTable({ rows, busy, add, onOpen, site }) {
   const pg = usePager(sorted, { size: 10 });
   return (
     <>
-        <CsvBar pad="" name={`link-places-suggested-${site}`} head={['Site', 'Domain', 'Kind', 'You get', 'First step']} rows={() => sorted.map(p => [p.name, p.domain, p.kind, p.why, p.how])} tip={`Exports all ${sorted.length} suggested places`} />
-        <div className="overflow-x-auto -mx-5">
-          <table className="w-full min-w-[820px] text-13">
-            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-              <SortTh id="site" sort={sort} onSort={onSort} className={TC} tip={{ what: 'The website or listing site the AI suggests.', from: 'the AI, from what your business does and where it is.' }}>Site</SortTh>
-              <SortTh id="kind" sort={sort} onSort={onSort} className={TC} tip={{ what: 'The kind of place: directory, news, community, partner and so on.' }}>Kind</SortTh>
-              <SortTh id="why" sort={sort} onSort={onSort} className={TC} tip={{ what: 'What a link on this site gives you.', why: 'Pick the places with the most value for you.' }}>You get</SortTh>
-              <SortTh id="how" sort={sort} onSort={onSort} className={TC} tip={{ what: 'The first thing to do to get the link.', why: 'Start here, then open the Guide for the full steps and a message.' }}>First step</SortTh>
-              <th className={`${TH} text-right`}><Head right what="Add the site to your plan, open its Guide, or open the site." why="Suggestions are not checked: look at the site before you use it.">Actions</Head></th>
-            </tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {pg.rows.map(p => (
-                <tr key={p.domain} className="align-top hover:bg-slate-50">
-                  <td className="px-3 py-3 font-semibold text-slate-900 whitespace-nowrap">{p.name}<span className="block text-11.5 font-normal text-slate-400">{p.domain}</span></td>
-                  <td className="px-3 py-3"><Badge tone="gray">{p.kind}</Badge></td>
-                  <td className="px-3 py-3 max-w-[280px] text-slate-700">{p.why}</td>
-                  <td className="px-3 py-3 max-w-[280px] text-slate-600">{p.how}</td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
-                    <Act icon={Plus} tone="green" tip="Add to plan: put this site in your link plan." busy={busy === p.domain} onClick={() => add(p)} />
-                    <Act icon={BookOpen} tone="violet" tip="Guide: how to get the link, with a draft message." onClick={() => onOpen({ domain: p.domain, name: p.name, source: 'ai' })} />
-                    <OpenAct url={`https://${p.domain}`} tip="Open: show the site in a new tab." />
-                  </span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="-mx-5"><Pager p={pg} label="sites" /></div>
+      <CsvBar pad="" name={`link-places-suggested-${site}`} head={['Site', 'Domain', 'Kind', 'You get', 'First step']} rows={() => sorted.map(p => [p.name, p.domain, p.kind, p.why, p.how])} tip={`Exports all ${sorted.length} suggested places`} />
+      <div className="overflow-x-auto -mx-5">
+        <table className="w-full min-w-[820px] text-13">
+          <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+            <SortTh id="site" sort={sort} onSort={onSort} className={TC} tip={{ what: 'The website or listing site the AI suggests.', from: 'the AI, from what your business does and where it is.' }}>Site</SortTh>
+            <SortTh id="kind" sort={sort} onSort={onSort} className={TC} tip={{ what: 'The kind of place: directory, news, community, partner and so on.' }}>Kind</SortTh>
+            <SortTh id="why" sort={sort} onSort={onSort} className={TC} tip={{ what: 'What a link on this site gives you.', why: 'Pick the places with the most value for you.' }}>You get</SortTh>
+            <SortTh id="how" sort={sort} onSort={onSort} className={TC} tip={{ what: 'The first thing to do to get the link.', why: 'Start here, then open the Guide for the full steps and a message.' }}>First step</SortTh>
+            <th className={`${TH} text-right`}><Head right what="Add the site to your plan, open its Guide, or open the site." why="Suggestions are not checked: look at the site before you use it.">Actions</Head></th>
+          </tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pg.rows.map(p => (
+              <tr key={p.domain} className="align-top hover:bg-slate-50">
+                <td className="px-3 py-3 font-semibold text-slate-900 whitespace-nowrap">{p.name}<span className="block text-11.5 font-normal text-slate-400">{p.domain}</span></td>
+                <td className="px-3 py-3"><Badge tone="gray">{p.kind}</Badge></td>
+                <td className="px-3 py-3 max-w-[280px] text-slate-700">{p.why}</td>
+                <td className="px-3 py-3 max-w-[280px] text-slate-600">{p.how}</td>
+                <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                  <Act icon={Plus} tone="green" tip="Add to plan: put this site in your link plan." busy={busy === p.domain} onClick={() => add(p)} />
+                  <Act icon={BookOpen} tone="violet" tip="Guide: how to get the link, with a draft message." onClick={() => onOpen({ domain: p.domain, name: p.name, source: 'ai' })} />
+                  <OpenAct url={`https://${p.domain}`} tip="Open: show the site in a new tab." />
+                </span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="-mx-5"><Pager p={pg} label="sites" /></div>
     </>
   );
 }
@@ -542,17 +544,19 @@ function BulkModal({ b, platforms, onClose, onSent }) {
           <Button size="sm" icon={Sparkles} busy={busy === 'write'} onClick={write}>Write again</Button></div>
         <ErrorNote>{error}</ErrorNote>
         {!drafts && <SkList rows={3} />}
-        {(drafts || []).map((x, i) => { const r = res(x.domain); return (
-          <div key={x.domain} className={`rounded-lg ring-1 ring-inset p-3 grid gap-2 ${r ? (r.ok ? 'ring-emerald-300 bg-emerald-50/40' : 'ring-red-300 bg-red-50/40') : 'ring-slate-200'}`}>
-            <div className="flex items-center gap-2"><input type="checkbox" checked={x.include} onChange={e => set(i, { include: e.target.checked })} aria-label={`Send to ${x.domain}`} disabled={!!results} />
-              <span className="font-semibold text-slate-900">{x.domain}</span>{r && <Badge tone={r.ok ? 'green' : 'red'}>{r.ok ? 'Sent' : 'Not sent'}</Badge>}</div>
-            {r && !r.ok && <p className="text-12.5 text-red-700">{r.error}</p>}
-            {!results && (<>
-              <input value={x.to} onChange={e => set(i, { to: e.target.value })} placeholder="Their email address" aria-label="To" className={inp} />
-              <input value={x.subject} onChange={e => set(i, { subject: e.target.value })} aria-label="Subject" className={inp} maxLength={200} />
-              <textarea value={x.body} onChange={e => set(i, { body: e.target.value })} rows={6} aria-label="Message" className="px-3 py-2 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full" maxLength={5000} />
-            </>)}
-          </div>); })}
+        {(drafts || []).map((x, i) => {
+          const r = res(x.domain); return (
+            <div key={x.domain} className={`rounded-lg ring-1 ring-inset p-3 grid gap-2 ${r ? (r.ok ? 'ring-emerald-300 bg-emerald-50/40' : 'ring-red-300 bg-red-50/40') : 'ring-slate-200'}`}>
+              <div className="flex items-center gap-2"><input type="checkbox" checked={x.include} onChange={e => set(i, { include: e.target.checked })} aria-label={`Send to ${x.domain}`} disabled={!!results} />
+                <span className="font-semibold text-slate-900">{x.domain}</span>{r && <Badge tone={r.ok ? 'green' : 'red'}>{r.ok ? 'Sent' : 'Not sent'}</Badge>}</div>
+              {r && !r.ok && <p className="text-12.5 text-red-700">{r.error}</p>}
+              {!results && (<>
+                <input value={x.to} onChange={e => set(i, { to: e.target.value })} placeholder="Their email address" aria-label="To" className={inp} />
+                <input value={x.subject} onChange={e => set(i, { subject: e.target.value })} aria-label="Subject" className={inp} maxLength={200} />
+                <textarea value={x.body} onChange={e => set(i, { body: e.target.value })} rows={6} aria-label="Message" className="px-3 py-2 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none w-full" maxLength={5000} />
+              </>)}
+            </div>);
+        })}
       </div>
     </Modal>
   );
@@ -564,36 +568,36 @@ function FoundTable({ rows, picked, setPicked, busy, take, site }) {
   const pg = usePager(sorted, { size: 25 });
   return (
     <div className="border-b border-slate-100">
-        <CsvBar name={`outreach-platforms-${site}`} head={['Platform', 'Page found', 'Title', 'Found by', 'Emails', 'In plan']} rows={() => sorted.map(p => [p.domain, p.page || '', p.title || '', (p.kinds || []).join(', '), (p.emails || []).map(e => e.email).join('; '), p.in_plan || ''])} tip={`Exports all ${sorted.length} platforms found`} />
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-13">
-            <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-              <th className={`${TH} w-8`}><span className="sr-only">Choose</span></th>
-              <SortTh id="domain" sort={sort} onSort={onSort} className={TC} tip={{ what: 'A website the searches found.', from: 'Google results for your searches.' }}>Platform</SortTh>
-              <SortTh id="kinds" sort={sort} onSort={onSort} className={TC} tip={{ what: 'Which kind of search found it: sends links by email, guest posts or list pages.' }}>Found by</SortTh>
-              <SortTh id="email" sort={sort} onSort={onSort} className={TC} tip={{ what: 'Email addresses the site itself publishes on its contact, about or submission pages.', why: 'Send your request here. Check that the site fits first.', from: "the site's own pages." }}>Email</SortTh>
-              <SortTh id="plan" sort={sort} onSort={onSort} className={TC} tip={{ what: 'Whether it is already in your plan.' }}>In plan</SortTh>
-              <th className={`${TH} text-right`}><Head right what="Add to the plan and write the email, or open the site." why="Look at the site before you email it.">Actions</Head></th>
-            </tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {pg.rows.map(p => (
-                <tr key={p.domain} className="align-top hover:bg-slate-50">
-                  <td className="px-3 py-3"><input type="checkbox" disabled={!p.emails.length} checked={picked.includes(p.domain)} onChange={e => setPicked(v => (e.target.checked ? [...v, p.domain].slice(0, 10) : v.filter(d => d !== p.domain)))} aria-label={`Choose ${p.domain}`} title={p.emails.length ? 'Include in the batch email' : 'No email published: use its contact form'} /></td>
-                  <td className="px-3 py-3 max-w-[300px]"><a href={p.page} target="_blank" rel="noreferrer noopener" className="font-semibold text-indigo-600 hover:underline">{p.domain}</a><span className="block text-12 text-slate-500 truncate" title={p.snippet}>{p.title}</span></td>
-                  <td className="px-3 py-3 text-slate-600 max-w-[220px]">{p.kinds.join(', ')}</td>
-                  <td className="px-3 py-3">{p.emails.length ? <ul className="grid gap-0.5">{p.emails.map(e => <li key={e.email} className="font-mono text-12 text-slate-800" title={`${e.how} on ${e.page}`}>{e.email}</li>)}</ul> : <span className="text-12 text-slate-400">None published: use its contact form</span>}</td>
-                  <td className="px-3 py-3 text-slate-600">{p.in_plan ? <Badge tone="gray">{p.in_plan}</Badge> : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
-                    <Act icon={Send} tone="violet" tip="Email: add it to your plan and write the email to this platform." busy={busy === `take${p.domain}`} onClick={() => take(p, p.emails[0]?.email)} />
-                    <OpenAct url={p.page} tip="Open: look at the site in a new tab." />
-                  </span></td>
-                </tr>
-              ))}
-              {!rows.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-500">No platforms came up. Try again later or use the searches below.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        <Pager p={pg} label="platforms" />
+      <CsvBar name={`outreach-platforms-${site}`} head={['Platform', 'Page found', 'Title', 'Found by', 'Emails', 'In plan']} rows={() => sorted.map(p => [p.domain, p.page || '', p.title || '', (p.kinds || []).join(', '), (p.emails || []).map(e => e.email).join('; '), p.in_plan || ''])} tip={`Exports all ${sorted.length} platforms found`} />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] text-13">
+          <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+            <th className={`${TH} w-8`}><span className="sr-only">Choose</span></th>
+            <SortTh id="domain" sort={sort} onSort={onSort} className={TC} tip={{ what: 'A website the searches found.', from: 'Google results for your searches.' }}>Platform</SortTh>
+            <SortTh id="kinds" sort={sort} onSort={onSort} className={TC} tip={{ what: 'Which kind of search found it: sends links by email, guest posts or list pages.' }}>Found by</SortTh>
+            <SortTh id="email" sort={sort} onSort={onSort} className={TC} tip={{ what: 'Email addresses the site itself publishes on its contact, about or submission pages.', why: 'Send your request here. Check that the site fits first.', from: "the site's own pages." }}>Email</SortTh>
+            <SortTh id="plan" sort={sort} onSort={onSort} className={TC} tip={{ what: 'Whether it is already in your plan.' }}>In plan</SortTh>
+            <th className={`${TH} text-right`}><Head right what="Add to the plan and write the email, or open the site." why="Look at the site before you email it.">Actions</Head></th>
+          </tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pg.rows.map(p => (
+              <tr key={p.domain} className="align-top hover:bg-slate-50">
+                <td className="px-3 py-3"><input type="checkbox" disabled={!p.emails.length} checked={picked.includes(p.domain)} onChange={e => setPicked(v => (e.target.checked ? [...v, p.domain].slice(0, 10) : v.filter(d => d !== p.domain)))} aria-label={`Choose ${p.domain}`} title={p.emails.length ? 'Include in the batch email' : 'No email published: use its contact form'} /></td>
+                <td className="px-3 py-3 max-w-[300px]"><a href={p.page} target="_blank" rel="noreferrer noopener" className="font-semibold text-indigo-600 hover:underline">{p.domain}</a><span className="block text-12 text-slate-500 truncate" title={p.snippet}>{p.title}</span></td>
+                <td className="px-3 py-3 text-slate-600 max-w-[220px]">{p.kinds.join(', ')}</td>
+                <td className="px-3 py-3">{p.emails.length ? <ul className="grid gap-0.5">{p.emails.map(e => <li key={e.email} className="font-mono text-12 text-slate-800" title={`${e.how} on ${e.page}`}>{e.email}</li>)}</ul> : <span className="text-12 text-slate-400">None published: use its contact form</span>}</td>
+                <td className="px-3 py-3 text-slate-600">{p.in_plan ? <Badge tone="gray">{p.in_plan}</Badge> : <span className="text-slate-300">—</span>}</td>
+                <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                  <Act icon={Send} tone="violet" tip="Email: add it to your plan and write the email to this platform." busy={busy === `take${p.domain}`} onClick={() => take(p, p.emails[0]?.email)} />
+                  <OpenAct url={p.page} tip="Open: look at the site in a new tab." />
+                </span></td>
+              </tr>
+            ))}
+            {!rows.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-500">No platforms came up. Try again later or use the searches below.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pg} label="platforms" />
     </div>
   );
 }
@@ -668,16 +672,16 @@ function DoneTable({ rows, site }) {
   const pg = usePager(sorted, { size: 25 });
   return (
     <>
-    <CsvBar name={`links-won-${site}`} head={['Site', 'Where it came from', 'Result', 'Note']} rows={() => sorted.map(x => [x.domain, doneSource(x), x.confirmed ? 'Confirmed by the crawler' : 'Marked by you: not seen by the crawler yet', x.note || ''])} tip={`Exports all ${sorted.length} sites`} />
-    <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px] text-13">
-                <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><SortTh id="domain" sort={sort} onSort={onSort} className={TC}>Site</SortTh><SortTh id="source" sort={sort} onSort={onSort} className={TC}>Where it came from</SortTh><SortTh id="result" sort={sort} onSort={onSort} className={TC}>Result</SortTh><SortTh id="note" sort={sort} onSort={onSort} className={TC}>Note</SortTh><th className={`${TH} text-right`}>Actions</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  {pg.rows.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : x.source === 'manual' ? 'Found by you' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td><td className="px-3 py-3 text-right"><OpenAct url={`https://${x.domain}`} tip="Open the site that gave you the link." /></td></tr>)}
-                  {!rows.length && <Empty>No link won yet. Work through “To do”: the crawler confirms a link when it finds it.</Empty>}
-                </tbody>
-              </table>
-    </div>
+      <CsvBar name={`links-won-${site}`} head={['Site', 'Where it came from', 'Result', 'Note']} rows={() => sorted.map(x => [x.domain, doneSource(x), x.confirmed ? 'Confirmed by the crawler' : 'Marked by you: not seen by the crawler yet', x.note || ''])} tip={`Exports all ${sorted.length} sites`} />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[600px] text-13">
+          <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><SortTh id="domain" sort={sort} onSort={onSort} className={TC}>Site</SortTh><SortTh id="source" sort={sort} onSort={onSort} className={TC}>Where it came from</SortTh><SortTh id="result" sort={sort} onSort={onSort} className={TC}>Result</SortTh><SortTh id="note" sort={sort} onSort={onSort} className={TC}>Note</SortTh><th className={`${TH} text-right`}>Actions</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pg.rows.map(x => <tr key={x.domain} className="align-middle"><td className="px-3 py-3 font-semibold text-slate-900">{x.domain}</td><td className="px-3 py-3 text-slate-600">{x.source === 'ai' ? 'Suggested by AI' : x.source === 'manual' ? 'Found by you' : 'Competitor gap'}</td><td className="px-3 py-3">{x.confirmed ? <Badge tone="green">Confirmed by the crawler</Badge> : <Badge tone="amber">Marked by you: not seen by the crawler yet</Badge>}</td><td className="px-3 py-3 text-slate-600">{x.note || '—'}</td><td className="px-3 py-3 text-right"><OpenAct url={`https://${x.domain}`} tip="Open the site that gave you the link." /></td></tr>)}
+            {!rows.length && <Empty>No link won yet. Work through “To do”: the crawler confirms a link when it finds it.</Empty>}
+          </tbody>
+        </table>
+      </div>
       <Pager p={pg} label="sites" />
     </>
   );
@@ -693,33 +697,37 @@ function OppTable({ rows, all, stage, planMap, busy, setStatus, setOpen, resetKe
   const { sorted, sort, onSort } = useSorted(rows, valueOf);
   const pg = usePager(sorted, { size: 25, resetKey });
   const moz = hasMoz(rows);
-  const csv = () => sorted.map(x => { const m = planMap[x.domain]; return [(PRIORITY[x.priority] || PRIORITY.low)[0], x.domain, x.sample?.url || '', (x.competitors || []).join(', '), x.category?.label || '', (FOLLOW[x.follow] || FOLLOW.dofollow)[0], ...(moz ? [num(x.metrics?.da)] : []),
-    (USEFUL[x.useful] || USEFUL.unscored)[0], (WORK[x.status] || WORK.new)[0], m?.emailed_at ? (m.replied_at ? 'Replied' : m.follow_up_due ? 'Follow up' : 'Sent') : 'Not emailed', m?.emailed_at || '', m?.contact_email || '', x.note || '']; });
+  const csv = () => sorted.map(x => {
+    const m = planMap[x.domain]; return [(PRIORITY[x.priority] || PRIORITY.low)[0], x.domain, x.sample?.url || '', (x.competitors || []).join(', '), x.category?.label || '', (FOLLOW[x.follow] || FOLLOW.dofollow)[0], ...(moz ? [num(x.metrics?.da)] : []),
+    (USEFUL[x.useful] || USEFUL.unscored)[0], (WORK[x.status] || WORK.new)[0], m?.emailed_at ? (m.replied_at ? 'Replied' : m.follow_up_due ? 'Follow up' : 'Sent') : 'Not emailed', m?.emailed_at || '', m?.contact_email || '', x.note || ''];
+  });
   return (
     <>
-    <CsvBar name={`link-opportunities-${site}`} head={['Priority', 'Site', 'Page that links to a competitor', 'Competitors linked there', 'Category', 'Follow', ...(moz ? ['DA'] : []), 'Useful?', 'Status', 'Email', 'Email sent on', 'Emailed to', 'Note']} rows={csv} tip={`Exports all ${sorted.length} sites in this list (up to 200 are loaded)`} />
-    <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px] text-13">
-                <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
-                  <SortTh id="priority" sort={sort} onSort={onSort} first="desc" className={TC}>Priority</SortTh><SortTh id="domain" sort={sort} onSort={onSort} className={TC}>Site</SortTh><SortTh id="competitors" sort={sort} onSort={onSort} first="desc" className={TC}>Competitors linked there</SortTh><SortTh id="category" sort={sort} onSort={onSort} className={TC}>Category</SortTh><SortTh id="follow" sort={sort} onSort={onSort} className={TC}>Follow</SortTh>{moz && <SortTh id="da" sort={sort} onSort={onSort} right first="desc" className={TC}>DA</SortTh>}<SortTh id="useful" sort={sort} onSort={onSort} className={TC}>Useful?</SortTh><SortTh id="status" sort={sort} onSort={onSort} className={TC}>Status</SortTh><SortTh id="email" sort={sort} onSort={onSort} first="desc" className={TC} tip={{ what: 'Whether you emailed this site, to whom, and whether they replied.', why: 'Follow up after a week without a reply.', from: 'the emails you sent from the Guide.' }}>Email</SortTh><th className={`${TH} text-right`}><Head right what="Guide shows how to ask this site for a link. Open shows the site's page that links to your competitor." why="Contact the sites in the order of priority.">Actions</Head></th></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  {pg.rows.map(x => { const [pl2, pt] = PRIORITY[x.priority] || PRIORITY.low; return (
-                    <tr key={x.domain} className="hover:bg-slate-50 align-middle">
-                      <td className="px-3 py-3"><Badge tone={pt}>{pl2}</Badge></td>
-                      <td className="px-3 py-3 max-w-[220px]"><a href={x.sample.url} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} /></a>{x.note && <span className="block truncate text-11.5 text-slate-400" title={x.note}>{x.note}</span>}</td>
-                      <td className="px-3 py-3 text-slate-600"><Tip text={x.competitors.join(', ')}><span>{x.competitors.join(', ')}</span></Tip></td>
-                      <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
-                      <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
-                      {moz && <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>}
-                      <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
-                      <td className="px-3 py-3"><Select value={x.status} onChange={e => setStatus(x, e.target.value)} className="h-8 text-13 min-w-[130px]" aria-label={`Status of ${x.domain}`} disabled={busy === x.domain}><option value="new">To do</option><option value="planned">Planned</option><option value="contacted">Contacted</option><option value="live">Got the link</option><option value="skipped">Skipped</option></Select></td>
-                      <td className="px-3 py-3 text-12.5 whitespace-nowrap">{(() => { const m = planMap[x.domain]; if (!m?.emailed_at) return <span className="text-slate-300">Not emailed</span>; return <Tip text={`${m.email_subject || ''} · to ${m.contact_email}`}><span className={m.replied_at ? 'text-emerald-700 font-semibold' : m.follow_up_due ? 'text-amber-700 font-semibold' : 'text-slate-600'}>{m.replied_at ? 'Replied' : m.follow_up_due ? 'Follow up' : 'Sent'} · {fmtDate(m.replied_at || m.emailed_at)}</span></Tip>; })()}</td>
-                      <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5"><Act icon={BookOpen} tone="violet" tip="Guide: how to ask this site for a link, with a draft message and the email to send." onClick={() => setOpen(x)} /><OpenAct url={x.sample?.url} tip="Open the site: the page that links to your competitor." /></span></td>
-                    </tr>); })}
-                  {!rows.length && <Empty>{stage === 'todo' ? (all.length ? 'Nothing left to do here.' : 'No opportunities yet: your crawler has not found sites that link to your competitors and not to you.') : stage === 'progress' ? 'Nothing in progress. Open a site and press “I contacted them”.' : 'Nothing skipped.'}</Empty>}
-                </tbody>
-              </table>
-    </div>
+      <CsvBar name={`link-opportunities-${site}`} head={['Priority', 'Site', 'Page that links to a competitor', 'Competitors linked there', 'Category', 'Follow', ...(moz ? ['DA'] : []), 'Useful?', 'Status', 'Email', 'Email sent on', 'Emailed to', 'Note']} rows={csv} tip={`Exports all ${sorted.length} sites in this list (up to 200 are loaded)`} />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1000px] text-13">
+          <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
+            <SortTh id="priority" sort={sort} onSort={onSort} first="desc" className={TC}>Priority</SortTh><SortTh id="domain" sort={sort} onSort={onSort} className={TC}>Site</SortTh><SortTh id="competitors" sort={sort} onSort={onSort} first="desc" className={TC}>Competitors linked there</SortTh><SortTh id="category" sort={sort} onSort={onSort} className={TC}>Category</SortTh><SortTh id="follow" sort={sort} onSort={onSort} className={TC}>Follow</SortTh>{moz && <SortTh id="da" sort={sort} onSort={onSort} right first="desc" className={TC}>DA</SortTh>}<SortTh id="useful" sort={sort} onSort={onSort} className={TC}>Useful?</SortTh><SortTh id="status" sort={sort} onSort={onSort} className={TC}>Status</SortTh><SortTh id="email" sort={sort} onSort={onSort} first="desc" className={TC} tip={{ what: 'Whether you emailed this site, to whom, and whether they replied.', why: 'Follow up after a week without a reply.', from: 'the emails you sent from the Guide.' }}>Email</SortTh><th className={`${TH} text-right`}><Head right what="Guide shows how to ask this site for a link. Open shows the site's page that links to your competitor." why="Contact the sites in the order of priority.">Actions</Head></th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pg.rows.map(x => {
+              const [pl2, pt] = PRIORITY[x.priority] || PRIORITY.low; return (
+                <tr key={x.domain} className="hover:bg-slate-50 align-middle">
+                  <td className="px-3 py-3"><Badge tone={pt}>{pl2}</Badge></td>
+                  <td className="px-3 py-3 max-w-[220px]"><a href={x.sample.url} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} /></a>{x.note && <span className="block truncate text-11.5 text-slate-400" title={x.note}>{x.note}</span>}</td>
+                  <td className="px-3 py-3 text-slate-600"><Tip text={x.competitors.join(', ')}><span>{x.competitors.join(', ')}</span></Tip></td>
+                  <td className="px-3 py-3 text-slate-600">{x.category.label}</td>
+                  <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
+                  {moz && <td className="px-3 py-3 text-right"><Num v={x.metrics?.da} /></td>}
+                  <td className="px-3 py-3"><Verdict u={x.useful} why={x.useful_why} /></td>
+                  <td className="px-3 py-3"><Select value={x.status} onChange={e => setStatus(x, e.target.value)} className="h-8 text-13 min-w-[130px]" aria-label={`Status of ${x.domain}`} disabled={busy === x.domain}><option value="new">To do</option><option value="planned">Planned</option><option value="contacted">Contacted</option><option value="live">Got the link</option><option value="skipped">Skipped</option></Select></td>
+                  <td className="px-3 py-3 text-12.5 whitespace-nowrap">{(() => { const m = planMap[x.domain]; if (!m?.emailed_at) return <span className="text-slate-300">Not emailed</span>; return <Tip text={`${m.email_subject || ''} · to ${m.contact_email}`}><span className={m.replied_at ? 'text-emerald-700 font-semibold' : m.follow_up_due ? 'text-amber-700 font-semibold' : 'text-slate-600'}>{m.replied_at ? 'Replied' : m.follow_up_due ? 'Follow up' : 'Sent'} · {fmtDate(m.replied_at || m.emailed_at)}</span></Tip>; })()}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5"><Act icon={BookOpen} tone="violet" tip="Guide: how to ask this site for a link, with a draft message and the email to send." onClick={() => setOpen(x)} /><OpenAct url={x.sample?.url} tip="Open the site: the page that links to your competitor." /></span></td>
+                </tr>);
+            })}
+            {!rows.length && <Empty>{stage === 'todo' ? (all.length ? 'Nothing left to do here.' : 'No opportunities yet: your crawler has not found sites that link to your competitors and not to you.') : stage === 'progress' ? 'Nothing in progress. Open a site and press “I contacted them”.' : 'Nothing skipped.'}</Empty>}
+          </tbody>
+        </table>
+      </div>
       <Pager p={pg} label="sites" />
     </>
   );
@@ -798,18 +806,18 @@ function GapOppsTable({ rows, busy, addToPlan, resetKey, site }) {
       <div className="flex flex-wrap items-center justify-between gap-2"><ListSearch q={q} setQ={setQ} placeholder="Search these websites" />
         <span className="mb-3"><CsvButton name={`competitor-gap-sites-${site}`} head={['Website', 'Links to', 'Example page']} rows={() => sorted.map(o => [o.referring_domain, (o.competitor_targets || []).join(', '), o.source_pages?.[0] || ''])} tip={`Exports all ${sorted.length} websites (up to 500 are loaded)`} /></span></div>
       <div className="overflow-x-auto"><table className="w-full text-13">
-                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="site" sort={sort} onSort={onSort} className={TC}>Website</SortTh><SortTh id="targets" sort={sort} onSort={onSort} className={TC}>Links to</SortTh><SortTh id="page" sort={sort} onSort={onSort} className={TC}>Example page</SortTh><th className={`${TH} text-right`}><Head right what="Open the site or its example page, or add the site to your link plan." why="The plan keeps the sites you will ask for a link, with their status." from="the Link Opportunities list.">Actions</Head></th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{pg.rows.map(o => (
-                  <tr key={o.referring_domain}>
-                    <td className="px-3 py-2 font-semibold text-slate-800">{o.referring_domain}</td>
-                    <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{o.competitor_targets.map(t => <Badge key={t} tone="blue">{t}</Badge>)}</div></td>
-                    <td className="px-3 py-2 max-w-[360px]">{o.source_pages?.[0] ? <a className="block truncate text-indigo-600 hover:underline" href={o.source_pages[0]} target="_blank" rel="noreferrer noopener nofollow" title={o.source_pages[0]}>{o.source_pages[0].replace(/^https?:\/\//, '')}</a> : '—'}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
-                      <OpenAct url={o.source_pages?.[0] || `https://${o.referring_domain}`} tip="Open the site: see the page that links to your competitor." />
-                      <Act icon={Plus} tone="green" tip="Add to link plan: put this site in Link Opportunities as a place to ask for a link." busy={busy === `plan${o.referring_domain}`} onClick={() => addToPlan(o)} />
-                    </span></td>
-                  </tr>))}</tbody>
-                    </table></div>
+        <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="site" sort={sort} onSort={onSort} className={TC}>Website</SortTh><SortTh id="targets" sort={sort} onSort={onSort} className={TC}>Links to</SortTh><SortTh id="page" sort={sort} onSort={onSort} className={TC}>Example page</SortTh><th className={`${TH} text-right`}><Head right what="Open the site or its example page, or add the site to your link plan." why="The plan keeps the sites you will ask for a link, with their status." from="the Link Opportunities list.">Actions</Head></th></tr></thead>
+        <tbody className="divide-y divide-slate-100">{pg.rows.map(o => (
+          <tr key={o.referring_domain}>
+            <td className="px-3 py-2 font-semibold text-slate-800">{o.referring_domain}</td>
+            <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{o.competitor_targets.map(t => <Badge key={t} tone="blue">{t}</Badge>)}</div></td>
+            <td className="px-3 py-2 max-w-[360px]">{o.source_pages?.[0] ? <a className="block truncate text-indigo-600 hover:underline" href={o.source_pages[0]} target="_blank" rel="noreferrer noopener nofollow" title={o.source_pages[0]}>{o.source_pages[0].replace(/^https?:\/\//, '')}</a> : '—'}</td>
+            <td className="px-3 py-2  whitespace-nowrap"><span className="inline-flex gap-1.5">
+              <OpenAct url={o.source_pages?.[0] || `https://${o.referring_domain}`} tip="Open the site: see the page that links to your competitor." />
+              <Act icon={Plus} tone="green" tip="Add to link plan: put this site in Link Opportunities as a place to ask for a link." busy={busy === `plan${o.referring_domain}`} onClick={() => addToPlan(o)} />
+            </span></td>
+          </tr>))}</tbody>
+      </table></div>
       {!pg.rows.length && <p className="py-4 text-center text-13 text-slate-500">No website matches the search.</p>}
       <div className="-mx-5 -mb-5"><Pager p={pg} label="websites" /></div>
     </>
@@ -828,17 +836,19 @@ function GapPagesTable({ rows, resetKey, site }) {
       <div className="flex flex-wrap items-center justify-between gap-2"><ListSearch q={q} setQ={setQ} placeholder="Search these pages" />
         <span className="mb-3"><CsvButton name={`competitor-gap-pages-${site}`} head={['Linking page', 'Competitor', 'Anchor', 'Follow', 'Last seen']} rows={() => sorted.map(p => { const l = p.links?.[0] || {}; return [p.source_url, (p.competitor_targets || []).join(', '), l.anchor_text || '', l.nofollow ? 'Nofollow' : l.sponsored ? 'Sponsored' : 'Follow', l.last_seen || '']; })} tip={`Exports all ${sorted.length} pages (up to 500 are loaded)`} /></span></div>
       <div className="overflow-x-auto"><table className="w-full text-13">
-                <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="page" sort={sort} onSort={onSort} className={TC}>Linking page</SortTh><SortTh id="targets" sort={sort} onSort={onSort} className={TC}>Competitor</SortTh><SortTh id="anchor" sort={sort} onSort={onSort} className={TC}>Anchor</SortTh><SortTh id="follow" sort={sort} onSort={onSort} className={TC}>Follow</SortTh><SortTh id="seen" sort={sort} onSort={onSort} first="desc" className={TC}>Last seen</SortTh><th className={`${TH} text-right`}><Head right what="Open the page that links to your competitor." why="Contact its owner and ask for a link to you too.">Actions</Head></th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{pg.rows.map(p => { const l = p.links?.[0] || {}; return (
-                  <tr key={p.source_url}>
-                    <td className="px-3 py-2 max-w-[320px]"><a className="block truncate text-indigo-600 hover:underline" href={p.source_url} target="_blank" rel="noreferrer noopener nofollow" title={p.source_url}>{p.source_url.replace(/^https?:\/\//, '')}</a></td>
-                    <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{p.competitor_targets.map(t => <Badge key={t} tone="blue">{t}</Badge>)}</div></td>
-                    <td className="px-3 py-2 max-w-[200px] truncate text-slate-700" title={l.anchor_text || ''}>{l.anchor_text || '—'}</td>
-                    <td className="px-3 py-2"><Badge tone={l.nofollow ? 'gray' : 'green'}>{l.nofollow ? 'Nofollow' : l.sponsored ? 'Sponsored' : 'Follow'}</Badge></td>
-                    <td className="px-3 py-2 text-12 text-slate-500">{l.last_seen ? fmtDateTime(l.last_seen) : '—'}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap"><OpenAct url={p.source_url} tip="Open the page: see the link to your competitor where it sits." /></td>
-                  </tr>); })}</tbody>
-                    </table></div>
+        <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="page" sort={sort} onSort={onSort} className={TC}>Linking page</SortTh><SortTh id="targets" sort={sort} onSort={onSort} className={TC}>Competitor</SortTh><SortTh id="anchor" sort={sort} onSort={onSort} className={TC}>Anchor</SortTh><SortTh id="follow" sort={sort} onSort={onSort} className={TC}>Follow</SortTh><SortTh id="seen" sort={sort} onSort={onSort} first="desc" className={TC}>Last seen</SortTh><th className={`${TH} text-right`}><Head right what="Open the page that links to your competitor." why="Contact its owner and ask for a link to you too.">Actions</Head></th></tr></thead>
+        <tbody className="divide-y divide-slate-100">{pg.rows.map(p => {
+          const l = p.links?.[0] || {}; return (
+            <tr key={p.source_url}>
+              <td className="px-3 py-2 max-w-[320px]"><a className="block truncate text-indigo-600 hover:underline" href={p.source_url} target="_blank" rel="noreferrer noopener nofollow" title={p.source_url}>{p.source_url.replace(/^https?:\/\//, '')}</a></td>
+              <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{p.competitor_targets.map(t => <Badge key={t} tone="blue">{t}</Badge>)}</div></td>
+              <td className="px-3 py-2 max-w-[200px] truncate text-slate-700" title={l.anchor_text || ''}>{l.anchor_text || '—'}</td>
+              <td className="px-3 py-2"><Badge tone={l.nofollow ? 'gray' : 'green'}>{l.nofollow ? 'Nofollow' : l.sponsored ? 'Sponsored' : 'Follow'}</Badge></td>
+              <td className="px-3 py-2 text-12 text-slate-500">{l.last_seen ? fmtDateTime(l.last_seen) : '—'}</td>
+              <td className="px-3 py-2  whitespace-nowrap"><OpenAct url={p.source_url} tip="Open the page: see the link to your competitor where it sits." /></td>
+            </tr>);
+        })}</tbody>
+      </table></div>
       {!pg.rows.length && <p className="py-4 text-center text-13 text-slate-500">No page matches the search.</p>}
       <div className="-mx-5 -mb-5"><Pager p={pg} label="pages" /></div>
     </>
@@ -935,18 +945,20 @@ function Audit({ b }) {
                 <th className={`${TH} text-right`}><Head right what="Open the affected links, or download the disavow file." why="See exactly which links to act on.">Actions</Head></th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {items.map(i => { const [l, t] = SEV[i.severity]; return (
-                  <tr key={i.key} className="align-top hover:bg-slate-50">
-                    <td className="px-3 py-3 whitespace-nowrap"><Badge tone={t}>{l}</Badge></td>
-                    <td className="px-3 py-3 max-w-[320px]"><div className="font-semibold text-slate-900">{i.title}</div><div className="text-12.5 text-slate-500 mt-0.5">{i.why}</div></td>
-                    <td className="px-3 py-3 text-right tabular-nums font-semibold">{i.count ?? '—'}</td>
-                    <td className="px-3 py-3 max-w-[260px] text-slate-700">{i.fix}</td>
-                    <td className="px-3 py-3 max-w-[280px]">{i.examples?.length ? <ul className="grid gap-1">{i.examples.slice(0, 3).map((e, k) => <li key={k} className="text-12 text-slate-500 truncate" title={`${e.url} · ${e.note}`}><span className="text-slate-700">{e.url.replace(/^https?:\/\//, '')}</span> · {e.note}</li>)}</ul> : <span className="text-slate-300">—</span>}</td>
-                    <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
-                      {AUDIT_VIEW[i.key] && <Link to={AUDIT_VIEW[i.key]}><Act icon={Link2} tone="sky" tip="View: open the links or sites behind this problem." /></Link>}
-                      {i.action && <a href={i.action.href}><Act icon={Download} tone="rose" tip="Disavow: download the file that tells Google to ignore these links." /></a>}
-                    </span></td>
-                  </tr>); })}
+                {items.map(i => {
+                  const [l, t] = SEV[i.severity]; return (
+                    <tr key={i.key} className="align-top hover:bg-slate-50">
+                      <td className="px-3 py-3 whitespace-nowrap"><Badge tone={t}>{l}</Badge></td>
+                      <td className="px-3 py-3 max-w-[320px]"><div className="font-semibold text-slate-900">{i.title}</div><div className="text-12.5 text-slate-500 mt-0.5">{i.why}</div></td>
+                      <td className="px-3 py-3  tabular-nums font-semibold">{i.count ?? '—'}</td>
+                      <td className="px-3 py-3 max-w-[260px] text-slate-700">{i.fix}</td>
+                      <td className="px-3 py-3 max-w-[280px]">{i.examples?.length ? <ul className="grid gap-1">{i.examples.slice(0, 3).map((e, k) => <li key={k} className="text-12 text-slate-500 truncate" title={`${e.url} · ${e.note}`}><span className="text-slate-700">{e.url.replace(/^https?:\/\//, '')}</span> · {e.note}</li>)}</ul> : <span className="text-slate-300">—</span>}</td>
+                      <td className="px-3 py-3 text-right whitespace-nowrap"><span className="inline-flex gap-1.5">
+                        {AUDIT_VIEW[i.key] && <Link to={AUDIT_VIEW[i.key]}><Act icon={Link2} tone="sky" tip="View: open the links or sites behind this problem." /></Link>}
+                        {i.action && <a href={i.action.href}><Act icon={Download} tone="rose" tip="Disavow: download the file that tells Google to ignore these links." /></a>}
+                      </span></td>
+                    </tr>);
+                })}
               </tbody>
             </table>
           </div>

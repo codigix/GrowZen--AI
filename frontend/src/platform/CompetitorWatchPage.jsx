@@ -83,10 +83,10 @@ function Body({ b }) {
               <thead className="bg-gray-50 text-11.5 uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="px-3 py-2 text-left"><Head what="A competitor you chose." why="The watch visits only these." from="your choice in Competitor Research.">Competitor</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="How many of its pages the watch remembers." why="Changes are found by comparing a page with what was remembered last time." from="the weekly visits to its public pages.">Pages watched</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="Pages it published in the last 30 days." from="pages found in its sitemap or links that were not known before.">New</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="Pages whose title, heading, description or text changed in the last 30 days." from="comparing each visit with the one before.">Changed</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="Pages that disappeared in the last 30 days (missing for two visits)." from="the weekly visits.">Removed</Head></th>
+                  <th className="px-3 py-2 "><Head right what="How many of its pages the watch remembers." why="Changes are found by comparing a page with what was remembered last time." from="the weekly visits to its public pages.">Pages watched</Head></th>
+                  <th className="px-3 py-2 "><Head right what="Pages it published in the last 30 days." from="pages found in its sitemap or links that were not known before.">New</Head></th>
+                  <th className="px-3 py-2 "><Head right what="Pages whose title, heading, description or text changed in the last 30 days." from="comparing each visit with the one before.">Changed</Head></th>
+                  <th className="px-3 py-2 "><Head right what="Pages that disappeared in the last 30 days (missing for two visits)." from="the weekly visits.">Removed</Head></th>
                   <th className="px-3 py-2 text-left"><Head what="The date of its most recent change we noticed." from="the weekly visits.">Last change</Head></th>
                   <th className="px-3 py-2 text-left"><Head what="Top pages: where it ranks on Google. Compare: its site next to yours. Backlinks: sites that link to it and not to you. Leave out: stop watching it." from="the competitor research, site audits and the backlink crawler.">Actions</Head></th>
                 </tr>

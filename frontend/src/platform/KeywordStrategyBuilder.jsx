@@ -125,17 +125,17 @@ function Body({ b }) {
                       </button>
                       {isOpen && (
                         <table className="w-full text-13">
-                          <thead className="text-12 text-slate-500 bg-slate-50/60"><tr><th className="px-4 py-2 w-8" /><th className="px-3 py-2 text-left">Page</th><th className="px-3 py-2 text-left">Keywords it targets</th><th className="px-3 py-2 text-right">Volume</th><th className="px-3 py-2 text-right">Index</th><th className="px-3 py-2 text-center">Intent</th><th className="px-3 py-2" /></tr></thead>
+                          <thead className="text-12 text-slate-500 bg-slate-50/60"><tr><th className="px-4 py-2 w-8" /><th className="px-3 py-2 text-left">Page</th><th className="px-3 py-2 text-left">Keywords it targets</th><th className="px-3 py-2 ">Volume</th><th className="px-3 py-2 ">Index</th><th className="px-3 py-2 text-center">Intent</th><th className="px-3 py-2" /></tr></thead>
                           <tbody className="divide-y divide-slate-100">
                             {pages.map(p => (
                               <tr key={p.id} className={sel.has(p.id) ? 'bg-indigo-50/50' : ''}>
                                 <td className="px-4 py-2 align-top"><input type="checkbox" aria-label={`Select ${p.lead}`} checked={sel.has(p.id)} onChange={() => toggleSel(p.id)} className="accent-indigo-600" /></td>
                                 <td className="px-3 py-2 align-top"><div className="font-medium text-slate-900">{p.lead}</div><Badge tone={p.role === 'Pillar page' ? 'blue' : 'gray'}>{p.role}</Badge></td>
                                 <td className="px-3 py-2 text-slate-600"><div className="flex flex-wrap gap-1.5">{p.keywords.slice(0, 6).map(k => <span key={k.keyword} className="px-2 py-0.5 rounded-full bg-slate-100 text-12" title={`${kfmt(k.volume)} searches a month`}>{k.keyword}</span>)}{p.keywords.length > 6 && <span className="text-12 text-slate-400 self-center">+{p.keywords.length - 6}</span>}</div></td>
-                                <td className="px-3 py-2 text-right tabular-nums align-top">{kfmt(p.volume)}</td>
-                                <td className="px-3 py-2 text-right tabular-nums align-top">{p.index != null ? <span className="inline-flex items-center gap-1.5">{p.index}<span className="w-2.5 h-2.5 rounded-full" style={{ background: idxColor(p.index) }} /></span> : '—'}</td>
+                                <td className="px-3 py-2  tabular-nums align-top">{kfmt(p.volume)}</td>
+                                <td className="px-3 py-2  tabular-nums align-top">{p.index != null ? <span className="inline-flex items-center gap-1.5">{p.index}<span className="w-2.5 h-2.5 rounded-full" style={{ background: idxColor(p.index) }} /></span> : '—'}</td>
                                 <td className="px-3 py-2 text-center align-top"><Tag v={p.intent} /></td>
-                                <td className="px-3 py-2 text-right align-top"><Link className="text-12.5 text-indigo-600 hover:underline" to={`/keyword-management/prepare?k=${encodeURIComponent(p.lead)}`}>Prepare</Link></td>
+                                <td className="px-3 py-2  align-top"><Link className="text-12.5 text-indigo-600 hover:underline" to={`/keyword-management/prepare?k=${encodeURIComponent(p.lead)}`}>Prepare</Link></td>
                               </tr>
                             ))}
                           </tbody>
@@ -150,8 +150,8 @@ function Body({ b }) {
               <>
                 <div className="overflow-x-auto">
                   <table className="w-full text-13">
-                    <thead className="text-12 text-slate-500 bg-slate-50/60"><tr><th className="px-4 py-2.5 text-left">Keyword</th><th className="px-3 py-2.5 text-left">Page</th><th className="px-3 py-2.5 text-left">Topic</th><th className="px-3 py-2.5 text-right">Volume</th><th className="px-3 py-2.5 text-right">Index</th><th className="px-3 py-2.5 text-center">Intent</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">{pager.rows.map(r => <tr key={`${r.page}|${r.keyword}`}><td className="px-4 py-2 font-medium text-slate-900">{r.keyword}</td><td className="px-3 py-2 text-slate-600">{r.page}</td><td className="px-3 py-2 text-slate-500 capitalize">{r.topic}</td><td className="px-3 py-2 text-right tabular-nums">{kfmt(r.volume)}</td><td className="px-3 py-2 text-right tabular-nums">{r.index ?? '—'}</td><td className="px-3 py-2 text-center"><Tag v={r.intent} /></td></tr>)}</tbody>
+                    <thead className="text-12 text-slate-500 bg-slate-50/60"><tr><th className="px-4 py-2.5 text-left">Keyword</th><th className="px-3 py-2.5 text-left">Page</th><th className="px-3 py-2.5 text-left">Topic</th><th className="px-3 py-2.5 text-right">Volume</th><th className="px-3 py-2.5 text-right">Index</th><th className="px-3 py-2.5">Intent</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">{pager.rows.map(r => <tr key={`${r.page}|${r.keyword}`}><td className="px-4 py-2 font-medium text-slate-900">{r.keyword}</td><td className="px-3 py-2 text-slate-600">{r.page}</td><td className="px-3 py-2 text-slate-500 capitalize">{r.topic}</td><td className="px-3 py-2  tabular-nums">{kfmt(r.volume)}</td><td className="px-3 py-2  tabular-nums">{r.index ?? '—'}</td><td className="px-3 py-2 text-center"><Tag v={r.intent} /></td></tr>)}</tbody>
                   </table>
                 </div>
                 <div className="border-t border-slate-100"><Pager p={pager} label="keywords" /></div>

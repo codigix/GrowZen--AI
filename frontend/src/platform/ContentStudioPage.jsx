@@ -180,17 +180,21 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         { id: 'comp', label: 'Competition', options: [['LOW', 'Low'], ['MEDIUM', 'Medium'], ['HIGH', 'High']], test: (x, v) => x.competition === v }
       ].filter(f => f.options.length > 1)}
       columns={[
-        { id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8', header: <span className="sr-only">Select</span>,
-          cell: x => <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[x.title])} onChange={() => toggle(x)} aria-label={`Select ${x.title}`} title="Select to write an article (up to 10)" /> },
+        {
+          id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8', header: <span className="sr-only">Select</span>,
+          cell: x => <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[x.title])} onChange={() => toggle(x)} aria-label={`Select ${x.title}`} title="Select to write an article (up to 10)" />
+        },
         { id: 'query', header: 'Query', value: x => x.title, className: 'px-2 py-2 text-slate-800' },
-        { id: 'searches', header: 'Searches / mo', right: true, first: 'desc', value: x => x.score ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-600', cell: x => (x.score != null ? fmt(x.score) : <span className="text-slate-300">—</span>) },
-        { id: 'change', header: 'Change', csv: false, right: true, first: 'desc', value: x => pctOf(x), className: 'px-2 py-2 text-right whitespace-nowrap',
-          cell: x => { const c = pctOf(x); return x.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge> : c != null ? <span className={`inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums ${c >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{c >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(c)}%</span> : <span className="text-slate-300">—</span>; } },
+        { id: 'searches', header: 'Searches / mo', right: true, first: 'desc', value: x => x.score ?? null, className: 'px-2 py-2  tabular-nums text-slate-600', cell: x => (x.score != null ? fmt(x.score) : <span className="text-slate-300">—</span>) },
+        {
+          id: 'change', header: 'Change', csv: false, right: true, first: 'desc', value: x => pctOf(x), className: 'px-2 py-2 text-right whitespace-nowrap',
+          cell: x => { const c = pctOf(x); return x.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge> : c != null ? <span className={`inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums ${c >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{c >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(c)}%</span> : <span className="text-slate-300">—</span>; }
+        },
         { id: 'comp', header: 'Competition', csv: false, value: x => ({ LOW: 0, MEDIUM: 1, HIGH: 2 })[x.competition] ?? null, className: 'px-2 py-2', cell: x => (COMP[x.competition] ? <Badge tone={COMP[x.competition][1]}>{COMP[x.competition][0]}</Badge> : <span className="text-slate-300">—</span>) },
         { id: 'x_intent', header: 'Intent', hide: true, value: x => x.intent || '' }, // not shown, but part of the CSV so the file has the same facts as the filters
         { id: 'x_change', header: 'Change over 3 months (%)', hide: true, value: x => (x.velocity === 'Breakout' ? 'Breakout' : pctOf(x) ?? '') },
         { id: 'x_comp', header: 'Competition', hide: true, value: x => (COMP[x.competition] ? COMP[x.competition][0] : '') },
-        { id: 'draft', header: 'Action', right: true, className: 'px-3 py-2 text-right whitespace-nowrap', thClass: 'px-3 py-2.5', cell: x => <button type="button" onClick={() => openWriter(x)} title="Create the brief and a draft for this query" className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Write it</button> }
+        { id: 'draft', header: 'Action', right: true, className: 'px-3 py-2  whitespace-nowrap', thClass: 'px-3 py-2.5', cell: x => <button type="button" onClick={() => openWriter(x)} title="Create the brief and a draft for this query" className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Write it</button> }
       ]} />
   );
   return (
@@ -384,8 +388,10 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
         </label>
         <Button size="sm" icon={Download} disabled={!shown.length} title={`Download the ${shown.length} article${shown.length === 1 ? '' : 's'} in this list (with the filter and search applied) as a CSV file`}
           onClick={() => downloadCsv(`generated-articles-${siteStem(b)}`, ['Title', 'Primary keyword', 'Other keywords', 'Status', 'Web address slug', 'Words', 'Length', 'Written in (minutes)', 'Created', 'Scheduled for', 'Published address'],
-            shown.map(x => { const ps = x.status === 'completed' ? x.publishing_status : null; const views = [x.react_url && x.react_status !== 'deleted' && x.react_url, x.wp_url && x.wp_status !== 'deleted' && x.wp_url].filter(Boolean);
-              return [x.title || '', x.keyword || '', (x.secondary_keywords || []).join(', '), (ps ? (PUB_STATUS[ps] || PUB_STATUS.draft)[0] : x.status === 'failed' ? 'Writing failed' : (ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending)[0]), x.slug || '', x.stats?.words ?? '', x.stats ? (ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard') : '', x.stats?.total_seconds != null ? Math.round(x.stats.total_seconds / 6) / 10 : '', x.created_at || '', x.schedule?.planned_for || '', views.join('; ')]; }))}>Export CSV</Button>
+            shown.map(x => {
+              const ps = x.status === 'completed' ? x.publishing_status : null; const views = [x.react_url && x.react_status !== 'deleted' && x.react_url, x.wp_url && x.wp_status !== 'deleted' && x.wp_url].filter(Boolean);
+              return [x.title || '', x.keyword || '', (x.secondary_keywords || []).join(', '), (ps ? (PUB_STATUS[ps] || PUB_STATUS.draft)[0] : x.status === 'failed' ? 'Writing failed' : (ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending)[0]), x.slug || '', x.stats?.words ?? '', x.stats ? (ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard') : '', x.stats?.total_seconds != null ? Math.round(x.stats.total_seconds / 6) / 10 : '', x.created_at || '', x.schedule?.planned_for || '', views.join('; ')];
+            }))}>Export CSV</Button>
       </div>
 
       <div className="space-y-3">
@@ -694,17 +700,21 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
             onState={st => { shownRows.current = st.rows; }}
             rowClass={k => (picked.includes(k.keyword) ? 'bg-indigo-50' : used.has(k.keyword.toLowerCase()) ? 'opacity-50' : 'hover:bg-slate-50')}
             columns={[
-              { id: 'pick', label: 'Select', csv: false, className: 'pl-3 pr-1 py-2 w-8', thClass: 'pl-3 pr-1 py-2.5 w-8',
+              {
+                id: 'pick', label: 'Select', csv: false, className: 'pl-3 pr-1 py-2 w-8', thClass: 'pl-3 pr-1 py-2.5 w-8',
                 header: <input type="checkbox" aria-label="Select all shown" checked={shownRows.current.length > 0 && shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).every(k => picked.includes(k.keyword))} onChange={() => { const free = shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).map(k => k.keyword); const every = free.every(k => picked.includes(k)); setPicked(pk => (every ? pk.filter(k => !free.includes(k)) : [...new Set([...pk, ...free])])); }} />,
-                cell: k => <input type="checkbox" disabled={used.has(k.keyword.toLowerCase())} checked={picked.includes(k.keyword) || used.has(k.keyword.toLowerCase())} onChange={() => toggle(k.keyword)} aria-label={`Pick ${k.keyword}`} /> },
-              { id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
+                cell: k => <input type="checkbox" disabled={used.has(k.keyword.toLowerCase())} checked={picked.includes(k.keyword) || used.has(k.keyword.toLowerCase())} onChange={() => toggle(k.keyword)} aria-label={`Pick ${k.keyword}`} />
+              },
+              {
+                id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
                 cell: k => <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
                   {used.has(k.keyword.toLowerCase()) && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-indigo-50 text-indigo-700">added</span>}
                   {k.for_blog && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
-                  {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span> },
-              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: k => k.volume ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-700', cell: k => (k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>) },
-              { id: 'difficulty', header: 'Difficulty', right: true, value: k => k.difficulty ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-700', cell: k => (k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>) },
-              { id: 'rank', header: 'Rank', right: true, value: k => k.rank ?? null, className: 'px-3 py-2 text-right tabular-nums text-slate-700', cell: k => (k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>) }
+                  {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span>
+              },
+              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: k => k.volume ?? null, className: 'px-2 py-2  tabular-nums text-slate-700', cell: k => (k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>) },
+              { id: 'difficulty', header: 'Difficulty', right: true, value: k => k.difficulty ?? null, className: 'px-2 py-2  tabular-nums text-slate-700', cell: k => (k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>) },
+              { id: 'rank', header: 'Rank', right: true, value: k => k.rank ?? null, className: 'px-3 py-2  tabular-nums text-slate-700', cell: k => (k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>) }
             ]} />
         </div>
       )}
@@ -1009,7 +1019,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-semibold">{site.info.from_setup ? `Publishing Setup: ${site.info.label || 'connected website'}` : 'Project website (no publishing website is set up yet)'}</span>
             </div>
           )}
-          <div className="text-[11.5px] text-slate-500">{site.source === 'brand' &&<span className="inline-block mr-1.5 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold">Your site’s brand</span>}{site.notes.join(' ')}{site.source === 'brand' ? '' : ' Scripts on your site are switched off, so menus and sliders will not move.'}</div>
+          <div className="text-[11.5px] text-slate-500">{site.source === 'brand' && <span className="inline-block mr-1.5 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold">Your site’s brand</span>}{site.notes.join(' ')}{site.source === 'brand' ? '' : ' Scripts on your site are switched off, so menus and sliders will not move.'}</div>
           <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 flex justify-center overflow-x-auto relative">
             {site.busy && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center"><RefreshCw size={20} className="animate-spin text-indigo-500" /></div>}
             <iframe title="Preview in your website's design" sandbox="" referrerPolicy="no-referrer" srcDoc={site.html}
@@ -1040,7 +1050,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     try { includeDetailRun(id); } catch (err) { console.error('Include failed', err); setIncludeBusy(''); setIncludeMsg({ id, ok: false, text: `Could not add it: ${err?.message || err}` }); }
   };
   const includeDetailRun = (id) => {
-    const e =(t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const e = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const bn = brandOf(b.name) || b.name;
     const place = [b.area, b.city].filter(Boolean).join(', ');
     const svc = (b.services || []).map(x => x?.name).filter(Boolean).slice(0, 4).join(', ');
@@ -1094,10 +1104,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               <button
                 onClick={() => (selectedArticle || i <= step) && setStep(i)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-left transition-colors cursor-pointer ${i === step
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                    : i < step
-                      ? 'text-slate-800 hover:bg-slate-50'
-                      : 'text-slate-500'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : i < step
+                    ? 'text-slate-800 hover:bg-slate-50'
+                    : 'text-slate-500'
                   }`}
               >
                 <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-500'
@@ -1186,68 +1196,68 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               {onGenerate && showSaved && <SavedKeywordPicker b={b} inUse={[kw, ...secondaryList]} onAdd={addSaved} />}
             </div>
             <aside className="space-y-3 xl:sticky xl:top-4" aria-label="This article">
-            {onGenerate && (
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-[12px] font-bold text-slate-800">Keywords for this article</div>
-                  <Button size="sm" icon={RefreshCw} busy={kwBusy} disabled={topicText.trim().length < 2} onClick={() => suggestKeywords(kwReady)}>
-                    {kwReady ? 'Regenerate Secondary Keywords' : 'Generate Keywords'}
-                  </Button>
-                </div>
-                {kwBusy && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing keywords for “{topicText}” with Claude AI…</div>}
-                {kwError && <div className="text-[11.5px] text-amber-800">{kwError}</div>}
-                {kwReady && !kwBusy && kwNote && <div className="text-[11px] text-slate-500">{kwNote}</div>}
-                {!kwReady && !kwBusy && <div className="text-[11.5px] text-slate-500">Enter a topic and click Generate Keywords. The blog is written after you confirm the keywords.</div>}
-                {kwReady && (
-                  <>
-                    {intent && <div className="text-[11.5px] text-slate-600">Search intent: <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-semibold capitalize">{intent}</span></div>}
-                    <Field label="Primary keyword" hint="Appears in the title, meta description and introduction">
-                      <div className="flex items-center gap-1.5">
-                        <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
-                        <VolTag k={kw} />
+              {onGenerate && (
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[12px] font-bold text-slate-800">Keywords for this article</div>
+                    <Button size="sm" icon={RefreshCw} busy={kwBusy} disabled={topicText.trim().length < 2} onClick={() => suggestKeywords(kwReady)}>
+                      {kwReady ? 'Regenerate Secondary Keywords' : 'Generate Keywords'}
+                    </Button>
+                  </div>
+                  {kwBusy && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing keywords for “{topicText}” with Claude AI…</div>}
+                  {kwError && <div className="text-[11.5px] text-amber-800">{kwError}</div>}
+                  {kwReady && !kwBusy && kwNote && <div className="text-[11px] text-slate-500">{kwNote}</div>}
+                  {!kwReady && !kwBusy && <div className="text-[11.5px] text-slate-500">Enter a topic and click Generate Keywords. The blog is written after you confirm the keywords.</div>}
+                  {kwReady && (
+                    <>
+                      {intent && <div className="text-[11.5px] text-slate-600">Search intent: <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-semibold capitalize">{intent}</span></div>}
+                      <Field label="Primary keyword" hint="Appears in the title, meta description and introduction">
+                        <div className="flex items-center gap-1.5">
+                          <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
+                          <VolTag k={kw} />
+                        </div>
+                        {slugify(kw) && <div className="mt-1 text-[11.5px] text-slate-500 break-all">The article's web address ends with <span className="font-mono font-semibold text-slate-700">/{slugify(kw)}</span> (you can change it after the article is written).</div>}
+                      </Field>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
+                        <div className="grid grid-cols-1 gap-2">
+                          {secondaryList.map((k, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <input className={inputCls} value={k} onChange={e => setSecondaryList(l => l.map((x, j) => (j === i ? e.target.value : x)))} />
+                              <VolTag k={k} />
+                              <button type="button" title="Remove" className="h-9 w-9 shrink-0 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" onClick={() => setSecondaryList(l => l.filter((_, j) => j !== i))}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                        <Button size="sm" icon={Plus} className="mt-2" onClick={() => setSecondaryList(l => [...l, ''])}>Add keyword</Button>
                       </div>
-                      {slugify(kw) && <div className="mt-1 text-[11.5px] text-slate-500 break-all">The article's web address ends with <span className="font-mono font-semibold text-slate-700">/{slugify(kw)}</span> (you can change it after the article is written).</div>}
-                    </Field>
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
-                      <div className="grid grid-cols-1 gap-2">
-                        {secondaryList.map((k, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <input className={inputCls} value={k} onChange={e => setSecondaryList(l => l.map((x, j) => (j === i ? e.target.value : x)))} />
-                            <VolTag k={k} />
-                            <button type="button" title="Remove" className="h-9 w-9 shrink-0 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" onClick={() => setSecondaryList(l => l.filter((_, j) => j !== i))}>×</button>
-                          </div>
-                        ))}
-                      </div>
-                      <Button size="sm" icon={Plus} className="mt-2" onClick={() => setSecondaryList(l => [...l, ''])}>Add keyword</Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-            {onGenerate && (
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Article length</div>
-                <div className="grid grid-cols-1 gap-1.5">
-                  {ARTICLE_LENGTHS.map(l => (
-                    <button key={l.id} type="button" onClick={() => pickLength(l.id)} aria-pressed={articleLength === l.id}
-                      className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
-                      <span className="text-[12.5px] font-bold">{l.label}</span>
-                      <span className={`text-[11px] ${articleLength === l.id ? 'text-indigo-100' : 'text-slate-500'}`}>{l.words} · {l.time}</span>
-                    </button>
-                  ))}
+                    </>
+                  )}
                 </div>
-              </div>
-            )}
-            {onGenerate && (
-              <div className="space-y-1.5">
-                <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={openTitleStep}>Next: Choose SEO Title</Button>
-                {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
-                {!kwReady && !kwBusy && <div className="text-[11.5px] text-amber-700">Generate the keywords first.</div>}
-                <div className="text-[11.5px] text-slate-500">Next you choose the SEO title; then a complete blog (meta description, introduction, H2/H3 sections, FAQs, conclusion) is written with the keywords above and opened for review.</div>
-              </div>
-            )}
-            {genError && <div className="text-[12px] text-red-600">{genError}</div>}
+              )}
+              {onGenerate && (
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Article length</div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {ARTICLE_LENGTHS.map(l => (
+                      <button key={l.id} type="button" onClick={() => pickLength(l.id)} aria-pressed={articleLength === l.id}
+                        className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
+                        <span className="text-[12.5px] font-bold">{l.label}</span>
+                        <span className={`text-[11px] ${articleLength === l.id ? 'text-indigo-100' : 'text-slate-500'}`}>{l.words} · {l.time}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {onGenerate && (
+                <div className="space-y-1.5">
+                  <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={openTitleStep}>Next: Choose SEO Title</Button>
+                  {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
+                  {!kwReady && !kwBusy && <div className="text-[11.5px] text-amber-700">Generate the keywords first.</div>}
+                  <div className="text-[11.5px] text-slate-500">Next you choose the SEO title; then a complete blog (meta description, introduction, H2/H3 sections, FAQs, conclusion) is written with the keywords above and opened for review.</div>
+                </div>
+              )}
+              {genError && <div className="text-[12px] text-red-600">{genError}</div>}
             </aside>
           </div>
         )}
@@ -1385,8 +1395,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                           type="button"
                           onClick={() => setBodyTab('editor')}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${bodyTab === 'editor'
-                              ? 'bg-white text-indigo-700 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
                         >
                           <Code size={13} />
@@ -1396,8 +1406,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                           type="button"
                           onClick={() => setBodyTab('preview')}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${bodyTab === 'preview'
-                              ? 'bg-white text-indigo-700 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
                         >
                           <Eye size={13} />

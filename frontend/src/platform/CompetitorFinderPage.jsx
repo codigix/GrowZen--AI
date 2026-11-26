@@ -281,7 +281,7 @@ export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindM
         {pager.rows.map(c => {
           return (
             <React.Fragment key={c.host}><tr className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
-              <td className="px-3 py-2.5 text-center"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
+              <td className="px-3 py-2.5"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
               <td className="px-3 py-2.5 min-w-[200px]">
                 <button type="button" onClick={() => onDetail(c)} className="text-left cursor-pointer group max-w-[280px]">
                   <span className="block font-semibold text-slate-900 group-hover:text-indigo-700 truncate">{c.name}</span>
@@ -292,7 +292,7 @@ export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindM
               <td className="px-3 py-2.5  tabular-nums text-slate-600">{c.maps?.distance_m == null ? <span className="text-slate-300">—</span> : c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</td>
               <td className="px-3 py-2.5  tabular-nums font-semibold">{c.profile ? `${c.profile.visibility}%` : c.maps ? `${c.maps.visibility}%` : '—'}</td>
               <td className="px-3 py-2.5  tabular-nums">{c.profile ? `${Object.keys(c.profile.positions).length}/${r.keywords.length}` : c.maps ? `${c.maps.appearances}/${r.keywords.length} Maps` : '—'}</td>
-              <td className="px-3 py-2.5 text-center">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : c.maps ? <span className="inline-flex items-center gap-1.5"><Pos value={c.maps.best} maps /><Stars rating={c.maps.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
+              <td className="px-3 py-2.5">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : c.maps ? <span className="inline-flex items-center gap-1.5"><Pos value={c.maps.best} maps /><Stars rating={c.maps.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
               <td className="px-3 py-2.5 text-right whitespace-nowrap">
                 <div className="inline-flex gap-1.5">
                   <Button size="sm" onClick={() => onKeywords(c)} title="Its keywords and where it ranks">Keywords</Button>
@@ -659,9 +659,9 @@ function LiveResults({ progress }) {
                 return (
                   <tr key={d.domain} className="animate-in fade-in duration-300">
                     <td className="px-4 py-2 font-medium text-slate-900">{d.domain}{d.type === 'directory' && <span className="ml-2"><Badge tone="violet">Listing</Badge></span>}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-semibold">{d.visibility}%</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{d.keywords_top10}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{d.keywords_top3}</td>
+                    <td className="px-4 py-2  tabular-nums font-semibold">{d.visibility}%</td>
+                    <td className="px-4 py-2  tabular-nums">{d.keywords_top10}</td>
+                    <td className="px-4 py-2  tabular-nums">{d.keywords_top3}</td>
                     <td className="px-4 py-2 text-12 text-slate-500">{site ? (site.scanned ? `${site.services?.length || 0} services · ${fmt(site.avg_words)} words` : 'unreadable') : d.type === 'business' ? <Loader2 size={12} className="animate-spin text-slate-400" /> : ''}</td>
                   </tr>
                 );

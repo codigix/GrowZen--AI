@@ -365,7 +365,7 @@ function ReportKeywords({ keywords }) {
         <SortTh id="end" sort={sort} onSort={onSort} right className="px-4 py-2.5 font-medium">End</SortTh>
         <SortTh id="change" sort={sort} onSort={onSort} right first="desc" className="px-4 py-2.5 font-medium">Change</SortTh>
         <SortTh id="maps" sort={sort} onSort={onSort} right className="px-4 py-2.5 font-medium">Maps now</SortTh></tr></thead>
-      <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword} className="h-10"><td className="px-4 text-slate-800">{k.keyword}</td><td className="px-4 text-right tabular-nums text-slate-600">{num(k.start)}</td><td className="px-4 text-right tabular-nums text-slate-900">{k.end == null ? <span className="text-slate-400">not in results</span> : k.end}</td><td className="px-4 text-right"><Delta v={k.change} /></td><td className="px-4 text-right tabular-nums text-slate-600">{num(k.maps_end)}</td></tr>)}</tbody>
+      <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword} className="h-10"><td className="px-4 text-slate-800">{k.keyword}</td><td className="px-4  tabular-nums text-slate-600">{num(k.start)}</td><td className="px-4  tabular-nums text-slate-900">{k.end == null ? <span className="text-slate-400">not in results</span> : k.end}</td><td className="px-4 text-right"><Delta v={k.change} /></td><td className="px-4  tabular-nums text-slate-600">{num(k.maps_end)}</td></tr>)}</tbody>
     </table></div><Pager p={pager} label="keywords" sizes={[10, 25, 50, 100]} /></div>
   );
 }
@@ -385,20 +385,20 @@ function ReportBody({ r }) {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[['Presence', isNum(p.end) ? `${Math.round(p.end)}` : '—', <Delta key="d" v={p.delta} />], ['Targets met', `${t.met ?? 0}/${t.total ?? 0}`, <span key="m" className="text-slate-500">{t.missed || 0} missed</span>],
-          ['Tasks verified', `${k.verified ?? 0}/${k.total ?? 0}`, <span key="u" className="text-slate-500">{(k.unverified || 0) + (k.failed || 0)} not verified</span>], ['Issues fixed', `${i.resolved ?? 0}`, <span key="o" className="text-slate-500">{i.open_total ?? 0} still open</span>]].map(([l, v, sub]) => (
+        ['Tasks verified', `${k.verified ?? 0}/${k.total ?? 0}`, <span key="u" className="text-slate-500">{(k.unverified || 0) + (k.failed || 0)} not verified</span>], ['Issues fixed', `${i.resolved ?? 0}`, <span key="o" className="text-slate-500">{i.open_total ?? 0} still open</span>]].map(([l, v, sub]) => (
           <div key={l} className="rounded-xl border border-slate-200 p-3.5"><div className="text-12 text-slate-500">{l}</div><div className="text-22 font-semibold text-slate-900 tabular-nums leading-tight">{v}</div><div className="text-12">{sub}</div></div>
         ))}
       </div>
       {arr(d.areas).some(a => isNum(a.end)) && (
         <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full text-13.5">
           <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200"><th className="px-4 py-2.5 text-left font-medium">Area</th><th className="px-4 py-2.5 text-right font-medium">Start</th><th className="px-4 py-2.5 text-right font-medium">End</th><th className="px-4 py-2.5 text-right font-medium">Change</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{arr(d.areas).map(a => <tr key={a.key} className="h-10"><td className="px-4 text-slate-800">{a.label}</td><td className="px-4 text-right tabular-nums text-slate-600">{num(a.start)}</td><td className="px-4 text-right tabular-nums text-slate-900">{num(a.end)}</td><td className="px-4 text-right"><Delta v={a.delta} /></td></tr>)}</tbody>
+          <tbody className="divide-y divide-slate-100">{arr(d.areas).map(a => <tr key={a.key} className="h-10"><td className="px-4 text-slate-800">{a.label}</td><td className="px-4  tabular-nums text-slate-600">{num(a.start)}</td><td className="px-4  tabular-nums text-slate-900">{num(a.end)}</td><td className="px-4 text-right"><Delta v={a.delta} /></td></tr>)}</tbody>
         </table></div>
       )}
       {arr(d.metrics).length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full text-13.5">
           <thead><tr className="text-12 text-slate-500 bg-slate-50 border-b border-slate-200"><th className="px-4 py-2.5 text-left font-medium">Key number</th><th className="px-4 py-2.5 text-right font-medium">Start</th><th className="px-4 py-2.5 text-right font-medium">End</th><th className="px-4 py-2.5 text-right font-medium">Change</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{arr(d.metrics).map(m => <tr key={m.key} className="h-10"><td className="px-4 text-slate-800">{m.label}</td><td className="px-4 text-right tabular-nums text-slate-600">{num(m.start)}</td><td className="px-4 text-right tabular-nums text-slate-900">{num(m.end)} <span className="text-slate-400">{m.unit}</span></td><td className="px-4 text-right"><Delta v={m.delta} invert={m.direction === 'down'} /></td></tr>)}</tbody>
+          <tbody className="divide-y divide-slate-100">{arr(d.metrics).map(m => <tr key={m.key} className="h-10"><td className="px-4 text-slate-800">{m.label}</td><td className="px-4  tabular-nums text-slate-600">{num(m.start)}</td><td className="px-4  tabular-nums text-slate-900">{num(m.end)} <span className="text-slate-400">{m.unit}</span></td><td className="px-4 text-right"><Delta v={m.delta} invert={m.direction === 'down'} /></td></tr>)}</tbody>
         </table></div>
       )}
       {arr(d.keywords).length > 0 && (
@@ -430,7 +430,8 @@ function NotifySettings({ bid, s, onSaved }) {
     try {
       if ((s.timezone || '') !== form.timezone) await api(`/businesses/${bid}`, { method: 'PATCH', body: { timezone: form.timezone }, repeat: true });
       const { timezone: _tz, ...prefs } = form;
-      const out = await api(`/businesses/${bid}/growth/notifications`, { method: 'PUT', body: { ...prefs, to: form.to.trim() } }); setMsg(`Saved. Reports go to ${out.sends_to || 'no address yet'}.`); onSaved(); } catch (e) { setErr(e.message || 'Could not save.'); } finally { setBusy(false); }
+      const out = await api(`/businesses/${bid}/growth/notifications`, { method: 'PUT', body: { ...prefs, to: form.to.trim() } }); setMsg(`Saved. Reports go to ${out.sends_to || 'no address yet'}.`); onSaved();
+    } catch (e) { setErr(e.message || 'Could not save.'); } finally { setBusy(false); }
   };
   const Tog = ({ k, label, hint }) => (
     <label className="flex items-start gap-3 cursor-pointer"><input type="checkbox" checked={form[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.checked }))} className="mt-1 w-4 h-4 accent-indigo-600" /><span><span className="text-13.5 font-medium text-slate-800">{label}</span><span className="block text-12 text-slate-500">{hint}</span></span></label>
@@ -554,10 +555,12 @@ function ContentPlanTable({ topics, surfaces }) {
           <tbody>{pager.rows.map(t => (
             <tr key={t.topic} className="border-b border-slate-100 align-top">
               <td className="px-4 py-3.5"><div className="font-medium text-slate-900">{t.topic}</div><ul className="mt-1 space-y-0.5">{t.keywords.map(k => <li key={k.keyword} className="text-12.5 text-slate-600">{k.keyword}{k.rank ? <span className="text-slate-400"> · rank {k.rank}</span> : null}{k.target_url ? <span className="block text-11 text-slate-400 break-all">page: {k.target_url}</span> : <span className="block text-11 text-amber-600">no target page</span>}</li>)}</ul></td>
-              <td className="px-3 py-3.5 text-right tabular-nums text-slate-700">{t.volume || '—'}</td>
-              {surfaces.map(([k, v]) => { const c = t.coverage[k]; return (
-                <td key={k} className="px-3 py-3.5 text-center">{c.done ? <CheckCircle2 size={18} className="inline text-emerald-600" aria-label="Covered" />
-                  : <Link to={v.link} title={`Missing: ${c.missing.join(', ')}`}><Chip cls="bg-amber-50 text-amber-700">{c.missing.length} missing</Chip></Link>}</td>); })}
+              <td className="px-3 py-3.5  tabular-nums text-slate-700">{t.volume || '—'}</td>
+              {surfaces.map(([k, v]) => {
+                const c = t.coverage[k]; return (
+                  <td key={k} className="px-3 py-3.5 text-center">{c.done ? <CheckCircle2 size={18} className="inline text-emerald-600" aria-label="Covered" />
+                    : <Link to={v.link} title={`Missing: ${c.missing.join(', ')}`}><Chip cls="bg-amber-50 text-amber-700">{c.missing.length} missing</Chip></Link>}</td>);
+              })}
             </tr>))}
             {!pager.rows.length && <tr><td colSpan={2 + surfaces.length} className="px-4 py-8 text-center text-13 text-slate-500">No topic matches.</td></tr>}
           </tbody>

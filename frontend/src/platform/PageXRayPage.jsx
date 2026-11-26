@@ -300,7 +300,7 @@ function ChecksTable({ d, filter }) {
                   <td className="px-3 py-2.5"><Tip text={AREA_NAME[r.area]}><span className={`rounded px-1.5 py-0.5 text-11 font-bold uppercase ${AREA_TINT[r.area] || ''}`}>{r.area}</span></Tip></td>
                   <td className="px-3 py-2.5 text-slate-600 truncate">{r.group}</td>
                   <td className="px-3 py-2.5"><Tip text={r.label.length > 38 ? r.label : null}><span className="block font-medium text-slate-900 truncate">{r.label}</span></Tip></td>
-                  <td className="px-3 py-2.5 text-right tabular-nums"><Tip text={`Weight ${r.weight ?? '—'}: worth ${r.impact} points of the ${r.area.toUpperCase()} score.`} align="right"><span className={r.passed ? 'text-slate-400' : 'font-semibold text-amber-700'}>{r.passed ? '' : '+'}{r.impact}</span></Tip></td>
+                  <td className="px-3 py-2.5  tabular-nums"><Tip text={`Weight ${r.weight ?? '—'}: worth ${r.impact} points of the ${r.area.toUpperCase()} score.`} align="right"><span className={r.passed ? 'text-slate-400' : 'font-semibold text-amber-700'}>{r.passed ? '' : '+'}{r.impact}</span></Tip></td>
                   <td className="px-3 py-2.5"><Clip text={r.detail} /></td>
                   <td className="px-3 py-2.5">{r.passed ? <span className="text-slate-400">Nothing to fix</span> : <Clip text={r.fix} />}</td>
                   <td className="px-3 py-2.5">{t ? <Tip text={fixed ? 'This scan passes the check.' : `${st[0]}${t.due_on ? `, due ${t.due_on}` : ''}${t.fix_mode_label ? `. ${t.fix_mode_label}.` : ''}`}><span className={`inline-flex items-center gap-1 rounded-full ring-1 ring-inset px-2.5 py-0.5 text-12 font-semibold whitespace-nowrap ${st[1]}`}>{fixed ? <Check size={12} /> : <AlertTriangle size={12} />}{fixed ? 'Fixed' : st[0]}</span></Tip> : <span className="text-slate-400">{r.passed ? '—' : 'No task yet'}</span>}</td>
@@ -356,10 +356,10 @@ function PageKeywords({ d }) {
                         <tr key={k.id}>
                           <td className="px-3 py-2 font-medium text-slate-900">{k.keyword}</td>
                           <td className="px-3 py-2"><Pill tint={k.role === 'main' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}>{k.role === 'main' ? 'Main' : 'Supporting'}</Pill></td>
-                          <td className="px-3 py-2 text-right tabular-nums">{k.volume ?? '—'}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{k.rank ?? '—'}</td>
+                          <td className="px-3 py-2  tabular-nums">{k.volume ?? '—'}</td>
+                          <td className="px-3 py-2  tabular-nums">{k.rank ?? '—'}</td>
                           <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{KW_PLACES.map(([key, label]) => <Pill key={key} tint={k.used?.[key] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'} title={k.used?.[key] ? `Used in the ${label.toLowerCase()}` : `Not in the ${label.toLowerCase()}`}>{label}</Pill>)}</div></td>
-                          <td className="px-3 py-2 text-right tabular-nums">{k.to_add?.length ? <span className="font-semibold text-amber-700">{k.to_add.length}</span> : <span className="text-emerald-600">done</span>}</td>
+                          <td className="px-3 py-2  tabular-nums">{k.to_add?.length ? <span className="font-semibold text-amber-700">{k.to_add.length}</span> : <span className="text-emerald-600">done</span>}</td>
                         </tr>))}
                     </tbody>
                   </table>
@@ -583,8 +583,8 @@ function Report({ d, onRerun, busy, extra, deep, history, siteScan }) {
             <dl>
               {arr(t.groups).length
                 ? arr(t.groups).map(g => <Def key={g.key} label={g.label}>
-                    <div className="flex flex-wrap gap-1.5">{arr(g.items).map(i => <Pill key={i.name} tint={g.key === 'cms' || g.key === 'page_builder' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-700'} title={i.via}>{i.name}{i.version ? <span className="text-slate-500"> {i.version}</span> : null}</Pill>)}</div>
-                  </Def>)
+                  <div className="flex flex-wrap gap-1.5">{arr(g.items).map(i => <Pill key={i.name} tint={g.key === 'cms' || g.key === 'page_builder' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-700'} title={i.via}>{i.name}{i.version ? <span className="text-slate-500"> {i.version}</span> : null}</Pill>)}</div>
+                </Def>)
                 : techGroups.map(([label, items]) => <Def key={label} label={label}><Pills items={items} /></Def>)}
               {t.theme && <Def label="WordPress theme"><Pill tint="bg-indigo-50 text-indigo-700">{t.theme.name}{t.theme.version ? <span className="text-indigo-500"> {t.theme.version}</span> : null}</Pill></Def>}
               {arr(t.plugins).length > 0 && <Def label={`WordPress plugins (${arr(t.plugins).length})`}><div className="flex flex-wrap gap-1.5">{arr(t.plugins).map(p => <Pill key={p.slug} title={p.slug}>{p.name}{p.version ? <span className="text-slate-500"> {p.version}</span> : null}</Pill>)}</div></Def>}
@@ -663,15 +663,17 @@ function Report({ d, onRerun, busy, extra, deep, history, siteScan }) {
       <div ref={sentinel} aria-hidden="true" className="h-px -mb-4" />
       <div className={`sticky top-2 z-20 bg-white rounded-xl border border-slate-200 transition-shadow ${stuck ? 'shadow-md' : 'shadow-sm'}`}>
         <div role="tablist" aria-label="Report sections" onKeyDown={onTabKey} className="flex flex-nowrap overflow-x-auto px-2" style={{ scrollbarWidth: 'none' }}>
-          {NAV.map(([key, label, Icon]) => { const i = info[key]; const on = group === key; return (
-            <button key={key} id={`xray-tab-${key}`} type="button" role="tab" aria-selected={on} aria-controls="xray-panel" tabIndex={on ? 0 : -1} onClick={() => setGroup(key)}
-              className={`shrink-0 h-12 px-4 inline-flex items-center gap-2 text-14 whitespace-nowrap border-b-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${on ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
-              <span className={`w-2 h-2 rounded-full shrink-0 ${i.dot}`} aria-hidden="true" />
-              <Icon size={15} className="shrink-0 opacity-70" aria-hidden="true" />
-              {label}
-              {i.count != null && <span className={`text-12 font-semibold tabular-nums rounded-full px-1.5 py-0.5 leading-none ${i.red ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{i.count}</span>}
-            </button>
-          ); })}
+          {NAV.map(([key, label, Icon]) => {
+            const i = info[key]; const on = group === key; return (
+              <button key={key} id={`xray-tab-${key}`} type="button" role="tab" aria-selected={on} aria-controls="xray-panel" tabIndex={on ? 0 : -1} onClick={() => setGroup(key)}
+                className={`shrink-0 h-12 px-4 inline-flex items-center gap-2 text-14 whitespace-nowrap border-b-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${on ? 'border-indigo-600 text-indigo-700 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${i.dot}`} aria-hidden="true" />
+                <Icon size={15} className="shrink-0 opacity-70" aria-hidden="true" />
+                {label}
+                {i.count != null && <span className={`text-12 font-semibold tabular-nums rounded-full px-1.5 py-0.5 leading-none ${i.red ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{i.count}</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
       <div key={group} id="xray-panel" role="tabpanel" aria-labelledby={`xray-tab-${group}`} className="min-w-0">{views[group]}</div>
@@ -726,12 +728,14 @@ function Compare({ items, onOpen, active }) {
             </tr>
           </thead>
           <tbody>
-            {COMPARE.map(def => { const r = rank(def); return (
-              <tr key={def[0]} className="h-11 odd:bg-white even:bg-slate-50/70">
-                <td className="px-4 text-slate-600 sticky left-0 z-[1] bg-inherit border-b border-slate-100">{def[0]}</td>
-                {cols.map(c => { const raw = def[1](c.data); const num = typeof raw === 'number' ? raw : null; const cls = num != null && r.best != null ? (num === r.best ? 'bg-emerald-50 text-emerald-800 font-semibold' : num === r.worst ? 'bg-red-50 text-red-700' : '') : ''; return <td key={c.url} className={`px-4 tabular-nums text-slate-800 border-b border-slate-100 ${cls}`}>{cell(c.data, def)}</td>; })}
-              </tr>
-            ); })}
+            {COMPARE.map(def => {
+              const r = rank(def); return (
+                <tr key={def[0]} className="h-11 odd:bg-white even:bg-slate-50/70">
+                  <td className="px-4 text-slate-600 sticky left-0 z-[1] bg-inherit border-b border-slate-100">{def[0]}</td>
+                  {cols.map(c => { const raw = def[1](c.data); const num = typeof raw === 'number' ? raw : null; const cls = num != null && r.best != null ? (num === r.best ? 'bg-emerald-50 text-emerald-800 font-semibold' : num === r.worst ? 'bg-red-50 text-red-700' : '') : ''; return <td key={c.url} className={`px-4 tabular-nums text-slate-800 border-b border-slate-100 ${cls}`}>{cell(c.data, def)}</td>; })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -861,80 +865,80 @@ export function XRay({ b, embedded = false, trigger = null, onBusy = null, onSav
 
   return (
     <FixCtx.Provider value={{ tasks: fixes.tasks, reason: fixes.reason, bid: b.id }}>
-    <div className="space-y-6 min-w-0 w-full" style={{ contain: 'inline-size' }}>{/* the page never grows wider than the screen because of a long row of tabs or a wide table */}
-      {!embedded && <Card>
-        <div className="flex flex-wrap gap-2">
-          <div className="relative flex-1 min-w-[240px]">
-            <Globe size={15} className="absolute left-3 top-3 text-slate-400" aria-hidden="true" />
-            <input value={input} onChange={e => { setInput(e.target.value); setFormError(''); }} onKeyDown={e => { if (e.key === 'Enter') inspect(); }} placeholder="https://… any page" aria-label="Page address to inspect" inputMode="url"
-              className="w-full h-10 pl-9 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 placeholder-slate-400" />
+      <div className="space-y-6 min-w-0 w-full" style={{ contain: 'inline-size' }}>{/* the page never grows wider than the screen because of a long row of tabs or a wide table */}
+        {!embedded && <Card>
+          <div className="flex flex-wrap gap-2">
+            <div className="relative flex-1 min-w-[240px]">
+              <Globe size={15} className="absolute left-3 top-3 text-slate-400" aria-hidden="true" />
+              <input value={input} onChange={e => { setInput(e.target.value); setFormError(''); }} onKeyDown={e => { if (e.key === 'Enter') inspect(); }} placeholder="https://… any page" aria-label="Page address to inspect" inputMode="url"
+                className="w-full h-10 pl-9 pr-3 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 placeholder-slate-400" />
+            </div>
+            <Button variant="primary" icon={Search} busy={loading} onClick={inspect} className="h-10 px-5">Inspect</Button>
+            <Button icon={Plus} disabled={!input.trim() || urls.length >= MAX_URLS} onClick={() => addOnly(input)} title="Keep this page and add another to compare">Add to compare</Button>
           </div>
-          <Button variant="primary" icon={Search} busy={loading} onClick={inspect} className="h-10 px-5">Inspect</Button>
-          <Button icon={Plus} disabled={!input.trim() || urls.length >= MAX_URLS} onClick={() => addOnly(input)} title="Keep this page and add another to compare">Add to compare</Button>
-        </div>
-        {formError && <p className="text-12.5 text-red-600 mt-2" role="alert">{formError}</p>}
-        {own && (hostOf(input) === own || urls.some(u => hostOf(u) === own) || (!input.trim() && !urls.length)) && (
-          <label className="mt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12.5 text-slate-600 cursor-pointer">
-            <input type="checkbox" checked={renderJs} onChange={e => setRenderJs(e.target.checked)} />
-            <span className="font-medium">Render JavaScript (Chrome)</span>
-            <span className="text-slate-400">your own website only: reads the page after its JavaScript ran, like a browser</span>
-          </label>
+          {formError && <p className="text-12.5 text-red-600 mt-2" role="alert">{formError}</p>}
+          {own && (hostOf(input) === own || urls.some(u => hostOf(u) === own) || (!input.trim() && !urls.length)) && (
+            <label className="mt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12.5 text-slate-600 cursor-pointer">
+              <input type="checkbox" checked={renderJs} onChange={e => setRenderJs(e.target.checked)} />
+              <span className="font-medium">Render JavaScript (Chrome)</span>
+              <span className="text-slate-400">your own website only: reads the page after its JavaScript ran, like a browser</span>
+            </label>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {b.website && <button type="button" onClick={useSite} className="h-7 px-3 rounded-full text-12 font-semibold ring-1 ring-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 cursor-pointer">Use my website · {hostOf(b.website)}</button>}
+            {suggestions.length > 0 && <span className="text-11.5 text-slate-400 ml-1">Competitors:</span>}
+            {suggestions.map(s => <button key={s.url} type="button" onClick={() => addOnly(s.url)} disabled={urls.length >= MAX_URLS} title={s.url} className="h-7 px-3 rounded-full text-12 ring-1 ring-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer inline-flex items-center gap-1"><Plus size={11} />{s.name.length > 24 ? `${s.name.slice(0, 22)}…` : s.name}</button>)}
+          </div>
+          {urls.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2" aria-live="polite">
+              {items.map(i => (
+                <span key={i.url} className={`inline-flex items-center gap-2 rounded-lg ring-1 px-3 py-1.5 text-12.5 ${i.state === 'error' ? 'ring-red-200 bg-red-50 text-red-800' : i.state === 'done' ? 'ring-emerald-200 bg-emerald-50 text-emerald-900' : 'ring-slate-200 bg-white text-slate-700'}`}>
+                  {i.state === 'loading' ? <Loader2 size={13} className="animate-spin" /> : i.state === 'done' ? <Check size={13} /> : i.state === 'error' ? <AlertTriangle size={13} /> : <FileText size={13} />}
+                  <span className="max-w-[260px] truncate" title={i.url}>{hostOf(i.url)}{(() => { try { const p = new URL(i.url).pathname; return p && p !== '/' ? p : ''; } catch { return ''; } })()}</span>
+                  <button type="button" onClick={() => remove(i.url)} aria-label={`Remove ${i.url}`} className="text-slate-400 hover:text-red-600 cursor-pointer"><X size={13} /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          {items.filter(i => i.state === 'error').map(i => <p key={i.url} className="text-12.5 text-red-600 mt-2" role="alert"><b>{hostOf(i.url)}:</b> {i.error}</p>)}
+          <div className="sr-only" aria-live="polite">{loading ? 'Inspecting pages…' : done.length ? `${done.length} page${done.length > 1 ? 's' : ''} inspected` : ''}</div>
+        </Card>}
+
+        {loading && done.length === 0 && !saved && !lastShown && <Card><div className="py-10 flex flex-col items-center gap-2 text-slate-500"><Loader2 className="animate-spin" /><div className="text-13">Opening the page and reading its HTML, headers, certificate, domain record and robots.txt…</div></div></Card>}
+
+        {!embedded && done.length === 0 && !loading && urls.length === 0 && !saved && !lastShown && (
+          <Card><div className="py-8 text-center max-w-xl mx-auto">
+            <span className="inline-flex w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center"><ShieldCheck size={22} /></span>
+            <div className="text-16 font-semibold text-slate-900 mt-3">Inspect any page in one click</div>
+            <p className="text-13 text-slate-500 mt-1">Type a page address, or press <b>Use my website</b>. You get SEO, AEO and GEO checks, the tech stack, domain age, SSL, security headers and AI-crawler access, all read live from the page. Add up to three pages to compare them side by side.</p>
+          </div></Card>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {b.website && <button type="button" onClick={useSite} className="h-7 px-3 rounded-full text-12 font-semibold ring-1 ring-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 cursor-pointer">Use my website · {hostOf(b.website)}</button>}
-          {suggestions.length > 0 && <span className="text-11.5 text-slate-400 ml-1">Competitors:</span>}
-          {suggestions.map(s => <button key={s.url} type="button" onClick={() => addOnly(s.url)} disabled={urls.length >= MAX_URLS} title={s.url} className="h-7 px-3 rounded-full text-12 ring-1 ring-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer inline-flex items-center gap-1"><Plus size={11} />{s.name.length > 24 ? `${s.name.slice(0, 22)}…` : s.name}</button>)}
-        </div>
-        {urls.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2" aria-live="polite">
-            {items.map(i => (
-              <span key={i.url} className={`inline-flex items-center gap-2 rounded-lg ring-1 px-3 py-1.5 text-12.5 ${i.state === 'error' ? 'ring-red-200 bg-red-50 text-red-800' : i.state === 'done' ? 'ring-emerald-200 bg-emerald-50 text-emerald-900' : 'ring-slate-200 bg-white text-slate-700'}`}>
-                {i.state === 'loading' ? <Loader2 size={13} className="animate-spin" /> : i.state === 'done' ? <Check size={13} /> : i.state === 'error' ? <AlertTriangle size={13} /> : <FileText size={13} />}
-                <span className="max-w-[260px] truncate" title={i.url}>{hostOf(i.url)}{(() => { try { const p = new URL(i.url).pathname; return p && p !== '/' ? p : ''; } catch { return ''; } })()}</span>
-                <button type="button" onClick={() => remove(i.url)} aria-label={`Remove ${i.url}`} className="text-slate-400 hover:text-red-600 cursor-pointer"><X size={13} /></button>
-              </span>
-            ))}
+
+        {done.length >= 2 && <Compare items={items} onOpen={setActive} active={shown?.url} />}
+        {done.length >= 2 && !shown && <p className="text-13 text-slate-500 text-center">Click a page name in the table to open its full report.</p>}
+        {notice && <p className="text-13 text-amber-700 bg-amber-50 rounded-lg px-3 py-2" role="alert">{notice}</p>}
+        {saved && (
+          <div className="rounded-lg bg-indigo-50 ring-1 ring-inset ring-indigo-200 px-4 py-2.5 flex flex-wrap items-center gap-3 text-13 text-indigo-900">
+            <History size={15} className="shrink-0" />
+            {loading ? <Loader2 size={14} className="animate-spin shrink-0" /> : null}
+            <span className="flex-1 min-w-[200px]">{loading ? 'Scanning now… the previous X-Ray stays here until the new one arrives. ' : ''}Showing the X-Ray saved on <b>{new Date(saved.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</b>{saved.data?.url ? <> for <b className="break-all">{saved.data.url}</b></> : null}. It is a saved copy, not a new check.</span>
+            <Button size="sm" disabled={loading} onClick={() => { const u = saved.data.url; setActive(u); setUrls(x => (x.includes(u) ? x : [...x, u])); run([u]); }}>Check it again now</Button>
+            <Button size="sm" onClick={() => setSaved(null)}>Close</Button>
           </div>
         )}
-        {items.filter(i => i.state === 'error').map(i => <p key={i.url} className="text-12.5 text-red-600 mt-2" role="alert"><b>{hostOf(i.url)}:</b> {i.error}</p>)}
-        <div className="sr-only" aria-live="polite">{loading ? 'Inspecting pages…' : done.length ? `${done.length} page${done.length > 1 ? 's' : ''} inspected` : ''}</div>
-      </Card>}
-
-      {loading && done.length === 0 && !saved && !lastShown && <Card><div className="py-10 flex flex-col items-center gap-2 text-slate-500"><Loader2 className="animate-spin" /><div className="text-13">Opening the page and reading its HTML, headers, certificate, domain record and robots.txt…</div></div></Card>}
-
-      {!embedded && done.length === 0 && !loading && urls.length === 0 && !saved && !lastShown && (
-        <Card><div className="py-8 text-center max-w-xl mx-auto">
-          <span className="inline-flex w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 items-center justify-center"><ShieldCheck size={22} /></span>
-          <div className="text-16 font-semibold text-slate-900 mt-3">Inspect any page in one click</div>
-          <p className="text-13 text-slate-500 mt-1">Type a page address, or press <b>Use my website</b>. You get SEO, AEO and GEO checks, the tech stack, domain age, SSL, security headers and AI-crawler access, all read live from the page. Add up to three pages to compare them side by side.</p>
-        </div></Card>
-      )}
-
-      {done.length >= 2 && <Compare items={items} onOpen={setActive} active={shown?.url} />}
-      {done.length >= 2 && !shown && <p className="text-13 text-slate-500 text-center">Click a page name in the table to open its full report.</p>}
-      {notice && <p className="text-13 text-amber-700 bg-amber-50 rounded-lg px-3 py-2" role="alert">{notice}</p>}
-      {saved && (
-        <div className="rounded-lg bg-indigo-50 ring-1 ring-inset ring-indigo-200 px-4 py-2.5 flex flex-wrap items-center gap-3 text-13 text-indigo-900">
-          <History size={15} className="shrink-0" />
-          {loading ? <Loader2 size={14} className="animate-spin shrink-0" /> : null}
-          <span className="flex-1 min-w-[200px]">{loading ? 'Scanning now… the previous X-Ray stays here until the new one arrives. ' : ''}Showing the X-Ray saved on <b>{new Date(saved.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</b>{saved.data?.url ? <> for <b className="break-all">{saved.data.url}</b></> : null}. It is a saved copy, not a new check.</span>
-          <Button size="sm" disabled={loading} onClick={() => { const u = saved.data.url; setActive(u); setUrls(x => (x.includes(u) ? x : [...x, u])); run([u]); }}>Check it again now</Button>
-          <Button size="sm" onClick={() => setSaved(null)}>Close</Button>
-        </div>
-      )}
-      {(() => {
-        const cur = saved?.data || shown?.data || (loading ? lastShown : null);
-        const rendering = cur?.rendering && typeof cur.rendering === 'object' ? <RenderingCard r={cur.rendering} /> : null;
-        const history = cur ? <HistoryPanel b={b} url={cur.url} tick={tick} onOpen={(report, at) => setSaved({ data: report, at })} onError={setNotice} /> : null;
-        const siteScan = b.website ? <SiteScan b={b} onOpen={(report, at) => { setNotice(''); setSaved({ data: report, at }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDone={() => setTick(t => t + 1)} /> : null;
-        const full = cur ? <FullPageCard b={b} url={cur.final_url || cur.url} /> : null;
-        if (!cur) return siteScan;
-        if (!saved && !shown) return <Report key={`last-${cur.fetched_at || cur.url}`} d={cur} busy extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => {}} />;
-        return saved
-          ? <Report key={`saved-${saved.at}`} d={saved.data} busy={false} extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => { const u = saved.data.url; setSaved(null); run([u]); }} />
-          : <Report key={shown.url + (shown.data?.fetched_at || '')} d={shown.data} busy={shown.state === 'loading'} extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => run([shown.url])} />;
-      })()}
-    </div>
+        {(() => {
+          const cur = saved?.data || shown?.data || (loading ? lastShown : null);
+          const rendering = cur?.rendering && typeof cur.rendering === 'object' ? <RenderingCard r={cur.rendering} /> : null;
+          const history = cur ? <HistoryPanel b={b} url={cur.url} tick={tick} onOpen={(report, at) => setSaved({ data: report, at })} onError={setNotice} /> : null;
+          const siteScan = b.website ? <SiteScan b={b} onOpen={(report, at) => { setNotice(''); setSaved({ data: report, at }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onDone={() => setTick(t => t + 1)} /> : null;
+          const full = cur ? <FullPageCard b={b} url={cur.final_url || cur.url} /> : null;
+          if (!cur) return siteScan;
+          if (!saved && !shown) return <Report key={`last-${cur.fetched_at || cur.url}`} d={cur} busy extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => { }} />;
+          return saved
+            ? <Report key={`saved-${saved.at}`} d={saved.data} busy={false} extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => { const u = saved.data.url; setSaved(null); run([u]); }} />
+            : <Report key={shown.url + (shown.data?.fetched_at || '')} d={shown.data} busy={shown.state === 'loading'} extra={rendering} deep={full} history={history} siteScan={siteScan} onRerun={() => run([shown.url])} />;
+        })()}
+      </div>
     </FixCtx.Provider>
   );
 }

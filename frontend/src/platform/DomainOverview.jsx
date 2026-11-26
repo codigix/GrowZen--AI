@@ -32,7 +32,7 @@ const short = (u) => String(u || '').replace(/^https?:\/\/(www\.)?/, '');
 const LI = 'px-4 py-2.5';
 const TC = 'px-4 py-2.5 whitespace-nowrap';
 const numOf = (v) => (v == null || v === '' ? null : Number(v));
-const numCell = `${LI} text-right tabular-nums`;
+const numCell = `${LI}  tabular-nums`;
 const SAMPLE_COLS = [
   { id: 'page', header: 'Referring page', value: x => x.source_url, cell: x => <a href={x.source_url} target="_blank" rel="noreferrer" title={x.source_url} className="text-indigo-700 hover:underline">{short(x.source_url)}</a>, className: `${LI} max-w-[280px] truncate`, thClass: LI },
   { id: 'anchor', header: 'Anchor', value: x => x.anchor_text, cell: x => <span title={x.anchor_text}>{x.anchor_text || '—'}</span>, className: `${LI} max-w-[200px] truncate text-slate-700`, thClass: LI },
@@ -111,7 +111,7 @@ function BacklinksSection({ businessId }) {
             </div>
           </Card>
           <Card title="Backlink types">
-            <ul className="space-y-2.5">{d.types.map(t => <li key={t.type} className="flex items-center gap-3 text-13"><span className="w-14 capitalize text-slate-700">{t.type}</span><div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-violet-300" style={{ width: `${t.share}%` }} /></div><span className="w-10 text-right tabular-nums text-slate-500">{t.share}%</span><span className="w-12 text-right tabular-nums text-indigo-700 font-semibold">{fmt(t.backlinks)}</span></li>)}</ul>
+            <ul className="space-y-2.5">{d.types.map(t => <li key={t.type} className="flex items-center gap-3 text-13"><span className="w-14 capitalize text-slate-700">{t.type}</span><div className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-violet-300" style={{ width: `${t.share}%` }} /></div><span className="w-10  tabular-nums text-slate-500">{t.share}%</span><span className="w-12  tabular-nums text-indigo-700 font-semibold">{fmt(t.backlinks)}</span></li>)}</ul>
           </Card>
         </div>
       </div>
@@ -170,9 +170,9 @@ function Overview({ d, r, setFilter, filters, intel, businessId, view = 'overvie
               return (
                 <tr key={key} title={e ? undefined : 'Not checked yet: add prompts and run the AI check'}>
                   <td className="py-2 flex items-center gap-2 text-slate-800"><span className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center" style={{ background: color }}>{label[0]}</span>{label}</td>
-                  <td className="py-2 text-right tabular-nums text-indigo-600">{e ? `${e.visibility}%` : '0%'}</td>
-                  <td className="py-2 text-right tabular-nums text-indigo-600">{e ? fmt(e.mentions) : 0}</td>
-                  <td className="py-2 text-right tabular-nums text-indigo-600">{e ? fmt(e.cited) : 0}</td>
+                  <td className="py-2  tabular-nums text-indigo-600">{e ? `${e.visibility}%` : '0%'}</td>
+                  <td className="py-2  tabular-nums text-indigo-600">{e ? fmt(e.mentions) : 0}</td>
+                  <td className="py-2  tabular-nums text-indigo-600">{e ? fmt(e.cited) : 0}</td>
                 </tr>);
             })}</tbody></table>
           <p className="text-11 text-slate-400 mt-2">{ai.measured ? `From the latest AI checks (${ai.data_source}): the share of questions where the AI names the business, and the pages of this domain it cites.` : `Not measured yet (${ai.prompts ?? 0} prompts saved), so every platform shows 0.`} <Link to="/geo-optimization" className="text-indigo-600 font-semibold hover:underline">{ai.measured ? 'Open AI Search Visibility' : 'Run the AI check'}</Link></p>
@@ -226,14 +226,16 @@ function TrafficPanel({ d, r, filters, setFilter }) {
           rowClass={c => (filters.country === c.code ? 'bg-indigo-50/60' : '')} empty="No country data for this period."
           toolbar={filters.country ? <button type="button" onClick={() => setFilter({ country: '' })} className="h-8 px-3 rounded-lg text-12.5 font-semibold bg-indigo-500 text-white cursor-pointer">Worldwide: clear filter</button> : null}
           columns={[
-            { id: 'country', header: 'Country', value: c => country(c.code), className: 'px-3 py-2', cell: c => (
-              <button type="button" onClick={() => setFilter({ country: filters.country === c.code ? '' : c.code })} className="text-left cursor-pointer hover:text-indigo-700 w-full" title="Show only this country">
-                <span className="mr-1.5">{flag(c.code)}</span>{country(c.code)}<span className="block h-1 mt-1 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400 rounded-full" style={{ width: `${Math.round((c.clicks / maxClicks) * 100)}%` }} /></span>
-              </button>) },
-            { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: c => numOf(c.clicks), className: 'px-3 py-2 text-right tabular-nums text-indigo-600', cell: c => fmt(c.clicks) },
-            { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: c => numOf(c.impressions), className: 'px-3 py-2 text-right tabular-nums', cell: c => fmt(c.impressions) },
-            { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: c => numOf(c.ctr), className: 'px-3 py-2 text-right tabular-nums', cell: c => `${c.ctr}%` },
-            { id: 'position', header: 'Position', right: true, value: c => numOf(c.position), className: 'px-3 py-2 text-right tabular-nums', cell: c => c.position ?? '—' },
+            {
+              id: 'country', header: 'Country', value: c => country(c.code), className: 'px-3 py-2', cell: c => (
+                <button type="button" onClick={() => setFilter({ country: filters.country === c.code ? '' : c.code })} className="text-left cursor-pointer hover:text-indigo-700 w-full" title="Show only this country">
+                  <span className="mr-1.5">{flag(c.code)}</span>{country(c.code)}<span className="block h-1 mt-1 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400 rounded-full" style={{ width: `${Math.round((c.clicks / maxClicks) * 100)}%` }} /></span>
+                </button>)
+            },
+            { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: c => numOf(c.clicks), className: 'px-3 py-2  tabular-nums text-indigo-600', cell: c => fmt(c.clicks) },
+            { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: c => numOf(c.impressions), className: 'px-3 py-2  tabular-nums', cell: c => fmt(c.impressions) },
+            { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: c => numOf(c.ctr), className: 'px-3 py-2  tabular-nums', cell: c => `${c.ctr}%` },
+            { id: 'position', header: 'Position', right: true, value: c => numOf(c.position), className: 'px-3 py-2  tabular-nums', cell: c => c.position ?? '—' },
           ]} />
       </Card>
 
@@ -278,10 +280,10 @@ function KeywordsPanel({ r }) {
         toolbar={<div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg">{[['keywords', `Organic keywords (${r.keywords.length}${r.keywords_capped ? '+' : ''})`], ['pages', `Top pages (${r.pages.length})`]].map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-8 px-3 text-12.5 font-semibold rounded-md cursor-pointer ${tab === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>{l}</button>)}</div>}
         columns={[
           { id: 'name', header: tab === 'keywords' ? 'Keyword' : 'Page', value: x => x.query || x.page, className: 'px-3 py-2 max-w-[420px] truncate font-medium text-slate-900', cell: x => x.query || <a href={x.page} target="_blank" rel="noreferrer" title={x.page} className="text-indigo-600 hover:underline inline-flex items-center gap-1">{short(x.page)}<ExternalLink size={11} /></a> },
-          { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: x => numOf(x.clicks), className: 'px-3 py-2 text-right tabular-nums text-indigo-600', cell: x => fmt(x.clicks) },
-          { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: x => numOf(x.impressions), className: 'px-3 py-2 text-right tabular-nums', cell: x => fmt(x.impressions) },
-          { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: x => numOf(x.ctr), className: 'px-3 py-2 text-right tabular-nums', cell: x => `${x.ctr}%` },
-          { id: 'position', header: 'Position', right: true, value: x => numOf(x.position), className: 'px-3 py-2 text-right', cell: x => <Badge tone={x.position <= 3 ? 'green' : x.position <= 10 ? 'amber' : 'gray'}>{x.position}</Badge> },
+          { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: x => numOf(x.clicks), className: 'px-3 py-2  tabular-nums text-indigo-600', cell: x => fmt(x.clicks) },
+          { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: x => numOf(x.impressions), className: 'px-3 py-2  tabular-nums', cell: x => fmt(x.impressions) },
+          { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: x => numOf(x.ctr), className: 'px-3 py-2  tabular-nums', cell: x => `${x.ctr}%` },
+          { id: 'position', header: 'Position', right: true, value: x => numOf(x.position), className: 'px-3 py-2 ', cell: x => <Badge tone={x.position <= 3 ? 'green' : x.position <= 10 ? 'amber' : 'gray'}>{x.position}</Badge> },
         ]} />
     </Card>
   );
@@ -309,10 +311,10 @@ function Growth({ r }) {
         <DataTable bare rows={newest} rowKey={m => m.month} pageSize={12} sizes={[12, 24]} search={false} exportName={`traffic-by-month-${r.property || 'site'}`} label="months" minWidth={0} columnsMenu={false} headClass="bg-slate-100 text-slate-700"
           columns={[
             { id: 'month', header: 'Month', first: 'desc', value: m => m.month, className: 'px-3 py-2 font-medium text-slate-900', cell: m => m.month },
-            { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: m => numOf(m.clicks), className: 'px-3 py-2 text-right tabular-nums text-indigo-600', cell: m => fmt(m.clicks) },
-            { id: 'change', header: 'Change in clicks', right: true, first: 'desc', value: m => numOf(m.change), className: 'px-3 py-2 text-right tabular-nums', cell: m => (m.change == null ? <span className="text-slate-300">—</span> : <span className={m.change > 0 ? 'text-emerald-600 font-semibold' : m.change < 0 ? 'text-rose-600 font-semibold' : 'text-slate-400'}>{m.change > 0 ? '▲' : m.change < 0 ? '▼' : '–'} {Math.abs(m.change)}%</span>) },
-            { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: m => numOf(m.impressions), className: 'px-3 py-2 text-right tabular-nums', cell: m => fmt(m.impressions) },
-            { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: m => numOf(m.ctr), className: 'px-3 py-2 text-right tabular-nums', cell: m => `${m.ctr}%` },
+            { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: m => numOf(m.clicks), className: 'px-3 py-2  tabular-nums text-indigo-600', cell: m => fmt(m.clicks) },
+            { id: 'change', header: 'Change in clicks', right: true, first: 'desc', value: m => numOf(m.change), className: 'px-3 py-2  tabular-nums', cell: m => (m.change == null ? <span className="text-slate-300">—</span> : <span className={m.change > 0 ? 'text-emerald-600 font-semibold' : m.change < 0 ? 'text-rose-600 font-semibold' : 'text-slate-400'}>{m.change > 0 ? '▲' : m.change < 0 ? '▼' : '–'} {Math.abs(m.change)}%</span>) },
+            { id: 'impressions', header: 'Impressions', right: true, first: 'desc', value: m => numOf(m.impressions), className: 'px-3 py-2  tabular-nums', cell: m => fmt(m.impressions) },
+            { id: 'ctr', header: 'CTR', right: true, first: 'desc', value: m => numOf(m.ctr), className: 'px-3 py-2  tabular-nums', cell: m => `${m.ctr}%` },
           ]} />
       </Card>
     </div>

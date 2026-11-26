@@ -171,7 +171,7 @@ export function PageRankingsBody({ b }) {
                     <>
                       <div className="flex h-3 rounded-full overflow-hidden mb-3">{intents.map(i => <div key={i.key} style={{ width: `${i.share}%`, backgroundColor: (INTENT[i.key] || ['', '#94a3b8'])[1] }} title={`${(INTENT[i.key] || [i.key])[0]}: ${i.share}%`} />)}</div>
                       <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500"><th className="py-1 font-medium">Intent</th><th className="py-1 font-medium text-right">Share</th><th className="py-1 font-medium text-right">Keywords</th><th className="py-1 font-medium text-right">Searches / mo</th></tr></thead>
-                        <tbody>{intents.map(i => <tr key={i.key} className="border-t border-slate-100"><td className="py-1.5"><span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: (INTENT[i.key] || ['', '#94a3b8'])[1] }} />{(INTENT[i.key] || [i.key])[0]}</span></td><td className="py-1.5 text-right tabular-nums text-indigo-700">{i.share}%</td><td className="py-1.5 text-right tabular-nums">{kfmt(i.n)}</td><td className="py-1.5 text-right tabular-nums">{kfmt(i.v)}</td></tr>)}</tbody></table>
+                        <tbody>{intents.map(i => <tr key={i.key} className="border-t border-slate-100"><td className="py-1.5"><span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: (INTENT[i.key] || ['', '#94a3b8'])[1] }} />{(INTENT[i.key] || [i.key])[0]}</span></td><td className="py-1.5  tabular-nums text-indigo-700">{i.share}%</td><td className="py-1.5  tabular-nums">{kfmt(i.n)}</td><td className="py-1.5  tabular-nums">{kfmt(i.v)}</td></tr>)}</tbody></table>
                     </>
                   )}
                 </Card>
@@ -181,14 +181,14 @@ export function PageRankingsBody({ b }) {
                 <Card title="Top keywords" subtitle="The searches it shows for, by searches a month">
                   {meas.total > 0 && ranked.length === 0 ? <p className="text-13 text-slate-500">{meas.running ? 'Measuring positions…' : 'The page is not in the top 20 for any of the searches measured.'}</p> : (
                     <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200"><th className="py-1.5 font-medium">Keyword</th><th className="py-1.5 font-medium text-right">Position</th><th className="py-1.5 font-medium text-right">Volume</th></tr></thead>
-                      <tbody>{[...ranked].sort((a, c) => (c.volume || 0) - (a.volume || 0)).slice(0, 5).map(r => <tr key={r.keyword} className="border-b border-slate-100"><td className="py-2"><Link to={`/keyword-overview?q=${encodeURIComponent(r.keyword)}`} className="text-indigo-700 hover:underline">{r.keyword}</Link></td><td className="py-2 text-right"><PosChip r={r} /></td><td className="py-2 text-right tabular-nums">{kfmt(r.volume)}</td></tr>)}</tbody></table>
+                      <tbody>{[...ranked].sort((a, c) => (c.volume || 0) - (a.volume || 0)).slice(0, 5).map(r => <tr key={r.keyword} className="border-b border-slate-100"><td className="py-2"><Link to={`/keyword-overview?q=${encodeURIComponent(r.keyword)}`} className="text-indigo-700 hover:underline">{r.keyword}</Link></td><td className="py-2 text-right"><PosChip r={r} /></td><td className="py-2  tabular-nums">{kfmt(r.volume)}</td></tr>)}</tbody></table>
                   )}
                   {ranked.length > 5 && <button type="button" onClick={() => setTab('positions')} className="mt-3 rounded-lg ring-1 ring-inset ring-slate-300 px-3 py-1.5 text-12.5 font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">View all {ranked.length} keywords</button>}
                 </Card>
                 <Card title="Main organic competitors" subtitle="Pages that show next to it in Google for the same searches">
                   {comps.length === 0 ? <p className="text-13 text-slate-500">{meas.running || loading ? 'Measuring…' : 'No competitors found.'}</p> : (
                     <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200"><th className="py-1.5 font-medium">Domain</th><th className="py-1.5 font-medium text-right">Common keywords</th><th className="py-1.5 font-medium text-right">Level</th></tr></thead>
-                      <tbody>{comps.slice(0, 5).map(c => <tr key={c.site} className="border-b border-slate-100"><td className="py-2"><a href={`https://${c.site}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.site}<ExternalLink size={11} className="text-slate-400" /></a></td><td className="py-2 text-right tabular-nums">{c.common}</td>
+                      <tbody>{comps.slice(0, 5).map(c => <tr key={c.site} className="border-b border-slate-100"><td className="py-2"><a href={`https://${c.site}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.site}<ExternalLink size={11} className="text-slate-400" /></a></td><td className="py-2  tabular-nums">{c.common}</td>
                         <td className="py-2 text-right"><span className="inline-flex items-center gap-1.5 justify-end"><span className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-500" style={{ width: `${c.level}%` }} /></span><span className="tabular-nums w-9">{c.level}%</span></span></td></tr>)}</tbody></table>
                   )}
                   {comps.length > 5 && <button type="button" onClick={() => setTab('competitors')} className="mt-3 rounded-lg ring-1 ring-inset ring-slate-300 px-3 py-1.5 text-12.5 font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">View all {comps.length} competitors</button>}
@@ -203,7 +203,7 @@ export function PageRankingsBody({ b }) {
                   </Card>
                   <Card pad={false} title="Top pages of your site" subtitle="Search Console, last 90 days">
                     {sc.pages?.length ? <table className="w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200"><th className="px-4 py-1.5 font-medium">Page</th><th className="px-2 py-1.5 font-medium text-right">Clicks</th><th className="px-4 py-1.5 font-medium text-right">Views</th></tr></thead>
-                      <tbody>{sc.pages.slice(0, 8).map(p => <tr key={p.page} className="border-b border-slate-100"><td className="px-4 py-2 max-w-[260px] truncate"><Link to={`/organic-rankings/page?u=${encodeURIComponent(p.page)}`} className="text-indigo-700 hover:underline" title={p.page}>{p.page.replace(/^https?:\/\/(www\.)?/, '')}</Link></td><td className="px-2 py-2 text-right tabular-nums">{fmt(p.clicks)}</td><td className="px-4 py-2 text-right tabular-nums">{fmt(p.views)}</td></tr>)}</tbody></table> : <Empty>No pages with clicks yet.</Empty>}
+                      <tbody>{sc.pages.slice(0, 8).map(p => <tr key={p.page} className="border-b border-slate-100"><td className="px-4 py-2 max-w-[260px] truncate"><Link to={`/organic-rankings/page?u=${encodeURIComponent(p.page)}`} className="text-indigo-700 hover:underline" title={p.page}>{p.page.replace(/^https?:\/\/(www\.)?/, '')}</Link></td><td className="px-2 py-2  tabular-nums">{fmt(p.clicks)}</td><td className="px-4 py-2  tabular-nums">{fmt(p.views)}</td></tr>)}</tbody></table> : <Empty>No pages with clicks yet.</Empty>}
                   </Card>
                 </div>
               )}
@@ -226,9 +226,9 @@ export function PageRankingsBody({ b }) {
                 <DataTable bare rows={rows} rowKey={r => r.keyword} pageSize={25} sizes={[25, 50]} exportName={`page-positions-${host}`} label="keywords" headClass="bg-slate-100 text-slate-700" minWidth={640}
                   columns={[
                     { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2', cell: r => <Link to={`/keyword-overview?q=${encodeURIComponent(r.keyword)}`} className="text-indigo-700 hover:underline">{r.keyword}</Link> },
-                    { id: 'position', header: 'Position in Google', right: true, first: 'asc', value: r => (r.position == null ? 999 : r.position), className: 'px-3 py-2 text-right', cell: r => <PosChip r={r} /> },
-                    { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.volume != null ? fmt(r.volume) : '—') },
-                    { id: 'index', header: 'Competition index', right: true, value: r => r.index, className: 'px-3 py-2 text-right tabular-nums', cell: r => r.index ?? '—' },
+                    { id: 'position', header: 'Position in Google', right: true, first: 'asc', value: r => (r.position == null ? 999 : r.position), className: 'px-3 py-2 ', cell: r => <PosChip r={r} /> },
+                    { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: r => r.volume, className: 'px-3 py-2  tabular-nums', cell: r => (r.volume != null ? fmt(r.volume) : '—') },
+                    { id: 'index', header: 'Competition index', right: true, value: r => r.index, className: 'px-3 py-2  tabular-nums', cell: r => r.index ?? '—' },
                     { id: 'intent', header: 'Intent', value: r => r.intent, className: 'px-3 py-2 capitalize text-slate-600', cell: r => r.intent },
                     { id: 'source', header: 'Found by', value: r => r.source, className: 'px-3 py-2 text-slate-500', cell: r => r.source },
                   ]} />
@@ -248,12 +248,12 @@ export function PageRankingsBody({ b }) {
                 <DataTable bare rows={comps} rowKey={c => c.site} pageSize={25} sizes={[25]} exportName={`page-competitors-${host}`} label="competitors" headClass="bg-slate-100 text-slate-700" minWidth={640}
                   columns={[
                     { id: 'site', header: 'Domain', value: c => c.site, className: 'px-3 py-2', cell: c => <a href={`https://${c.site}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.site}<ExternalLink size={11} className="text-slate-400" /></a> },
-                    { id: 'common', header: 'Common keywords', right: true, first: 'desc', value: c => c.common, className: 'px-3 py-2 text-right tabular-nums', cell: c => c.common },
-                    { id: 'level', header: 'Competition level', right: true, first: 'desc', value: c => c.level, className: 'px-3 py-2 text-right tabular-nums', cell: c => `${c.level}%` },
-                    { id: 'best', header: 'Best position', right: true, first: 'asc', value: c => c.best, className: 'px-3 py-2 text-right tabular-nums', cell: c => `#${c.best}` },
-                    { id: 'da', header: 'Domain Authority', right: true, first: 'desc', value: c => c.da, className: 'px-3 py-2 text-right tabular-nums', cell: c => c.da ?? '—' },
-                    { id: 'rd', header: 'Referring domains', right: true, first: 'desc', value: c => c.rd, className: 'px-3 py-2 text-right tabular-nums', cell: c => kfmt(c.rd) },
-                    { id: 'kws', header: 'Keywords it ranks for', right: true, first: 'desc', value: c => c.kws, className: 'px-3 py-2 text-right tabular-nums', cell: c => kfmt(c.kws) },
+                    { id: 'common', header: 'Common keywords', right: true, first: 'desc', value: c => c.common, className: 'px-3 py-2  tabular-nums', cell: c => c.common },
+                    { id: 'level', header: 'Competition level', right: true, first: 'desc', value: c => c.level, className: 'px-3 py-2  tabular-nums', cell: c => `${c.level}%` },
+                    { id: 'best', header: 'Best position', right: true, first: 'asc', value: c => c.best, className: 'px-3 py-2  tabular-nums', cell: c => `#${c.best}` },
+                    { id: 'da', header: 'Domain Authority', right: true, first: 'desc', value: c => c.da, className: 'px-3 py-2  tabular-nums', cell: c => c.da ?? '—' },
+                    { id: 'rd', header: 'Referring domains', right: true, first: 'desc', value: c => c.rd, className: 'px-3 py-2  tabular-nums', cell: c => kfmt(c.rd) },
+                    { id: 'kws', header: 'Keywords it ranks for', right: true, first: 'desc', value: c => c.kws, className: 'px-3 py-2  tabular-nums', cell: c => kfmt(c.kws) },
                   ]} />
               )}
             </Card>
@@ -295,7 +295,7 @@ function ChangesTable({ sc, tab, setTab, limit }) {
       {list.length === 0 ? <p className="px-5 py-6 text-13 text-slate-500">None in this group.</p> : (
         <table className="mt-2 w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200"><th className="px-5 py-1.5 font-medium">Keyword</th><th className="px-2 py-1.5 font-medium text-right">Previous</th><th className="px-2 py-1.5 font-medium text-right">Current</th><th className="px-5 py-1.5 font-medium text-right">Views</th></tr></thead>
           <tbody>{list.map(r => <tr key={r.keyword} className="border-b border-slate-100"><td className="px-5 py-2"><Link to={`/keyword-overview?q=${encodeURIComponent(r.keyword)}`} className="text-indigo-700 hover:underline">{r.keyword}</Link></td>
-            <td className="px-2 py-2 text-right tabular-nums text-slate-500">{tab === 'lost' ? r.position : r.previous ?? '—'}</td><td className="px-2 py-2 text-right tabular-nums">{tab === 'lost' ? '—' : <b style={{ color: posColor(r.position) }}>{r.position}</b>}</td><td className="px-5 py-2 text-right tabular-nums">{fmt(r.views)}</td></tr>)}</tbody></table>
+            <td className="px-2 py-2  tabular-nums text-slate-500">{tab === 'lost' ? r.position : r.previous ?? '—'}</td><td className="px-2 py-2  tabular-nums">{tab === 'lost' ? '—' : <b style={{ color: posColor(r.position) }}>{r.position}</b>}</td><td className="px-5 py-2  tabular-nums">{fmt(r.views)}</td></tr>)}</tbody></table>
       )}
     </div>
   );

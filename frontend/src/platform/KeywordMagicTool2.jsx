@@ -79,8 +79,8 @@ function Overview({ b, keyword, country, data, kd, kdMap, askKd, send, busy, hub
             <div className="sm:border-l sm:pl-5 border-slate-200">
               <Label>Global Volume</Label><Big>{worldTotal ? kfmt(worldTotal) : '—'}</Big>
               <div className="mt-2 space-y-1.5">
-                {shownWorld.map(c => <div key={c.code} className="flex items-center gap-2 text-13"><span className="w-7 font-medium text-slate-700">{c.code}</span><div className="flex-1 h-1.5 rounded bg-slate-100"><div className="h-1.5 rounded bg-indigo-500" style={{ width: `${Math.max(3, (c.volume / topW) * 100)}%` }} /></div><span className="w-12 text-right tabular-nums text-slate-600">{kfmt(c.volume)}</span></div>)}
-                {other > 0 && <div className="flex items-center gap-2 text-13 border-t border-slate-200 pt-1.5"><span className="w-7 text-slate-500">Other</span><div className="flex-1 h-1.5 rounded bg-slate-100"><div className="h-1.5 rounded bg-indigo-300" style={{ width: `${Math.max(3, (other / topW) * 100)}%` }} /></div><span className="w-12 text-right tabular-nums text-slate-600">{kfmt(other)}</span></div>}
+                {shownWorld.map(c => <div key={c.code} className="flex items-center gap-2 text-13"><span className="w-7 font-medium text-slate-700">{c.code}</span><div className="flex-1 h-1.5 rounded bg-slate-100"><div className="h-1.5 rounded bg-indigo-500" style={{ width: `${Math.max(3, (c.volume / topW) * 100)}%` }} /></div><span className="w-12  tabular-nums text-slate-600">{kfmt(c.volume)}</span></div>)}
+                {other > 0 && <div className="flex items-center gap-2 text-13 border-t border-slate-200 pt-1.5"><span className="w-7 text-slate-500">Other</span><div className="flex-1 h-1.5 rounded bg-slate-100"><div className="h-1.5 rounded bg-indigo-300" style={{ width: `${Math.max(3, (other / topW) * 100)}%` }} /></div><span className="w-12  tabular-nums text-slate-600">{kfmt(other)}</span></div>}
                 {!shownWorld.length && <div className="text-12.5 text-slate-400">Google has no per-country figures for it.</div>}
               </div>
             </div>
@@ -152,17 +152,17 @@ function Overview({ b, keyword, country, data, kd, kdMap, askKd, send, busy, hub
             <table className="w-full text-13">
               <thead className="text-12 text-slate-500 bg-slate-50/60"><tr>
                 <th className="px-4 py-2.5 w-8"><input type="checkbox" aria-label="Select this page" checked={pager.rows.length > 0 && pager.rows.every(r => sel.has(r.keyword))} onChange={e => setSel(s => { const n = new Set(s); pager.rows.forEach(r => (e.target.checked ? n.add(r.keyword) : n.delete(r.keyword))); return n; })} className="accent-indigo-600" /></th>
-                <Th id="keyword" first="asc">Keywords</Th><Th id="volume" right>Volume</Th><th className="px-3 py-2.5 text-center font-medium">Intent</th><Th id="kd" right>KD %</Th><Th id="cpc" right>CPC</Th>
+                <Th id="keyword" first="asc">Keywords</Th><Th id="volume" right>Volume</Th><th className="px-3 py-2.5 font-medium">Intent</th><Th id="kd" right>KD %</Th><Th id="cpc" right>CPC</Th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {pager.rows.map(r => (
                   <tr key={r.keyword} className={sel.has(r.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50/60'}>
                     <td className="px-4 py-2"><input type="checkbox" aria-label={`Select ${r.keyword}`} checked={sel.has(r.keyword)} onChange={() => toggle(r.keyword)} className="accent-indigo-600" /></td>
                     <td className="px-3 py-2 font-medium text-slate-900"><Link to={`${hub ? '/keyword-management/magic?tab=topics' : '/keyword-management/magic2?'}${hub ? '&' : ''}q=${encodeURIComponent(r.keyword)}${country ? `&c=${country}` : ''}`} className="hover:text-indigo-700 hover:underline">{r.keyword}</Link></td>
-                    <td className="px-3 py-2 text-right tabular-nums">{kfmt(r.volume)}</td>
+                    <td className="px-3 py-2  tabular-nums">{kfmt(r.volume)}</td>
                     <td className="px-3 py-2 text-center"><IntentTag v={r.intent} /></td>
-                    <td className="px-3 py-2 text-right">{kdMap[r.keyword] === undefined ? <button type="button" onClick={() => askKd(r.keyword)} className="text-12 text-indigo-600 hover:underline cursor-pointer">Check</button> : <KdCell v={kdMap[r.keyword]} />}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.cpc != null ? `₹${r.cpc}` : '—'}</td>
+                    <td className="px-3 py-2 ">{kdMap[r.keyword] === undefined ? <button type="button" onClick={() => askKd(r.keyword)} className="text-12 text-indigo-600 hover:underline cursor-pointer">Check</button> : <KdCell v={kdMap[r.keyword]} />}</td>
+                    <td className="px-3 py-2  tabular-nums">{r.cpc != null ? `₹${r.cpc}` : '—'}</td>
                   </tr>
                 ))}
                 {!pager.rows.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">No keywords match.</td></tr>}
@@ -205,7 +205,7 @@ function Bulk({ b, country }) {
         <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-x-auto">
           <table className="w-full text-13">
             <thead className="text-12 text-slate-500 bg-slate-50/60"><tr><th className="px-4 py-2.5 text-left">Keyword</th><th className="px-3 py-2.5 text-right">Volume</th><th className="px-3 py-2.5 text-right">KD %</th><th className="px-3 py-2.5 text-right">CPC</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{rows.map(r => <tr key={r.keyword}><td className="px-4 py-2 font-medium">{r.keyword}</td><td className="px-3 py-2 text-right tabular-nums">{kfmt(r.volume)}</td><td className="px-3 py-2 text-right"><KdCell v={r.kd} /></td><td className="px-3 py-2 text-right tabular-nums">{r.cpc != null ? `₹${r.cpc}` : '—'}</td></tr>)}</tbody>
+            <tbody className="divide-y divide-slate-100">{rows.map(r => <tr key={r.keyword}><td className="px-4 py-2 font-medium">{r.keyword}</td><td className="px-3 py-2  tabular-nums">{kfmt(r.volume)}</td><td className="px-3 py-2 "><KdCell v={r.kd} /></td><td className="px-3 py-2  tabular-nums">{r.cpc != null ? `₹${r.cpc}` : '—'}</td></tr>)}</tbody>
           </table>
         </div>
       )}

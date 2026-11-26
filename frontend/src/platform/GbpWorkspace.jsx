@@ -47,15 +47,17 @@ export const SectionHead = ({ title, subtitle, sources = [], children }) => (
 );
 
 export const SECTIONS = [
-  { group: 'Workspace', items: [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'profile', label: 'Business Profile', icon: Store },
-    { id: 'performance', label: 'Performance', icon: BarChart3 },
-    { id: 'traffic', label: 'Website traffic', icon: Globe },
-    { id: 'reviews', label: 'Reviews & Reputation', icon: Star },
-    { id: 'posts', label: 'Posts & Content', icon: Newspaper },
-    { id: 'photos', label: 'Photos & Media', icon: ImageIcon },
-  ] },
+  {
+    group: 'Workspace', items: [
+      { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+      { id: 'profile', label: 'Business Profile', icon: Store },
+      { id: 'performance', label: 'Performance', icon: BarChart3 },
+      { id: 'traffic', label: 'Website traffic', icon: Globe },
+      { id: 'reviews', label: 'Reviews & Reputation', icon: Star },
+      { id: 'posts', label: 'Posts & Content', icon: Newspaper },
+      { id: 'photos', label: 'Photos & Media', icon: ImageIcon },
+    ]
+  },
 ];
 // These pages live under their own sidebars now (GMB, AI Visibility, Reports, Settings). They are still opened as /gmb-profile?tab=<id>.
 export const SIDEBAR_SECTION_IDS = ['gmb-audit', 'local-seo', 'aeo', 'geo', 'competitors', 'ai', 'reports', 'tasks', 'sync', 'settings'];
@@ -210,7 +212,7 @@ export function OverviewSection({ b, go, onOpen }) {
             </div>
             <div className="rounded-xl bg-white ring-1 ring-sky-100 grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-slate-100 overflow-hidden">
               {[[Star, 'text-amber-500', 'Average rating', m.rating ? `${m.rating}★` : '—', `${fmt(m.review_count || 0)} reviews`], [Search, 'text-violet-500', 'Search views', fmt(m.views_search_30), '30 days'],
-                [Phone, 'text-emerald-500', 'Calls', fmt(m.calls_30), '30 days'], [MousePointerClick, 'text-indigo-500', 'Website clicks', fmt(m.website_clicks_30), '30 days']].map(([Ic, tone, label, value, sub]) => (
+              [Phone, 'text-emerald-500', 'Calls', fmt(m.calls_30), '30 days'], [MousePointerClick, 'text-indigo-500', 'Website clicks', fmt(m.website_clicks_30), '30 days']].map(([Ic, tone, label, value, sub]) => (
                 <div key={label} className="px-3.5 py-2.5 min-w-0">
                   <div className="flex items-center gap-1.5 text-11.5 font-semibold text-slate-500 truncate"><Ic size={13} className={tone} />{label}</div>
                   <div className="text-18 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</div>
@@ -250,7 +252,7 @@ function SearchKeywordsTable({ keywords, pad }) {
     <>
       {keywords.length > 10 && <div className={`${pad} py-2 border-b border-slate-100`}><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search these keywords" aria-label="Search these keywords" className="h-8 w-full max-w-xs px-3 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
       <div className="max-h-96 overflow-auto"><table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={`${pad} py-2`}>Keyword</SortTh><SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={`${pad} py-2`}>Impressions</SortTh></tr></thead>
-        <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword}><td className={`${pad} py-2 text-slate-800`}>{k.keyword}</td><td className={`${pad} py-2 text-right tabular-nums`}>{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}
+        <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword}><td className={`${pad} py-2 text-slate-800`}>{k.keyword}</td><td className={`${pad} py-2  tabular-nums`}>{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}
           {!pager.rows.length && <tr><td colSpan={2} className="px-5 py-6 text-center text-slate-500">No keyword matches.</td></tr>}</tbody></table></div>
       <Pager p={pager} label="keywords" />
     </>
@@ -412,7 +414,7 @@ function ReviewRow({ b, r, toast, onChanged }) {
   );
 }
 
-export function ReviewsSection({ b, toast = () => {} }) {
+export function ReviewsSection({ b, toast = () => { } }) {
   const live = useApi(`/businesses/${b.id}/gbp/live`);
   const all = useApi(`/businesses/${b.id}/reviews`);
   const [onlyOpen, setOnlyOpen] = React.useState(true);
@@ -441,7 +443,7 @@ export function ReviewsSection({ b, toast = () => {} }) {
       <ReviewLinkCard b={b} />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <Card title="Rating distribution" action={<SourceBadge type="google" />}>
-          <ul className="space-y-1.5">{[5, 4, 3, 2, 1].map(n => <li key={n} className="flex items-center gap-2 text-12"><span className="w-3 text-slate-500">{n}</span><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full rounded-full bg-amber-400" style={{ width: `${total ? ((split[String(n)] || 0) / total) * 100 : 0}%` }} /></span><span className="w-8 text-right tabular-nums text-slate-500">{split[String(n)] || 0}</span></li>)}</ul>
+          <ul className="space-y-1.5">{[5, 4, 3, 2, 1].map(n => <li key={n} className="flex items-center gap-2 text-12"><span className="w-3 text-slate-500">{n}</span><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full rounded-full bg-amber-400" style={{ width: `${total ? ((split[String(n)] || 0) / total) * 100 : 0}%` }} /></span><span className="w-8  tabular-nums text-slate-500">{split[String(n)] || 0}</span></li>)}</ul>
           <div className="mt-3 flex flex-wrap gap-2 text-12"><StatusPill level="good">{positive} positive (4-5★)</StatusPill><StatusPill level={negative ? 'critical' : 'good'}>{negative} negative (1-2★)</StatusPill></div>
           <p className="text-11.5 text-slate-500 mt-2">Positive / negative is counted from star ratings. AI only drafts a reply: you edit it and choose to post.</p>
         </Card>
@@ -477,32 +479,42 @@ export function ReviewsSection({ b, toast = () => {} }) {
 
 /** Sections whose work happens in a dedicated tool: say what is there and where it comes from, then open it. */
 const TOOLS = {
-  'local-seo': { title: 'Local SEO', subtitle: 'Rankings, keywords, NAP and citations for this client', sources: ['external', 'crawler', 'calc'], cards: [
-    ['Local rank tracking', 'Google Maps and local search rank, geo-grid ranking by location pin.', '/rank-tracking', 'external'],
-    ['Keyword research & tracking', 'Local keyword ideas, volume and tracked positions.', '/keyword-management', 'external'],
-    ['Website & location page audit', 'Technical errors, meta tags, LocalBusiness schema validation.', '/website-audit', 'crawler'],
-    ['Citations & NAP consistency', 'Listings, backlinks and name-address-phone matching.', '/off-page-seo', 'crawler'],
-  ] },
-  aeo: { title: 'AEO: Answer Engine Optimization', subtitle: 'Questions and answers that answer engines can use', sources: ['crawler', 'ai', 'calc'], cards: [
-    ['FAQs, answers and FAQ schema', 'Manage Q&A for this client; copy ready-made FAQ schema.', 'profile:faq', 'manual'],
-    ['Schema studio', 'Generate and validate structured data.', '/website-audit', 'crawler'],
-    ['AI content & FAQ generation', 'Draft answers from the profile, with nothing invented.', '/ai-content-generation', 'ai'],
-  ] },
-  geo: { title: 'GEO: Generative Engine Optimization', subtitle: 'Visibility in AI search such as ChatGPT, Gemini and Perplexity', sources: ['external', 'ai', 'calc'], cards: [
-    ['AI search visibility tracking', 'Whether and where this brand is cited by AI answers.', '/geo-optimization', 'external'],
-    ['Domain overview', 'Brand authority and traffic for the client website.', '/domain-overview', 'external'],
-    ['Backlink intelligence', 'Citation and authority analysis.', '/backlinks/links', 'external'],
-  ] },
-  competitors: { title: 'Competitor Analysis', subtitle: 'Find, add and compare competitors', sources: ['external', 'manual'], cards: [
-    ['Competitor finder', 'Discover competitors by keyword and add them.', '/competitor-finder', 'external'],
-    ['Competitor watch', 'Ratings, review growth and changes over time.', '/competitor-watch', 'external'],
-    ['Compare domains', 'Side-by-side website and keyword comparison.', '/compare-domains', 'external'],
-    ['Keyword gap', 'Keywords competitors rank for and this client does not.', '/keyword-gap', 'external'],
-  ] },
-  reports: { title: 'Reports', subtitle: 'Client-wise reports, exports and history', sources: ['calc'], cards: [
-    ['Reports & report history', 'Audit, local SEO, review, performance and ranking reports; PDF export.', '/reports', 'calc'],
-    ['Leads', 'Leads attributed to this client.', '/leads', 'manual'],
-  ] },
+  'local-seo': {
+    title: 'Local SEO', subtitle: 'Rankings, keywords, NAP and citations for this client', sources: ['external', 'crawler', 'calc'], cards: [
+      ['Local rank tracking', 'Google Maps and local search rank, geo-grid ranking by location pin.', '/rank-tracking', 'external'],
+      ['Keyword research & tracking', 'Local keyword ideas, volume and tracked positions.', '/keyword-management', 'external'],
+      ['Website & location page audit', 'Technical errors, meta tags, LocalBusiness schema validation.', '/website-audit', 'crawler'],
+      ['Citations & NAP consistency', 'Listings, backlinks and name-address-phone matching.', '/off-page-seo', 'crawler'],
+    ]
+  },
+  aeo: {
+    title: 'AEO: Answer Engine Optimization', subtitle: 'Questions and answers that answer engines can use', sources: ['crawler', 'ai', 'calc'], cards: [
+      ['FAQs, answers and FAQ schema', 'Manage Q&A for this client; copy ready-made FAQ schema.', 'profile:faq', 'manual'],
+      ['Schema studio', 'Generate and validate structured data.', '/website-audit', 'crawler'],
+      ['AI content & FAQ generation', 'Draft answers from the profile, with nothing invented.', '/ai-content-generation', 'ai'],
+    ]
+  },
+  geo: {
+    title: 'GEO: Generative Engine Optimization', subtitle: 'Visibility in AI search such as ChatGPT, Gemini and Perplexity', sources: ['external', 'ai', 'calc'], cards: [
+      ['AI search visibility tracking', 'Whether and where this brand is cited by AI answers.', '/geo-optimization', 'external'],
+      ['Domain overview', 'Brand authority and traffic for the client website.', '/domain-overview', 'external'],
+      ['Backlink intelligence', 'Citation and authority analysis.', '/backlinks/links', 'external'],
+    ]
+  },
+  competitors: {
+    title: 'Competitor Analysis', subtitle: 'Find, add and compare competitors', sources: ['external', 'manual'], cards: [
+      ['Competitor finder', 'Discover competitors by keyword and add them.', '/competitor-finder', 'external'],
+      ['Competitor watch', 'Ratings, review growth and changes over time.', '/competitor-watch', 'external'],
+      ['Compare domains', 'Side-by-side website and keyword comparison.', '/compare-domains', 'external'],
+      ['Keyword gap', 'Keywords competitors rank for and this client does not.', '/keyword-gap', 'external'],
+    ]
+  },
+  reports: {
+    title: 'Reports', subtitle: 'Client-wise reports, exports and history', sources: ['calc'], cards: [
+      ['Reports & report history', 'Audit, local SEO, review, performance and ranking reports; PDF export.', '/reports', 'calc'],
+      ['Leads', 'Leads attributed to this client.', '/leads', 'manual'],
+    ]
+  },
 };
 
 export function ToolSection({ id, go }) {
@@ -550,7 +562,7 @@ export function TasksSection({ b }) {
                 { id: 'task', header: 'Task', value: t => t.title, className: 'px-3 py-2 min-w-[220px]', cell: t => <span className="text-13 font-medium text-slate-900">{t.title}</span> },
                 { id: 'kind', header: 'Type', value: t => nice(t.kind || t.type), className: 'px-3 py-2 whitespace-nowrap', cell: t => <Badge tone="blue">{nice(t.kind || t.type)}</Badge> },
                 { id: 'when', header: 'Created', first: 'desc', value: t => Date.parse(t.created_at) || null, className: 'px-3 py-2 whitespace-nowrap text-12 text-slate-500', cell: t => fmtDateTime(t.created_at) },
-                { id: 'go', header: '', csv: false, right: true, className: 'px-3 py-2 text-right', cell: () => <Link to="/automation"><Button size="sm">Review</Button></Link> },
+                { id: 'go', header: '', csv: false, right: true, className: 'px-3 py-2 ', cell: () => <Link to="/automation"><Button size="sm">Review</Button></Link> },
               ]} />
           )}
         </Card>
@@ -657,7 +669,7 @@ export function SyncSection({ b, onSync, syncing }) {
   );
 }
 
-export function SettingsSection({ b, onConnect, toast = () => {} }) {
+export function SettingsSection({ b, onConnect, toast = () => { } }) {
   const live = useGbpLive(b);
   const d = live.data;
   return (

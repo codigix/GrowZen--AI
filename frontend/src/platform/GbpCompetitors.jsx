@@ -45,21 +45,25 @@ export function ProfileComparison({ b, count, initial = null }) {
           {!res.you && <p className="text-12 text-amber-800 bg-amber-50 rounded px-3 py-1.5">Your own Google listing could not be read (no Google place is linked to this project), so only the competitors are shown.</p>}
           {res.insights.length > 0 && (
             <ul className="space-y-2">
-              {res.insights.map((i, k) => { const [cls, Icon, ic] = TONE[i.level] || TONE.info; return (
-                <li key={k} className={`rounded-lg ring-1 px-4 py-2.5 flex gap-3 ${cls}`}><Icon size={16} className={`${ic} mt-0.5 shrink-0`} /><div><div className="text-13 font-semibold">{i.title}</div><div className="text-12.5 opacity-90 mt-0.5">{i.fix}</div></div></li>
-              ); })}
+              {res.insights.map((i, k) => {
+                const [cls, Icon, ic] = TONE[i.level] || TONE.info; return (
+                  <li key={k} className={`rounded-lg ring-1 px-4 py-2.5 flex gap-3 ${cls}`}><Icon size={16} className={`${ic} mt-0.5 shrink-0`} /><div><div className="text-13 font-semibold">{i.title}</div><div className="text-12.5 opacity-90 mt-0.5">{i.fix}</div></div></li>
+                );
+              })}
             </ul>
           )}
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-13 min-w-[420px]">
               <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-3 py-2 text-left font-semibold">What a customer sees</th><th className="px-3 py-2 text-center font-semibold text-emerald-700">You</th><th className="px-3 py-2 text-center font-semibold">Competitors that are good ({res.read})</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {res.checks.map(c => { const [dot, word] = DOT[c.you] || ['bg-slate-200', 'Not read']; return (
-                  <tr key={c.key} className={c.behind ? 'bg-amber-50/50' : ''}>
-                    <td className="px-3 py-2 text-slate-800">{c.label}{c.behind && <span className="ml-2 text-11 font-semibold text-amber-700">behind</span>}</td>
-                    <td className="px-3 py-2 text-center"><span className="inline-flex items-center gap-1.5" title={word}><span className={`w-2.5 h-2.5 rounded-full ${dot}`} />{word}</span></td>
-                    <td className="px-3 py-2 text-center tabular-nums">{c.competitors_good} of {c.competitors_total}</td>
-                  </tr>); })}
+                {res.checks.map(c => {
+                  const [dot, word] = DOT[c.you] || ['bg-slate-200', 'Not read']; return (
+                    <tr key={c.key} className={c.behind ? 'bg-amber-50/50' : ''}>
+                      <td className="px-3 py-2 text-slate-800">{c.label}{c.behind && <span className="ml-2 text-11 font-semibold text-amber-700">behind</span>}</td>
+                      <td className="px-3 py-2 text-center"><span className="inline-flex items-center gap-1.5" title={word}><span className={`w-2.5 h-2.5 rounded-full ${dot}`} />{word}</span></td>
+                      <td className="px-3 py-2 text-center tabular-nums">{c.competitors_good} of {c.competitors_total}</td>
+                    </tr>);
+                })}
               </tbody>
             </table>
           </div>
@@ -112,30 +116,30 @@ function CompetitorTable({ rows, max, remove }) {
   const pager = usePager(sorted, { size: 10, resetKey: `${sort?.key}|${sort?.dir}` });
   return (
     <>
-    <div className="overflow-x-auto">
-      <table className="w-full text-13">
-        <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="name" sort={sort} onSort={onSort} className="p-2 font-medium">Business</SortTh><SortTh id="rating" sort={sort} onSort={onSort} first="desc" className="p-2 font-medium">Rating</SortTh><SortTh id="reviews" sort={sort} onSort={onSort} first="desc" className="p-2 font-medium w-[34%]">Reviews</SortTh><SortTh id="website" sort={sort} onSort={onSort} className="p-2 font-medium">Website</SortTh><th className="p-2" /></tr></thead>
-        <tbody className="divide-y divide-slate-100">
-          {pager.rows.map(r => (
-            <tr key={r.id || 'you'} className={r.you ? 'bg-indigo-50/60' : ''}>
-              <td className="p-2.5 align-top">
-                <div className="flex items-start gap-2.5">
-                  <span className={`w-7 h-7 rounded-full text-11 font-bold flex items-center justify-center shrink-0 ${r.you ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{rankOf.get(r)}</span>
-                  <div className="min-w-0">
-                    <div className="font-medium text-slate-900 flex items-center gap-1.5 flex-wrap">{r.maps_link ? <a href={r.maps_link} target="_blank" rel="noreferrer" className="hover:text-indigo-600 hover:underline">{r.name}</a> : r.name}{r.you && <span className="text-10 font-bold uppercase tracking-wide bg-indigo-600 text-white rounded px-1.5 py-0.5">You</span>}{r.source === 'manual' && <span className="text-10 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">added by you</span>}</div>
-                    {r.address && <div className="text-11.5 text-slate-500 truncate max-w-[300px]" title={r.address}>{r.address}</div>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-13">
+          <thead className="text-12 text-slate-500 border-b border-slate-200"><tr><SortTh id="name" sort={sort} onSort={onSort} className="p-2 font-medium">Business</SortTh><SortTh id="rating" sort={sort} onSort={onSort} first="desc" className="p-2 font-medium">Rating</SortTh><SortTh id="reviews" sort={sort} onSort={onSort} first="desc" className="p-2 font-medium w-[34%]">Reviews</SortTh><SortTh id="website" sort={sort} onSort={onSort} className="p-2 font-medium">Website</SortTh><th className="p-2" /></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {pager.rows.map(r => (
+              <tr key={r.id || 'you'} className={r.you ? 'bg-indigo-50/60' : ''}>
+                <td className="p-2.5 align-top">
+                  <div className="flex items-start gap-2.5">
+                    <span className={`w-7 h-7 rounded-full text-11 font-bold flex items-center justify-center shrink-0 ${r.you ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{rankOf.get(r)}</span>
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-900 flex items-center gap-1.5 flex-wrap">{r.maps_link ? <a href={r.maps_link} target="_blank" rel="noreferrer" className="hover:text-indigo-600 hover:underline">{r.name}</a> : r.name}{r.you && <span className="text-10 font-bold uppercase tracking-wide bg-indigo-600 text-white rounded px-1.5 py-0.5">You</span>}{r.source === 'manual' && <span className="text-10 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">added by you</span>}</div>
+                      {r.address && <div className="text-11.5 text-slate-500 truncate max-w-[300px]" title={r.address}>{r.address}</div>}
+                    </div>
                   </div>
-                </div>
-              </td>
-              <td className="p-2.5 align-top"><Stars value={r.rating} /></td>
-              <td className="p-2.5 align-top"><div className="flex items-center gap-2"><div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${r.you ? 'bg-indigo-500' : 'bg-slate-400'}`} style={{ width: `${Math.max(2, ((r.reviews || 0) / max) * 100)}%` }} /></div><span className="w-12 text-right tabular-nums text-slate-700">{fmt(r.reviews || 0)}</span></div></td>
-              <td className="p-2.5 align-top text-12">{r.website ? <a href={r.website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1"><ExternalLink size={11} />{r.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0, 28)}</a> : <span className="text-slate-500" title="No website on its Google profile: the profile is all customers see">No website</span>}</td>
-              <td className="p-2.5 align-top text-right">{!r.you && <button type="button" onClick={() => remove(r)} aria-label={`Remove ${r.name}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button>}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                </td>
+                <td className="p-2.5 align-top"><Stars value={r.rating} /></td>
+                <td className="p-2.5 align-top"><div className="flex items-center gap-2"><div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${r.you ? 'bg-indigo-500' : 'bg-slate-400'}`} style={{ width: `${Math.max(2, ((r.reviews || 0) / max) * 100)}%` }} /></div><span className="w-12  tabular-nums text-slate-700">{fmt(r.reviews || 0)}</span></div></td>
+                <td className="p-2.5 align-top text-12">{r.website ? <a href={r.website} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1"><ExternalLink size={11} />{r.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '').slice(0, 28)}</a> : <span className="text-slate-500" title="No website on its Google profile: the profile is all customers see">No website</span>}</td>
+                <td className="p-2.5 align-top text-right">{!r.you && <button type="button" onClick={() => remove(r)} aria-label={`Remove ${r.name}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <Pager p={pager} label="businesses" />
     </>
   );
@@ -195,9 +199,11 @@ export default function CompetitorSection({ b }) {
           {d.insights.length > 0 && (
             <Card title="What this means for you" subtitle="The gaps between your profile and the competitors, and the next step for each">
               <ul className="space-y-2.5">
-                {d.insights.map((i, k) => { const [cls, Icon, ic] = TONE[i.level] || TONE.info; return (
-                  <li key={k} className={`rounded-lg ring-1 px-4 py-3 flex gap-3 ${cls}`}><Icon size={17} className={`${ic} mt-0.5 shrink-0`} /><div><div className="text-13.5 font-semibold">{i.title}</div><div className="text-12.5 opacity-90 mt-0.5">{i.fix}</div></div></li>
-                ); })}
+                {d.insights.map((i, k) => {
+                  const [cls, Icon, ic] = TONE[i.level] || TONE.info; return (
+                    <li key={k} className={`rounded-lg ring-1 px-4 py-3 flex gap-3 ${cls}`}><Icon size={17} className={`${ic} mt-0.5 shrink-0`} /><div><div className="text-13.5 font-semibold">{i.title}</div><div className="text-12.5 opacity-90 mt-0.5">{i.fix}</div></div></li>
+                  );
+                })}
               </ul>
             </Card>
           )}

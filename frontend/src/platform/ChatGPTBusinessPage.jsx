@@ -182,8 +182,8 @@ function OverviewTable({ rows, currentId, onPick }) {
                 <td className="p-2.5"><Badge tone={STATUS_TONE[o.claim_status] || 'gray'}>{label(o.claim_status)}</Badge></td>
                 <td className="p-2.5 text-slate-600">{METHOD_LABEL[o.verification_method] || '—'}</td>
                 <td className="p-2.5">{o.persona_verified ? <span className="inline-flex items-center gap-1 text-emerald-600"><ShieldCheck size={14} />Yes</span> : <span className="text-slate-400">No</span>}</td>
-                <td className="p-2.5 text-right tabular-nums">{fmt(o.items)}</td>
-                <td className="p-2.5 text-right tabular-nums font-semibold">{o.readiness_score}%</td>
+                <td className="p-2.5  tabular-nums">{fmt(o.items)}</td>
+                <td className="p-2.5  tabular-nums font-semibold">{o.readiness_score}%</td>
               </tr>
             ))}
             {!pager.rows.length && <tr><td colSpan={6} className="p-6 text-center text-slate-500">No business matches.</td></tr>}
@@ -433,7 +433,7 @@ function FeedTable({ items, del }) {
               <tr key={it.sku}>
                 <td className="p-2.5 font-mono text-12 text-slate-600">{it.sku}</td>
                 <td className="p-2.5 text-slate-900 max-w-[280px]"><div className="truncate" title={it.title}>{it.title}</div>{it.description && <div className="text-11.5 text-slate-500 truncate" title={it.description}>{it.description}</div>}</td>
-                <td className="p-2.5 text-right tabular-nums whitespace-nowrap">{fmt(it.price)} <span className="text-slate-400 text-12">{it.currency}</span></td>
+                <td className="p-2.5  tabular-nums whitespace-nowrap">{fmt(it.price)} <span className="text-slate-400 text-12">{it.currency}</span></td>
                 <td className="p-2.5"><Badge tone={it.availability === 'in_stock' ? 'green' : it.availability === 'out_of_stock' ? 'red' : 'amber'}>{(AVAILABILITY.find(([v]) => v === it.availability) || [0, it.availability])[1]}</Badge></td>
                 <td className="p-2.5 text-12 max-w-[200px]">{it.product_url ? <a href={it.product_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate block">{it.product_url.replace(/^https?:\/\/(www\.)?/, '')}</a> : '—'}</td>
                 <td className="p-2.5 text-right"><button type="button" onClick={() => del(it)} aria-label={`Delete ${it.title || it.sku}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button></td>
@@ -513,7 +513,7 @@ function InsightsTable({ insights, delMonth }) {
             <th className="p-2" /></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {pager.rows.map(m => (
-              <tr key={m.month}><td className="p-2.5 font-medium text-slate-900">{monthName(m.month)}</td><td className="p-2.5 text-right tabular-nums">{fmt(m.mentions)}</td><td className="p-2.5 text-right tabular-nums">{fmt(m.website_clicks)}</td>
+              <tr key={m.month}><td className="p-2.5 font-medium text-slate-900">{monthName(m.month)}</td><td className="p-2.5  tabular-nums">{fmt(m.mentions)}</td><td className="p-2.5  tabular-nums">{fmt(m.website_clicks)}</td>
                 <td className="p-2.5"><div className="flex flex-wrap gap-1">{(m.topics || []).map(t => <span key={t} className="text-11.5 bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">{t}</span>)}</div></td>
                 <td className="p-2.5 text-right"><button type="button" onClick={() => delMonth(m)} aria-label={`Delete ${monthName(m.month)}`} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 size={14} /></button></td></tr>
             ))}

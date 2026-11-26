@@ -46,11 +46,11 @@ export function Distribution({ d }) {
           <tbody className="divide-y divide-slate-100">{list.map(c => (
             <tr key={c.domain} className={c.you ? 'bg-indigo-50/40' : ''}>
               <td className="px-4 py-2.5">{link(c)}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{c.visibility}%</td><td className="px-2"><Bar v={c.visibility || 0} max={maxVis} /></td>
+              <td className="px-4 py-2.5  tabular-nums">{c.visibility}%</td><td className="px-2"><Bar v={c.visibility || 0} max={maxVis} /></td>
               <td className="px-4 py-2.5 text-right">{num(c.change)}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? c.traffic : Dash}</td>
+              <td className="px-4 py-2.5  tabular-nums">{d.has_volume ? c.traffic : Dash}</td>
               <td className="px-4 py-2.5 text-right">{d.has_volume ? num(c.traffic_change) : Dash}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{c.top3.count}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.top10.count}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.top20.count}</td>
+              <td className="px-4 py-2.5  tabular-nums">{c.top3.count}</td><td className="px-4 py-2.5  tabular-nums">{c.top10.count}</td><td className="px-4 py-2.5  tabular-nums">{c.top20.count}</td>
             </tr>))}</tbody>
         </table>
       </Card>
@@ -64,12 +64,12 @@ export function Distribution({ d }) {
               <tbody className="divide-y divide-slate-100">{rows.map(c => (
                 <tr key={c.domain} className={c.you ? 'bg-indigo-50/40' : ''}>
                   <td className="px-4 py-2.5">{link(c)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{c[key].count}</td><td className="px-2"><Bar v={c[key].count} max={max} color="#f59e0b" /></td>
+                  <td className="px-4 py-2.5  tabular-nums font-semibold">{c[key].count}</td><td className="px-2"><Bar v={c[key].count} max={max} color="#f59e0b" /></td>
                   <td className="px-4 py-2.5 text-right">{num(c[key].diff)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{c[key].new ?? Dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{c.improved ?? Dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{c[key].lost ?? Dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{c.declined ?? Dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{c[key].new ?? Dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{c.improved ?? Dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{c[key].lost ?? Dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{c.declined ?? Dash}</td>
                 </tr>))}</tbody>
             </table>
           </Card>
@@ -195,7 +195,7 @@ export function Cannibalization({ d, b }) {
             </ResponsiveContainer>
             <div className="absolute inset-x-0 bottom-1 text-center leading-none"><span className="text-24 font-bold tabular-nums" style={{ color: col }}>{c.health}%</span></div>
           </div>
-          <div className="mt-1 text-center text-12 text-slate-500">{c.rate} rate{c.health_change != null && <span className="ml-1.5 font-semibold"><Chg v={c.health_change} d={0} unit="%" /></span>}</div></div>
+            <div className="mt-1 text-center text-12 text-slate-500">{c.rate} rate{c.health_change != null && <span className="ml-1.5 font-semibold"><Chg v={c.health_change} d={0} unit="%" /></span>}</div></div>
           {series.length > 1 ? (
             <div className="h-44">
               <ResponsiveContainer width="100%" height="100%">
@@ -230,12 +230,12 @@ export function Cannibalization({ d, b }) {
                     <td className="pl-3 w-8">{caret(p.url)}</td>
                     <td className="px-4 py-2.5"><Url u={p.url} /></td>
                     <td className="px-4 py-2.5">{p.competing ? <Badge tone="amber">Competing</Badge> : p.ranking ? <Badge tone="green">OK</Badge> : <Badge>Not ranking</Badge>}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{p.affected}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{p.avg_position ?? Dash}</td>
+                    <td className="px-4 py-2.5  tabular-nums font-semibold">{p.affected}</td>
+                    <td className="px-4 py-2.5  tabular-nums">{p.avg_position ?? Dash}</td>
                     <td className="px-4 py-2.5 text-right"><Chg v={p.avg_position_change} better="down" d={1} />{p.avg_position_change == null && Dash}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? p.traffic : Dash}</td>
+                    <td className="px-4 py-2.5  tabular-nums">{d.has_volume ? p.traffic : Dash}</td>
                     <td className="px-4 py-2.5 text-right">{d.has_volume && p.traffic_change != null ? <Chg v={p.traffic_change} /> : Dash}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{p.volume != null ? fmt(p.volume) : Dash}</td>
+                    <td className="px-4 py-2.5  tabular-nums">{p.volume != null ? fmt(p.volume) : Dash}</td>
                     <td className="px-4 py-2.5 text-right whitespace-nowrap"><OpenAct url={p.url} tip="Open: show this page in a new tab." /></td>
                   </tr>
                   {open.has(p.url) && (
@@ -267,9 +267,9 @@ export function Cannibalization({ d, b }) {
                     <td className="pl-3 w-8">{caret(r.keyword)}</td>
                     <td className="px-4 py-2.5 font-medium text-indigo-700">{r.keyword}</td>
                     <td className="px-4 py-2.5">{r.competing ? <Badge tone="amber">Competing</Badge> : r.rank ? <Badge tone="green">OK</Badge> : <Badge>Not ranking</Badge>}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{r.rank ?? Dash}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{r.pages.length}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : Dash}</td>
+                    <td className="px-4 py-2.5  tabular-nums">{r.rank ?? Dash}</td>
+                    <td className="px-4 py-2.5  tabular-nums">{r.pages.length}</td>
+                    <td className="px-4 py-2.5  tabular-nums">{r.volume != null ? fmt(r.volume) : Dash}</td>
                     <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={r.keyword} /></td>
                   </tr>
                   {open.has(r.keyword) && (
@@ -318,7 +318,7 @@ export function Snippets({ d }) {
             <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={TC}>Keyword</SortTh><SortTh id="feature" sort={sort} onSort={onSort} className={TC}>Feature</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={TC}>Volume</SortTh><SortTh id="potential" sort={sort} onSort={onSort} right first="desc" className={TC}>Est. traffic potential</SortTh><SortTh id="you" sort={sort} onSort={onSort} right className={TC}>You</SortTh><Th c="text-right">Actions</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">{slice.map(s => (
               <tr key={s.keyword}><td className="px-4 py-2.5 font-medium text-indigo-700">{s.keyword}</td><td className="px-4 py-2.5 text-slate-600">{s.feature}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{s.volume != null ? fmt(s.volume) : Dash}</td><td className="px-4 py-2.5 text-right tabular-nums">{s.potential ?? Dash}</td>
+                <td className="px-4 py-2.5  tabular-nums">{s.volume != null ? fmt(s.volume) : Dash}</td><td className="px-4 py-2.5  tabular-nums">{s.potential ?? Dash}</td>
                 <td className="px-4 py-2.5 text-right">{s.yours ? <Badge tone="green"><Check size={11} /> Yours</Badge> : s.rank ? <span className="tabular-nums">#{s.rank}</span> : Dash}</td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={s.keyword} /></td></tr>))}</tbody>
           </table>

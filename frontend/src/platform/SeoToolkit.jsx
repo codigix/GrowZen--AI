@@ -132,7 +132,7 @@ export function TrackedPositions({ b }) {
               <tr key={k.id} className="hover:bg-slate-50">
                 <td className="px-4 py-2.5 font-semibold text-slate-900">{k.keyword}</td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap"><Pos value={k.rank} /> <Delta now={k.rank} before={k.prev_rank} /></td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{k.volume != null ? fmt(k.volume) : '—'}</td>
+                <td className="px-4 py-2.5  tabular-nums text-slate-600">{k.volume != null ? fmt(k.volume) : '—'}</td>
                 <td className="px-4 py-2.5"><Badge tone="gray">{k.intent || '—'}</Badge></td>
                 <td className="px-4 py-2.5 max-w-[260px] truncate">{(urls[k.keyword] || k.target_url) ? <a href={urls[k.keyword] || k.target_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline" title={urls[k.keyword] || k.target_url}>{(urls[k.keyword] || k.target_url).replace(/^https?:\/\/[^/]+/, '') || '/'}</a> : <span className="text-slate-400">—</span>}</td>
                 <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{k.rank_checked_at || 'Never'}</td>
@@ -181,7 +181,7 @@ function GapTable({ list, comps, busy, track, name }) {
           <td className="px-4 py-2.5 font-semibold text-slate-900">{x.keyword}</td>
           <td className="px-4 py-2.5 text-center"><Pos value={x.you} /></td>
           {x.them.map((p, i) => <td key={i} className="px-4 py-2.5 text-center"><Pos value={p} /></td>)}
-          <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{x.best ? `#${x.best}` : '—'}</td>
+          <td className="px-4 py-2.5  tabular-nums text-slate-600">{x.best ? `#${x.best}` : '—'}</td>
           <td className="px-4 py-2.5 text-right"><Button size="sm" icon={Plus} busy={busy === `t${x.keyword}`} onClick={() => track(x.keyword)}>Track</Button></td>
         </tr>
       ))}
@@ -265,7 +265,7 @@ export function CompareDomains({ b, result = null }) {
             const vals = cols.map(get);
             const nums = vals.filter(v => v != null);
             const best = nums.length ? (better === 'low' ? Math.min(...nums) : Math.max(...nums)) : null;
-            return <tr key={label} className="hover:bg-slate-50"><td className="px-4 py-2.5 text-slate-600">{label}</td>{vals.map((v, i) => <td key={i} className={`px-4 py-2.5 text-right tabular-nums ${v != null && v === best ? 'font-bold text-emerald-700 bg-emerald-50/60' : 'text-slate-900'}`}>{v == null ? <Minus size={12} className="inline text-slate-300" /> : fmtv(v)}</td>)}</tr>;
+            return <tr key={label} className="hover:bg-slate-50"><td className="px-4 py-2.5 text-slate-600">{label}</td>{vals.map((v, i) => <td key={i} className={`px-4 py-2.5  tabular-nums ${v != null && v === best ? 'font-bold text-emerald-700 bg-emerald-50/60' : 'text-slate-900'}`}>{v == null ? <Minus size={12} className="inline text-slate-300" /> : fmtv(v)}</td>)}</tr>;
           })}</tbody></table></div>
       </Card>
       <p className="text-11.5 text-slate-400">From the latest competitor research. A dash means that figure wasn't available for the site (for example, full backlink totals: Google has no API for them).</p>
@@ -292,9 +292,9 @@ function IdeasTable({ ideas, go, busy, track, isTracked, name }) {
       {pager.rows.map(i => (
         <tr key={i.keyword} className="hover:bg-slate-50">
           <td className="px-4 py-2.5"><button type="button" onClick={() => go(i.keyword)} className="font-semibold text-slate-900 hover:text-indigo-600 text-left cursor-pointer" title="Analyze this keyword">{i.keyword}</button></td>
-          <td className="px-4 py-2.5 text-right tabular-nums">{i.volume != null ? fmt(i.volume) : '—'}</td>
+          <td className="px-4 py-2.5  tabular-nums">{i.volume != null ? fmt(i.volume) : '—'}</td>
           <td className="px-4 py-2.5">{i.competition && i.competition !== 'UNSPECIFIED' ? <span className={`rounded-full px-2 py-0.5 text-12 font-semibold ${COMP_TONE[i.competition] || 'bg-slate-100 text-slate-600'}`}>{i.competition.toLowerCase()}</span> : <span className="text-slate-400">—</span>}</td>
-          <td className="px-4 py-2.5 text-right tabular-nums">{money(i.cpc)}</td>
+          <td className="px-4 py-2.5  tabular-nums">{money(i.cpc)}</td>
           <td className="px-4 py-2.5 text-right">{isTracked(i.keyword) ? <Badge tone="green">Tracked</Badge> : <Button size="sm" icon={Plus} busy={busy === `t${i.keyword}`} onClick={() => track(i.keyword)}>Track</Button>}</td>
         </tr>
       ))}
@@ -331,11 +331,11 @@ function Gauge180({ value, note, tip }) {
   return (
     <div className="flex flex-col items-center" role="img" aria-label={`Difficulty ${value ?? 'not available'} of 100, ${difficultyWord(value)}`}>
       <Tip tip={tip} below>
-      <svg viewBox="0 0 160 84" className="w-48">
-        <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(0)}`} fill="none" stroke="#e2e8f0" strokeWidth="12" strokeLinecap="round" />
-        {value != null && v > 0 && <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(ang)}`} fill="none" stroke={diffColor(value)} strokeWidth="12" strokeLinecap="round" />}
-        <text x={cx} y={cy - 6} textAnchor="middle" style={{ fontSize: 26, fontWeight: 700, fill: diffColor(value) }}>{value ?? '—'}</text>
-      </svg>
+        <svg viewBox="0 0 160 84" className="w-48">
+          <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(0)}`} fill="none" stroke="#e2e8f0" strokeWidth="12" strokeLinecap="round" />
+          {value != null && v > 0 && <path d={`M ${pt(Math.PI)} A ${r} ${r} 0 0 1 ${pt(ang)}`} fill="none" stroke={diffColor(value)} strokeWidth="12" strokeLinecap="round" />}
+          <text x={cx} y={cy - 6} textAnchor="middle" style={{ fontSize: 26, fontWeight: 700, fill: diffColor(value) }}>{value ?? '—'}</text>
+        </svg>
       </Tip>
       <DiffChip v={value} word />
       <p className="text-11.5 text-slate-500 mt-2 text-center">{note || 'From Google Ads: how many advertisers bid on it. It is not the SEO difficulty of page one.'}</p>
@@ -348,7 +348,7 @@ function Bar({ label, value, max, text, tip }) {
     <Tip tip={tip} className="rounded hover:bg-slate-50">
       <div className="flex items-center gap-2 text-12.5"><span className="w-28 truncate text-slate-700">{label}</span>
         <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400 group-hover:bg-indigo-600 transition-colors" style={{ width: `${Math.max(3, ((value || 0) / (max || 1)) * 100)}%` }} /></div>
-        <span className="w-24 text-right tabular-nums text-slate-700">{text}</span></div>
+        <span className="w-24  tabular-nums text-slate-700">{text}</span></div>
     </Tip>
   );
 }
@@ -373,7 +373,7 @@ function IdeaPanel({ title, g, kdMap, go, onAll }) {
         <table className="mt-2 w-full text-12.5"><thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200"><th className="py-1.5 font-medium">Keywords</th><th className="py-1.5 font-medium text-right">Volume</th><th className="py-1.5 pl-2 font-medium text-right" title="Keyword difficulty, 0 to 100, from the real top 10 on Google">KD %</th></tr></thead>
           <tbody>{rows.map(r => (
             <tr key={r.keyword} className="border-b border-slate-100"><td className="py-2 pr-2"><button type="button" className="text-indigo-700 hover:underline cursor-pointer text-left" onClick={() => go(r.keyword)} title="Open its overview">{r.keyword}</button></td>
-              <td className="py-2 text-right tabular-nums">{kfmt(r.v)}</td><td className="py-2 pl-2 text-right"><KdDot v={kdMap[r.keyword]} /></td></tr>))}</tbody></table>
+              <td className="py-2  tabular-nums">{kfmt(r.v)}</td><td className="py-2 pl-2 text-right"><KdDot v={kdMap[r.keyword]} /></td></tr>))}</tbody></table>
       )}
       {g.total > rows.length && <button type="button" onClick={onAll} className="mt-3 rounded-lg ring-1 ring-inset ring-slate-300 px-3 py-1.5 text-12.5 font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">View all {fmt(g.total)} keywords</button>}
     </div>
@@ -393,7 +393,7 @@ function ClusterPanel({ clusters, onAll, go }) {
           <li key={c.topic} className="flex items-center gap-2 text-12.5" title={`${c.count} keywords · ${fmt(c.volume)} searches a month in total`}>
             <button type="button" onClick={() => go(c.label)} className="w-40 truncate text-left text-slate-800 hover:text-indigo-700 hover:underline cursor-pointer">{c.label}</button>
             <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-400" style={{ width: `${Math.max(4, (c.volume / max) * 100)}%` }} /></div>
-            <span className="w-14 text-right tabular-nums text-slate-600">{kfmt(c.volume)}</span>
+            <span className="w-14  tabular-nums text-slate-600">{kfmt(c.volume)}</span>
           </li>))}</ul>
       )}
       {clusters.length > top.length && <button type="button" onClick={onAll} className="mt-3 rounded-lg ring-1 ring-inset ring-slate-300 px-3 py-1.5 text-12.5 font-medium text-slate-700 hover:bg-slate-50 cursor-pointer">View all clusters</button>}
@@ -417,8 +417,10 @@ function KeywordOverview({ b }) {
   const rerun = (names, c) => { if (data || q.trim().length > 1) go(data?.keyword ?? q, names, c); };
   const changeCountry = (c) => { setCountry(c); setChosen([]); rerun([], c || home); };
   const [period, setPeriod] = useState('12'); // time filter: the last 12, 6 or 3 months, or one month
-  const go = (k, pl, c) => run('go', async () => { const kw = (k ?? q).trim(); setQ(kw); navigate({ search: new URLSearchParams({ ...Object.fromEntries(params), q: kw }).toString() }, { replace: true }); // the keyword stays in the address, so the other tab of the page opens on it
- setData(null); const pls = pl ?? namesOf(chosen); startKd(kw, (c ?? activeCountry) || '', pls, k === undefined); setKdMap({}); kdBatch.current += 1; setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, places: pls, country: (c ?? activeCountry) || null }, timeout: 120000 })); });
+  const go = (k, pl, c) => run('go', async () => {
+    const kw = (k ?? q).trim(); setQ(kw); navigate({ search: new URLSearchParams({ ...Object.fromEntries(params), q: kw }).toString() }, { replace: true }); // the keyword stays in the address, so the other tab of the page opens on it
+    setData(null); const pls = pl ?? namesOf(chosen); startKd(kw, (c ?? activeCountry) || '', pls, k === undefined); setKdMap({}); kdBatch.current += 1; setData(await api(`/businesses/${b.id}/seo/keyword-overview`, { method: 'POST', body: { keyword: kw, places: pls, country: (c ?? activeCountry) || null }, timeout: 120000 }));
+  });
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const started = useRef(false);
@@ -521,11 +523,11 @@ function KeywordOverview({ b }) {
           <div className="flex flex-wrap items-center gap-8"><Gauge180 value={kd.score} /><div className="max-w-xl text-13 text-slate-600 space-y-2"><p>{difficultyText(kd.score)}</p><p>Read from {kd.sites_with_figures} of {kd.sites} sites{kd.location ? ` in ${kd.location.split(',')[0]}` : ''}. {kd.note}</p>{kd.intent && <p>Intent of the results page: commercial {kd.intent.commercial}, transactional {kd.intent.transactional}, navigational {kd.intent.navigational}.</p>}</div></div>
           <div><h4 className="text-14 font-semibold text-slate-900 mb-2">How the score is made</h4>
             <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Part</Th><Th>What it measures</Th><Th right>Weight</Th><Th right>Value</Th></tr></thead>
-              <tbody>{(kd.formula || []).map(f => <tr key={f.key} className={`border-t border-slate-100 ${f.used ? '' : 'text-slate-400'}`}><td className="px-3 py-2 font-semibold">{f.name}</td><td className="px-3 py-2">{PART_HELP[f.key]}</td><td className="px-3 py-2 text-right tabular-nums">{f.weight}%</td><td className="px-3 py-2 text-right tabular-nums font-semibold">{f.used ? f.value : 'no data'}</td></tr>)}</tbody></table></div>
+              <tbody>{(kd.formula || []).map(f => <tr key={f.key} className={`border-t border-slate-100 ${f.used ? '' : 'text-slate-400'}`}><td className="px-3 py-2 font-semibold">{f.name}</td><td className="px-3 py-2">{PART_HELP[f.key]}</td><td className="px-3 py-2  tabular-nums">{f.weight}%</td><td className="px-3 py-2  tabular-nums font-semibold">{f.used ? f.value : 'no data'}</td></tr>)}</tbody></table></div>
           <div><h4 className="text-14 font-semibold text-slate-900 mb-2">The top {kd.organic.length} on Google</h4>
             <div className="overflow-x-auto"><table className="w-full text-12.5 min-w-[760px]"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>#</Th><Th>Site</Th><Th right>Authority Score</Th><Th right>DA</Th><Th right>PA</Th><Th right>Ref. domains</Th><Th right>Spam</Th><Th right>Words</Th><Th>Updated</Th><Th>Keyword in title</Th></tr></thead>
               <tbody>{kd.organic.map(o => <tr key={o.url} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-500">{o.position}</td><td className="px-3 py-2 max-w-[220px] truncate"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline" title={o.title}>{o.site}</a></td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{o.as ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{kfmt(o.rd)}</td><td className="px-3 py-2 text-right tabular-nums">{o.spam ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.words != null ? fmt(o.words) : '—'}</td><td className="px-3 py-2">{ago(o.age_days)}</td><td className="px-3 py-2">{o.relevant == null ? '—' : o.relevant ? 'Yes' : 'No'}</td></tr>)}</tbody></table></div></div>
+                <td className="px-3 py-2  tabular-nums font-semibold">{o.as ?? '—'}</td><td className="px-3 py-2  tabular-nums">{o.da ?? '—'}</td><td className="px-3 py-2  tabular-nums">{o.pa ?? '—'}</td><td className="px-3 py-2  tabular-nums">{kfmt(o.rd)}</td><td className="px-3 py-2  tabular-nums">{o.spam ?? '—'}</td><td className="px-3 py-2  tabular-nums">{o.words != null ? fmt(o.words) : '—'}</td><td className="px-3 py-2">{ago(o.age_days)}</td><td className="px-3 py-2">{o.relevant == null ? '—' : o.relevant ? 'Yes' : 'No'}</td></tr>)}</tbody></table></div></div>
         </div>
       );
     }
@@ -538,9 +540,11 @@ function KeywordOverview({ b }) {
             <div><div className="text-slate-500">3 months</div><div className="text-20 font-semibold tabular-nums">{pct(m.three_month_change) || '—'}</div></div><div><div className="text-slate-500">Against last year</div><div className="text-20 font-semibold tabular-nums">{pct(m.yoy_change) || '—'}</div></div>
             <div><div className="text-slate-500">Peak month</div><div className="text-20 font-semibold tabular-nums">{fmt(top)}</div></div></div>
           <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Month</Th><Th right>Searches</Th><Th right>Change on the month before</Th><Th right>Against the average</Th><Th>&nbsp;</Th></tr></thead>
-            <tbody>{allMonths.map((x, i) => { const prev = allMonths[i - 1]?.searches; const ch = prev ? Math.round(((x.searches - prev) * 100) / prev) : null; return <tr key={`${x.year}${x.month}`} className="border-t border-slate-100"><td className="px-3 py-2 font-medium">{x.month.slice(0, 1)}{x.month.slice(1).toLowerCase()} {x.year}</td><td className="px-3 py-2 text-right tabular-nums">{fmt(x.searches)}</td>
-              <td className="px-3 py-2 text-right tabular-nums" style={{ color: ch == null ? '#94a3b8' : ch >= 0 ? '#059669' : '#dc2626' }}>{ch == null ? '—' : `${ch >= 0 ? '+' : ''}${ch}%`}</td><td className="px-3 py-2 text-right tabular-nums">{avg ? `${Math.round((x.searches * 100) / avg)}%` : '—'}</td>
-              <td className="px-3 py-2 w-48"><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-500" style={{ width: `${Math.max(3, (x.searches / top) * 100)}%` }} /></div></td></tr>; })}</tbody></table>
+            <tbody>{allMonths.map((x, i) => {
+              const prev = allMonths[i - 1]?.searches; const ch = prev ? Math.round(((x.searches - prev) * 100) / prev) : null; return <tr key={`${x.year}${x.month}`} className="border-t border-slate-100"><td className="px-3 py-2 font-medium">{x.month.slice(0, 1)}{x.month.slice(1).toLowerCase()} {x.year}</td><td className="px-3 py-2  tabular-nums">{fmt(x.searches)}</td>
+                <td className="px-3 py-2  tabular-nums" style={{ color: ch == null ? '#94a3b8' : ch >= 0 ? '#059669' : '#dc2626' }}>{ch == null ? '—' : `${ch >= 0 ? '+' : ''}${ch}%`}</td><td className="px-3 py-2  tabular-nums">{avg ? `${Math.round((x.searches * 100) / avg)}%` : '—'}</td>
+                <td className="px-3 py-2 w-48"><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-500" style={{ width: `${Math.max(3, (x.searches / top) * 100)}%` }} /></div></td></tr>;
+            })}</tbody></table>
         </div>
       );
     }
@@ -553,7 +557,7 @@ function KeywordOverview({ b }) {
             <div><div className="text-slate-500">Competitive density</div><div className="text-20 font-semibold tabular-nums">{m.density != null ? m.density.toFixed(2) : '—'}</div></div><div><div className="text-slate-500">Ads / PLA on the results page</div><div className="text-20 font-semibold tabular-nums">{kd?.state === 'ready' ? `${kd.serp_counts?.ads ?? 'n/a'} / ${kd.serp_counts?.pla ?? 'n/a'}` : '…'}</div></div></div>
             : <div className="text-13"><div className="text-slate-500">Searches a month in every location (Google Keyword Planner)</div><div className="text-24 font-bold tabular-nums">{data.world_volume != null ? fmt(data.world_volume) : '—'}</div></div>}
           <table className="w-full text-13"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>Country</Th><Th right>Searches / mo</Th><Th right>Share</Th><Th right>Top-of-page bid</Th><Th right>Competition index</Th><Th>&nbsp;</Th></tr></thead>
-            <tbody>{list.sort((a, c) => (more === 'cpc' ? (c.cpc || 0) - (a.cpc || 0) : c.volume - a.volume)).map(x => <tr key={x.code} className="border-t border-slate-100"><td className="px-3 py-2 font-medium">{x.name}</td><td className="px-3 py-2 text-right tabular-nums">{fmt(x.volume)}</td><td className="px-3 py-2 text-right tabular-nums">{Math.round((x.volume * 100) / totalW)}%</td><td className="px-3 py-2 text-right tabular-nums">{INR(x.cpc)}</td><td className="px-3 py-2 text-right tabular-nums">{x.index ?? '—'}</td>
+            <tbody>{list.sort((a, c) => (more === 'cpc' ? (c.cpc || 0) - (a.cpc || 0) : c.volume - a.volume)).map(x => <tr key={x.code} className="border-t border-slate-100"><td className="px-3 py-2 font-medium">{x.name}</td><td className="px-3 py-2  tabular-nums">{fmt(x.volume)}</td><td className="px-3 py-2  tabular-nums">{Math.round((x.volume * 100) / totalW)}%</td><td className="px-3 py-2  tabular-nums">{INR(x.cpc)}</td><td className="px-3 py-2  tabular-nums">{x.index ?? '—'}</td>
               <td className="px-3 py-2 w-40"><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${Math.max(3, (x.volume / Math.max(1, ...list.map(y => y.volume))) * 100)}%` }} /></div></td></tr>)}</tbody></table>
         </div>
       );
@@ -566,7 +570,7 @@ function KeywordOverview({ b }) {
           <div className="flex flex-wrap gap-1.5">{Object.entries(kd.components?.features || {}).map(([k, on]) => <span key={k} className={`rounded-full px-2.5 py-0.5 text-12 font-medium ring-1 ring-inset ${on ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-slate-50 text-slate-400 ring-slate-200'}`}>{k}{on ? '' : ': none'}</span>)}</div>
           <div className="overflow-x-auto"><table className="w-full text-12.5 min-w-[820px]"><thead className="bg-slate-50 text-11.5 uppercase tracking-wide text-slate-500"><tr><Th>#</Th><Th>Page</Th><Th right>Authority Score</Th><Th right>DA</Th><Th right>PA</Th><Th right>Ref. domains</Th><Th right>Ranking keywords</Th><Th right>Words</Th><Th>Updated</Th></tr></thead>
             <tbody>{kd.organic.map(o => <tr key={o.url} className="border-t border-slate-100 align-top"><td className="px-3 py-2 text-slate-500">{o.position}</td><td className="px-3 py-2 max-w-[340px]"><a href={o.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">{o.title || o.url}</a><div className="text-11.5 text-slate-500 truncate">{o.url.replace(/^https?:\/\/(www\.)?/, '')}</div>{o.description && <div className="text-11.5 text-slate-500 mt-0.5 line-clamp-2">{o.description}</div>}</td>
-              <td className="px-3 py-2 text-right tabular-nums font-semibold">{o.as ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.da ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{o.pa ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{kfmt(o.rd)}</td><td className="px-3 py-2 text-right tabular-nums">{kfmt(o.rk)}</td><td className="px-3 py-2 text-right tabular-nums">{o.words != null ? fmt(o.words) : '—'}</td><td className="px-3 py-2">{ago(o.age_days)}</td></tr>)}</tbody></table></div>
+              <td className="px-3 py-2  tabular-nums font-semibold">{o.as ?? '—'}</td><td className="px-3 py-2  tabular-nums">{o.da ?? '—'}</td><td className="px-3 py-2  tabular-nums">{o.pa ?? '—'}</td><td className="px-3 py-2  tabular-nums">{kfmt(o.rd)}</td><td className="px-3 py-2  tabular-nums">{kfmt(o.rk)}</td><td className="px-3 py-2  tabular-nums">{o.words != null ? fmt(o.words) : '—'}</td><td className="px-3 py-2">{ago(o.age_days)}</td></tr>)}</tbody></table></div>
         </div>
       );
     }
@@ -646,10 +650,12 @@ function KeywordOverview({ b }) {
                 <div className="text-12 text-slate-500">{[pct(m.three_month_change) && `${pct(m.three_month_change)} in 3 months`, pct(m.yoy_change) && `${pct(m.yoy_change)} vs last year`].filter(Boolean).join(' · ')}</div></div>
               {allMonths.length > 0 ? (
                 <div className="flex items-end gap-1 h-24 mt-3" role="img" aria-label="Monthly searches for the last 12 months">
-                  {allMonths.map((x, i) => { const prev = allMonths[i - 1]?.searches; const ch = prev ? Math.round(((x.searches - prev) * 100) / prev) : null; return (
-                    <Tip key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full cursor-default" tip={<div><div className="font-semibold">{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {x.year}</div><div>{fmt(x.searches)} searches</div>{ch != null && <div className={ch >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{ch >= 0 ? '+' : ''}{ch}% vs the month before</div>}<div className="text-slate-300">{Math.round((x.searches * 100) / (m.volume || x.searches || 1))}% of the average</div></div>}>
-                      <div className={`w-full rounded-t transition-colors ${monthsShown.includes(x) ? 'bg-indigo-500 group-hover:bg-indigo-700' : 'bg-indigo-200 group-hover:bg-indigo-400'}`} style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-[9px] text-slate-400 mt-0.5">{x.month.slice(0, 1)}</span>
-                    </Tip>); })}
+                  {allMonths.map((x, i) => {
+                    const prev = allMonths[i - 1]?.searches; const ch = prev ? Math.round(((x.searches - prev) * 100) / prev) : null; return (
+                      <Tip key={`${x.year}-${x.month}`} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full cursor-default" tip={<div><div className="font-semibold">{x.month.slice(0, 1)}{x.month.slice(1, 3).toLowerCase()} {x.year}</div><div>{fmt(x.searches)} searches</div>{ch != null && <div className={ch >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{ch >= 0 ? '+' : ''}{ch}% vs the month before</div>}<div className="text-slate-300">{Math.round((x.searches * 100) / (m.volume || x.searches || 1))}% of the average</div></div>}>
+                        <div className={`w-full rounded-t transition-colors ${monthsShown.includes(x) ? 'bg-indigo-500 group-hover:bg-indigo-700' : 'bg-indigo-200 group-hover:bg-indigo-400'}`} style={{ height: `${Math.max(4, Math.round((x.searches / peak) * 100))}%` }} /><span className="text-[9px] text-slate-400 mt-0.5">{x.month.slice(0, 1)}</span>
+                      </Tip>);
+                  })}
                 </div>
               ) : <p className="text-12 text-slate-400 mt-3">No monthly figures from Google.</p>}
             </Card>
@@ -697,10 +703,10 @@ function KeywordOverview({ b }) {
                 <table className="w-full text-12.5">
                   <thead><tr className="text-left text-11.5 text-slate-500 border-b border-slate-200">
                     <th className="px-4 py-2 font-medium">URL</th>
-                    <th className="px-2 py-2 font-medium text-right" title="Authority Score, 0 to 100: how reputable the site is. It accounts for the number and quality of its backlinks (sites linking to it and their Domain Authority), its organic presence (how many keywords it ranks for) and how authentic its profile is (spam score). Worked out by us from Moz data; the site's Domain Authority is under it.">Page AS</th>
-                    <th className="px-2 py-2 font-medium text-right" title="The number of referring domains that have at least one link pointing to the URL. Moz gives this count for the whole website, not for the exact URL, so that is what is shown.">Ref. Domains</th>
-                    <th className="px-2 py-2 font-medium text-right" title="The total number of backlinks leading to the URL. Shown only for sites whose links our own crawler holds; a dash means no URL-level backlink data.">Backlinks</th>
-                    <th className="px-2 py-2 font-medium text-right" title="The overall amount of organic traffic driven to the URL in a month. It needs a traffic database that is not connected, so it is not shown rather than estimated.">Search Traffic</th>
+                    <th className="px-2 py-2 font-medium " title="Authority Score, 0 to 100: how reputable the site is. It accounts for the number and quality of its backlinks (sites linking to it and their Domain Authority), its organic presence (how many keywords it ranks for) and how authentic its profile is (spam score). Worked out by us from Moz data; the site's Domain Authority is under it.">Page AS</th>
+                    <th className="px-2 py-2 font-medium " title="The number of referring domains that have at least one link pointing to the URL. Moz gives this count for the whole website, not for the exact URL, so that is what is shown.">Ref. Domains</th>
+                    <th className="px-2 py-2 font-medium " title="The total number of backlinks leading to the URL. Shown only for sites whose links our own crawler holds; a dash means no URL-level backlink data.">Backlinks</th>
+                    <th className="px-2 py-2 font-medium " title="The overall amount of organic traffic driven to the URL in a month. It needs a traffic database that is not connected, so it is not shown rather than estimated.">Search Traffic</th>
                     <th className="px-4 py-2 font-medium text-right" title="The number of keywords for which the URL ranks in search results. Open the page to see the searches it shows for, measured in Google now.">URL Keywords</th></tr></thead>
                   <tbody>
                     {(kd.ai_links || []).length > 0 && (
@@ -719,9 +725,9 @@ function KeywordOverview({ b }) {
                           <div className="min-w-0"><span className="flex items-center gap-1.5 min-w-0"><Link to={`/organic-rankings/page?u=${encodeURIComponent(o.url)}&q=${encodeURIComponent(data.keyword)}`} className="text-indigo-700 hover:underline truncate" title={`Open the organic rankings of this page: ${o.title}`}>{o.title || o.url}</Link>
                             <a href={o.url} target="_blank" rel="noreferrer" aria-label="Open the page in a new tab" title="Open the page itself in a new tab" className="shrink-0 text-slate-400 hover:text-indigo-600"><ExternalLink size={13} /></a></span>
                             <span className="block text-11.5 text-slate-500 truncate" title={o.url}>{o.url.replace(/^https?:\/\/(www\.)?/, '')}</span></div></div></td>
-                        <td className="px-2 py-2 text-right tabular-nums"><div className="font-semibold text-slate-900" title={o.as != null ? `Authority Score ${o.as}: from ${o.rd != null ? `${fmt(o.rd)} referring domains, ` : ''}Domain Authority ${o.da}${o.rk != null ? `, ${fmt(o.rk)} ranking keywords` : ''}${o.spam != null ? `, spam score ${o.spam}` : ''}` : 'No Moz figures for this site'}>{o.as ?? '—'}</div>{o.da != null && <div className="text-11 text-slate-400" title="Domain Authority of the whole site (Moz)">DA {o.da}</div>}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{kfmt(o.rd)}</td>
-                        <td className="px-2 py-2 text-right tabular-nums">{o.backlinks != null ? fmt(o.backlinks) : <span className="text-slate-300">—</span>}</td>
+                        <td className="px-2 py-2  tabular-nums"><div className="font-semibold text-slate-900" title={o.as != null ? `Authority Score ${o.as}: from ${o.rd != null ? `${fmt(o.rd)} referring domains, ` : ''}Domain Authority ${o.da}${o.rk != null ? `, ${fmt(o.rk)} ranking keywords` : ''}${o.spam != null ? `, spam score ${o.spam}` : ''}` : 'No Moz figures for this site'}>{o.as ?? '—'}</div>{o.da != null && <div className="text-11 text-slate-400" title="Domain Authority of the whole site (Moz)">DA {o.da}</div>}</td>
+                        <td className="px-2 py-2  tabular-nums">{kfmt(o.rd)}</td>
+                        <td className="px-2 py-2  tabular-nums">{o.backlinks != null ? fmt(o.backlinks) : <span className="text-slate-300">—</span>}</td>
                         <td className="px-2 py-2 text-right text-slate-300" title="Needs a traffic database that is not connected">—</td>
                         <td className="px-4 py-2 text-right"><Link to={`/organic-rankings/page?u=${encodeURIComponent(o.url)}&q=${encodeURIComponent(data.keyword)}`} className="text-12 font-semibold text-indigo-700 hover:underline" title="Open the page: its searches and positions are measured in Google now">See</Link></td></tr>))}
                   </tbody></table>

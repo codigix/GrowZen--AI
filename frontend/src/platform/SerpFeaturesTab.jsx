@@ -108,13 +108,13 @@ export default function SerpFeaturesTab({ b, keyword }) {
               <div className="px-4 pt-4 pb-2"><h3 className="text-15 font-semibold text-slate-900">SERP Features Details</h3></div>
               <div className="overflow-x-auto">
                 <table className="w-full text-13">
-                  <thead><tr className="text-12 text-slate-500 bg-slate-50/70"><th className="px-4 py-2 text-left font-medium">SERP feature</th><th className="px-3 py-2 text-right font-medium">Presence</th><th className="px-3 py-2 text-right font-medium">Searches</th><th className="px-3 py-2 text-left font-medium">Trend</th><th className="px-3 py-2 text-left font-medium">Examples</th></tr></thead>
+                  <thead><tr className="text-12 text-slate-500 bg-slate-50/70"><th className="px-4 py-2 text-left font-medium">SERP feature</th><th className="px-3 py-2  font-medium">Presence</th><th className="px-3 py-2  font-medium">Searches</th><th className="px-3 py-2 text-left font-medium">Trend</th><th className="px-3 py-2 text-left font-medium">Examples</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {feats.map(f => (
                       <tr key={f.feature} className={f.count ? '' : 'text-slate-400'}>
                         <td className="px-4 py-2.5"><span className="inline-flex items-center gap-2 font-medium"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[f.feature] }} />{f.feature}</span><div className="text-11.5 text-slate-400 font-normal max-w-[240px]">{ABOUT[f.feature]}</div></td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{f.presence != null ? `${f.presence}%` : '—'}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{f.count}{d.read ? ` of ${d.read}` : ''}</td>
+                        <td className="px-3 py-2.5  tabular-nums font-semibold">{f.presence != null ? `${f.presence}%` : '—'}</td>
+                        <td className="px-3 py-2.5  tabular-nums">{f.count}{d.read ? ` of ${d.read}` : ''}</td>
                         <td className="px-3 py-2.5"><Spark series={f.series} color={COLORS[f.feature]} /></td>
                         <td className="px-3 py-2.5 max-w-[300px]">{f.examples.length ? <ul className="space-y-0.5">{f.examples.slice(0, 3).map(e => <li key={e.text + e.keyword}><a href={gsearch(e.keyword)} target="_blank" rel="noreferrer" title={`Open Google for “${e.keyword}”`} className="text-blue-700 hover:underline inline-flex items-center gap-1 text-12.5"><span className="truncate max-w-[250px]">{e.text}</span><ExternalLink size={11} className="shrink-0" /></a></li>)}</ul> : <span className="text-12 text-slate-400">Not seen</span>}</td>
                       </tr>

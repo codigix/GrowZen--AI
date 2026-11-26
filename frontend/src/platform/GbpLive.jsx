@@ -38,7 +38,7 @@ function SearchKeywordsTable({ keywords, pad }) {
     <>
       {keywords.length > 10 && <div className={`${pad} py-2 border-b border-slate-100`}><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search these keywords" aria-label="Search these keywords" className="h-8 w-full max-w-xs px-3 text-13 rounded-md border border-slate-200 bg-white focus:border-indigo-400 outline-none" /></div>}
       <div className="max-h-80 overflow-auto"><table className="w-full text-13"><thead className="sticky top-0 bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="keyword" sort={sort} onSort={onSort} className={`${pad} py-2`}>Search</SortTh><SortTh id="impressions" sort={sort} onSort={onSort} right first="desc" className={`${pad} py-2`}>Impressions</SortTh></tr></thead>
-        <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword}><td className={`${pad} py-2 text-slate-800`}>{k.keyword}</td><td className={`${pad} py-2 text-right tabular-nums`}>{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}
+        <tbody className="divide-y divide-slate-100">{pager.rows.map(k => <tr key={k.keyword}><td className={`${pad} py-2 text-slate-800`}>{k.keyword}</td><td className={`${pad} py-2  tabular-nums`}>{k.impressions != null ? fmt(k.impressions) : <span className="text-slate-400">&lt; {k.below}</span>}</td></tr>)}
           {!pager.rows.length && <tr><td colSpan={2} className="px-5 py-6 text-center text-slate-500">No keyword matches.</td></tr>}</tbody></table></div>
       <Pager p={pager} label="keywords" />
     </>
@@ -142,8 +142,8 @@ export default function GbpLive({ b, toast, onConnect }) {
       {/* Key numbers: one strip, not two rows of tiles */}
       <div className="rounded-xl bg-white ring-1 ring-slate-200 grid grid-cols-4 lg:grid-cols-8 divide-x divide-y lg:divide-y-0 divide-slate-100 overflow-hidden">
         {[[Star, 'text-amber-500', 'Rating', m.rating ? `${m.rating}★` : '—', `${fmt(m.review_count || 0)} reviews${m.unreplied_reviews ? ` · ${m.unreplied_reviews} unreplied` : ''}`], [ImageIcon, 'text-violet-500', 'Photos', m.photo_count, `${posts.length} posts`],
-          [Phone, 'text-emerald-500', 'Calls', fmt(m.calls_30), '30 days'], [Navigation, 'text-sky-500', 'Directions', fmt(m.directions_30), '30 days'], [MousePointerClick, 'text-indigo-500', 'Website clicks', fmt(m.website_clicks_30), '30 days'],
-          [Search, 'text-violet-500', 'Search views', fmt(m.views_search_30), '30 days'], [MapPin, 'text-emerald-500', 'Maps views', fmt(m.views_maps_30), '30 days'], [Eye, 'text-amber-500', 'Bookings', fmt(m.bookings_30), '30 days']].map(([Ic, tone, label, value, sub]) => (
+        [Phone, 'text-emerald-500', 'Calls', fmt(m.calls_30), '30 days'], [Navigation, 'text-sky-500', 'Directions', fmt(m.directions_30), '30 days'], [MousePointerClick, 'text-indigo-500', 'Website clicks', fmt(m.website_clicks_30), '30 days'],
+        [Search, 'text-violet-500', 'Search views', fmt(m.views_search_30), '30 days'], [MapPin, 'text-emerald-500', 'Maps views', fmt(m.views_maps_30), '30 days'], [Eye, 'text-amber-500', 'Bookings', fmt(m.bookings_30), '30 days']].map(([Ic, tone, label, value, sub]) => (
           <div key={label} className="px-3.5 py-2.5 min-w-0" title={`${label}: ${value ?? '—'} (${sub})`}>
             <div className="flex items-center gap-1.5 text-11.5 font-semibold text-slate-500 truncate"><Ic size={13} className={tone} />{label}</div>
             <div className="text-18 leading-tight font-bold text-slate-900 tabular-nums">{value ?? '—'}</div>
@@ -214,7 +214,7 @@ export default function GbpLive({ b, toast, onConnect }) {
           <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-6">
             <div>
               <div className="flex items-baseline gap-1.5"><span className="text-26 font-bold text-slate-900">{m.rating ?? '—'}</span><Star size={16} className="fill-amber-400 text-amber-400" /></div>
-              <ul className="mt-2 space-y-1.5">{[5, 4, 3, 2, 1].map(n => <li key={n} className="flex items-center gap-2 text-12"><span className="w-3 text-slate-500">{n}</span><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full rounded-full bg-amber-400" style={{ width: `${(split[String(n)] / totalReviews) * 100}%` }} /></span><span className="w-6 text-right tabular-nums text-slate-500">{split[String(n)]}</span></li>)}</ul>
+              <ul className="mt-2 space-y-1.5">{[5, 4, 3, 2, 1].map(n => <li key={n} className="flex items-center gap-2 text-12"><span className="w-3 text-slate-500">{n}</span><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full rounded-full bg-amber-400" style={{ width: `${(split[String(n)] / totalReviews) * 100}%` }} /></span><span className="w-6  tabular-nums text-slate-500">{split[String(n)]}</span></li>)}</ul>
             </div>
             <ul className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
               {d.recent_reviews.length ? d.recent_reviews.map(r => (

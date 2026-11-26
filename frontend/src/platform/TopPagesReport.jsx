@@ -134,19 +134,19 @@ export function AllPages({ d }) {
                   {r.title && <div className="text-12 text-slate-500 truncate" title={r.title}>{r.title}</div>}
                 </td>
                 <td className="px-3 py-3.5 max-w-[200px] truncate">{r.top_keyword ? <span className="text-slate-900">{r.top_keyword}</span> : <span className="text-slate-400">n/a</span>}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums">{r.kd != null ? r.kd : dash}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums">{r.cpc != null ? `$${r.cpc}` : dash}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : <span className="text-slate-400">n/a</span>}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums whitespace-nowrap">{r.avg_position != null ? <>{r.avg_position}{r.position_change ? <span className={`ml-1 text-11.5 font-semibold ${r.position_change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{r.position_change > 0 ? '↑' : '↓'}{Math.abs(r.position_change)}</span> : null}</> : dash}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums">{r.traffic != null ? (r.traffic >= 100 ? fmt(Math.round(r.traffic)) : r.traffic) : dash}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums">{r.traffic_share != null ? (r.traffic_share < 0.01 ? '< 0.01' : r.traffic_share.toFixed(2)) : dash}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums text-indigo-700">{r.keywords || (r.keywords === 0 && (has.ranks || has.index) ? 0 : dash)}</td>
+                <td className="px-3 py-3.5  tabular-nums">{r.kd != null ? r.kd : dash}</td>
+                <td className="px-3 py-3.5  tabular-nums">{r.cpc != null ? `$${r.cpc}` : dash}</td>
+                <td className="px-3 py-3.5  tabular-nums">{r.volume != null ? fmt(r.volume) : <span className="text-slate-400">n/a</span>}</td>
+                <td className="px-3 py-3.5  tabular-nums whitespace-nowrap">{r.avg_position != null ? <>{r.avg_position}{r.position_change ? <span className={`ml-1 text-11.5 font-semibold ${r.position_change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{r.position_change > 0 ? '↑' : '↓'}{Math.abs(r.position_change)}</span> : null}</> : dash}</td>
+                <td className="px-3 py-3.5  tabular-nums">{r.traffic != null ? (r.traffic >= 100 ? fmt(Math.round(r.traffic)) : r.traffic) : dash}</td>
+                <td className="px-3 py-3.5  tabular-nums">{r.traffic_share != null ? (r.traffic_share < 0.01 ? '< 0.01' : r.traffic_share.toFixed(2)) : dash}</td>
+                <td className="px-3 py-3.5  tabular-nums text-indigo-700">{r.keywords || (r.keywords === 0 && (has.ranks || has.index) ? 0 : dash)}</td>
                 <td className="px-3 py-3.5">{r.intent && INTENT[r.intent] ? <span title={r.intent} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center text-white" style={{ background: INTENT[r.intent][1] }}>{INTENT[r.intent][0]}</span> : r.intent ? <Badge tone="gray">{r.intent}</Badge> : <span className="text-slate-400">n/a</span>}</td>
                 <td className="px-3 py-3.5 text-right">{r.issues == null ? dash : r.issues ? <Badge tone="amber">{r.issues}</Badge> : <span className="text-emerald-600">0</span>}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums" title={r.ai_engines.join(', ')}>{r.llm_prompts || (has.ai ? 0 : dash)}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums">{r.ref_domains != null ? fmt(r.ref_domains) : dash}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums">{r.words != null ? fmt(r.words) : dash}</td>
-                <td className="px-3 py-3.5 text-right tabular-nums">{r.inbound != null ? r.inbound : dash}</td>
+                <td className="px-3 py-3.5  tabular-nums" title={r.ai_engines.join(', ')}>{r.llm_prompts || (has.ai ? 0 : dash)}</td>
+                <td className="px-3 py-3.5  tabular-nums">{r.ref_domains != null ? fmt(r.ref_domains) : dash}</td>
+                <td className="px-3 py-3.5  tabular-nums">{r.words != null ? fmt(r.words) : dash}</td>
+                <td className="px-3 py-3.5  tabular-nums">{r.inbound != null ? r.inbound : dash}</td>
                 <td className="px-3 py-3.5 max-w-[140px] truncate text-12 text-slate-600" title={(r.schema || []).join(', ')}>{r.schema?.length ? r.schema.join(', ') : (r.words != null ? <span className="text-amber-600">none</span> : dash)}</td>
                 <td className="px-3 py-3.5"><Source sources={r.sources} /></td>
                 <td className="px-3 py-3.5 text-right whitespace-nowrap"><KeywordActs keyword={r.top_keyword} url={r.url} /></td>

@@ -5,7 +5,7 @@ import { api, useApi } from './seoApi';
 import DataTable, { downloadCsv, downloadFile } from './DataTable';
 
 export const SECTIONS = [['sec-landscape', 'Landscape'], ['sec-overview', 'Overview'], ['sec-distribution', 'Rankings Distribution'], ['sec-tags', 'Tags'], ['sec-pages', 'Pages'],
-  ['sec-cannibal', 'Cannibalization'], ['sec-competitors', 'Competitors Discovery'], ['sec-devices', 'Devices & Locations'], ['sec-snippets', 'Featured Snippets']];
+['sec-cannibal', 'Cannibalization'], ['sec-competitors', 'Competitors Discovery'], ['sec-devices', 'Devices & Locations'], ['sec-snippets', 'Featured Snippets']];
 
 /** The small Export CSV button of a table with its own markup: put it next to the search box or the pager, and give it the FULL sorted and filtered list. */
 export function CsvButton({ onClick, disabled = false, label = 'Export CSV', className = '', title = 'Download every row of this table (all pages, with the search and filters applied) as a CSV file' }) {
@@ -28,7 +28,7 @@ export function TrackingHeader({ d }) {
 }
 
 export const TABS = [['landscape', 'Landscape'], ['overview', 'Overview'], ['distribution', 'Rankings Distribution'], ['tags', 'Tags'], ['pages', 'Pages'],
-  ['cannibal', 'Cannibalization'], ['devices', 'Devices & Locations']];
+['cannibal', 'Cannibalization'], ['devices', 'Devices & Locations']];
 
 export function TabBar({ value, onChange }) {
   return (
@@ -80,7 +80,7 @@ export function FeaturedSnippets({ d }) {
           columns={[
             { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-4 py-2.5', thClass: 'px-4 py-2.5' },
             { id: 'feature', header: 'Feature', value: r => r.feature, className: 'px-4 py-2.5 text-slate-600', thClass: 'px-4 py-2.5' },
-            { id: 'rank', header: 'Your position', right: true, value: r => r.rank || null, cell: r => (r.rank ? `#${r.rank}` : '—'), className: 'px-4 py-2.5 text-right tabular-nums', thClass: 'px-4 py-2.5' },
+            { id: 'rank', header: 'Your position', right: true, value: r => r.rank || null, cell: r => (r.rank ? `#${r.rank}` : '—'), className: 'px-4 py-2.5  tabular-nums', thClass: 'px-4 py-2.5' },
             { id: 'yours', header: 'Yours?', right: true, value: r => (r.yours ? 'Yes' : 'Opportunity'), cell: r => (r.yours ? <Badge tone="green"><Check size={11} /> Yes</Badge> : <Badge tone="amber">Opportunity</Badge>), className: 'px-4 py-2.5 text-right', thClass: 'px-4 py-2.5' },
           ]} />
       ) : <div className="py-8 text-center text-13 text-slate-500">No snippet or answer box was seen on the latest checks.</div>}
@@ -157,10 +157,10 @@ export function DevicesLocations({ d, b }) {
             rowClass={() => 'hover:bg-slate-50'}
             columns={[
               { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-4 py-2.5 font-semibold text-slate-900', thClass: 'px-4 py-2.5' },
-              { id: 'desktop', header: 'Desktop', right: true, value: r => r.desktop?.position ?? null, cell: r => r.desktop?.position ?? <span className="text-slate-300">—</span>, className: 'px-4 py-2.5 text-right tabular-nums', thClass: 'px-4 py-2.5' },
-              { id: 'mobile', header: 'Mobile', right: true, value: r => r.mobile?.position ?? null, cell: r => r.mobile?.position ?? <span className="text-slate-300">—</span>, className: 'px-4 py-2.5 text-right tabular-nums', thClass: 'px-4 py-2.5' },
-              { id: 'diff', header: 'Difference', right: true, value: devDiff, cell: r => { const diff = devDiff(r); return diff == null ? <span className="text-slate-300">—</span> : diff === 0 ? <span className="text-slate-400">same</span> : <span className={diff > 0 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'} title={diff > 0 ? 'Lower on mobile' : 'Higher on mobile'}>{diff > 0 ? '+' : ''}{diff}</span>; }, className: 'px-4 py-2.5 text-right tabular-nums', thClass: 'px-4 py-2.5' },
-              { id: 'imp', header: 'Impressions', right: true, value: r => (r.desktop?.impressions || 0) + (r.mobile?.impressions || 0) + (r.tablet?.impressions || 0), cell: r => num((r.desktop?.impressions || 0) + (r.mobile?.impressions || 0) + (r.tablet?.impressions || 0)), className: 'px-4 py-2.5 text-right tabular-nums text-slate-600', thClass: 'px-4 py-2.5' },
+              { id: 'desktop', header: 'Desktop', right: true, value: r => r.desktop?.position ?? null, cell: r => r.desktop?.position ?? <span className="text-slate-300">—</span>, className: 'px-4 py-2.5  tabular-nums', thClass: 'px-4 py-2.5' },
+              { id: 'mobile', header: 'Mobile', right: true, value: r => r.mobile?.position ?? null, cell: r => r.mobile?.position ?? <span className="text-slate-300">—</span>, className: 'px-4 py-2.5  tabular-nums', thClass: 'px-4 py-2.5' },
+              { id: 'diff', header: 'Difference', right: true, value: devDiff, cell: r => { const diff = devDiff(r); return diff == null ? <span className="text-slate-300">—</span> : diff === 0 ? <span className="text-slate-400">same</span> : <span className={diff > 0 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'} title={diff > 0 ? 'Lower on mobile' : 'Higher on mobile'}>{diff > 0 ? '+' : ''}{diff}</span>; }, className: 'px-4 py-2.5  tabular-nums', thClass: 'px-4 py-2.5' },
+              { id: 'imp', header: 'Impressions', right: true, value: r => (r.desktop?.impressions || 0) + (r.mobile?.impressions || 0) + (r.tablet?.impressions || 0), cell: r => num((r.desktop?.impressions || 0) + (r.mobile?.impressions || 0) + (r.tablet?.impressions || 0)), className: 'px-4 py-2.5  tabular-nums text-slate-600', thClass: 'px-4 py-2.5' },
             ]} />
         </Card>
       )}

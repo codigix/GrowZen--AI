@@ -86,14 +86,14 @@ export default function CompetitorsTab({ b, keyword }) {
             <Card title="Competitor Rankings" subtitle="Estimated visibility, and how many searches each site has in the top 3 and top 10">
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-13">
-                  <thead><tr className="text-12 text-slate-500 bg-slate-50/70"><th className="px-4 py-2 text-left font-medium">Domain</th><th className="px-3 py-2 text-right font-medium">Visibility</th><th className="px-3 py-2 text-right font-medium">Avg pos.</th><th className="px-3 py-2 text-right font-medium">Top 3</th><th className="px-3 py-2 text-right font-medium">Top 10</th><th className="px-3 py-2 text-right font-medium">Keywords</th><th className="px-3 py-2 text-left font-medium">Trend</th></tr></thead>
+                  <thead><tr className="text-12 text-slate-500 bg-slate-50/70"><th className="px-4 py-2 text-left font-medium">Domain</th><th className="px-3 py-2  font-medium">Visibility</th><th className="px-3 py-2  font-medium">Avg pos.</th><th className="px-3 py-2  font-medium">Top 3</th><th className="px-3 py-2  font-medium">Top 10</th><th className="px-3 py-2  font-medium">Keywords</th><th className="px-3 py-2 text-left font-medium">Trend</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {d.table.map(r => (
                       <tr key={r.domain} className={r.you ? 'bg-blue-50/50' : ''}>
                         <td className="px-4 py-2.5"><span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.domains.includes(r.domain) ? color(r.domain) : '#cbd5e1' }} />{r.you ? <span className="font-semibold text-slate-900">{r.domain} <span className="text-11 text-blue-700">You</span></span> : <a href={`https://${r.domain}`} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{r.domain}</a>}{r.competitor && <span className="text-11 font-semibold text-rose-700">Competitor</span>}</span></td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{r.visibility}%</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{r.average != null ? `#${r.average}` : '—'}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{r.top3}</td><td className="px-3 py-2.5 text-right tabular-nums">{r.top10}</td><td className="px-3 py-2.5 text-right tabular-nums">{r.keywords}</td>
+                        <td className="px-3 py-2.5  tabular-nums font-semibold">{r.visibility}%</td>
+                        <td className="px-3 py-2.5  tabular-nums">{r.average != null ? `#${r.average}` : '—'}</td>
+                        <td className="px-3 py-2.5  tabular-nums">{r.top3}</td><td className="px-3 py-2.5  tabular-nums">{r.top10}</td><td className="px-3 py-2.5  tabular-nums">{r.keywords}</td>
                         <td className="px-3 py-2.5"><Mini data={r.trend} color={d.domains.includes(r.domain) ? color(r.domain) : '#94a3b8'} /></td>
                       </tr>
                     ))}
@@ -105,11 +105,11 @@ export default function CompetitorsTab({ b, keyword }) {
             <Card title="Top Competitors by Keyword" subtitle="Sites that most often rank in the top 10 next to you">
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-13">
-                  <thead><tr className="text-12 text-slate-500 bg-slate-50/70"><th className="px-4 py-2 text-left font-medium">Domain</th><th className="px-3 py-2 text-right font-medium">Keywords in top 10</th><th className="px-3 py-2 text-left font-medium w-40">Share of voice</th></tr></thead>
+                  <thead><tr className="text-12 text-slate-500 bg-slate-50/70"><th className="px-4 py-2 text-left font-medium">Domain</th><th className="px-3 py-2  font-medium">Keywords in top 10</th><th className="px-3 py-2 text-left font-medium w-40">Share of voice</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {d.voice.map(r => (
                       <tr key={r.domain}><td className="px-4 py-2.5"><span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: d.domains.includes(r.domain) ? color(r.domain) : '#cbd5e1' }} /><a href={`https://${r.domain}`} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{r.domain}</a></span></td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{r.keywords}</td>
+                        <td className="px-3 py-2.5  tabular-nums">{r.keywords}</td>
                         <td className="px-3 py-2.5"><div className="flex items-center gap-2"><span className="tabular-nums font-semibold w-12">{r.share}%</span><div className="flex-1 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full" style={{ width: `${Math.min(100, r.share * 2)}%`, background: d.domains.includes(r.domain) ? color(r.domain) : '#94a3b8' }} /></div></div></td></tr>
                     ))}
                     {!d.voice.length && <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-500">No other site in the top 10 yet.</td></tr>}

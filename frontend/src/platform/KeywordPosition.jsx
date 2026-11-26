@@ -271,10 +271,10 @@ export default function KeywordPosition({ b, keyword }) {
               </div>
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
                 {[['Maps position', cur.maps_rank ? `#${cur.maps_rank}` : '—', cur.maps_rank ? 'in the local pack results' : 'not in the Maps results'],
-                  ['Desktop position', (d.devices || {}).desktop?.position ? `#${Math.round(d.devices.desktop.position)}` : '—', (d.devices || {}).desktop ? `${num(d.devices.desktop.impressions)} impression${d.devices.desktop.impressions === 1 ? '' : 's'}` : 'no impressions'],
-                  ['Mobile position', (d.devices || {}).mobile?.position ? `#${Math.round(d.devices.mobile.position)}` : '—', (d.devices || {}).mobile ? `${num(d.devices.mobile.impressions)} impression${d.devices.mobile.impressions === 1 ? '' : 's'}` : 'no impressions'],
-                  ['Visibility', d.visibility != null ? `${d.visibility}%` : '—', 'estimate from the average click curve'],
-                  ['Estimated traffic', d.traffic != null ? `${num(d.traffic)} / mo` : '—', 'estimate: searches × click share at this position']].map(([l, v, sub]) => (
+                ['Desktop position', (d.devices || {}).desktop?.position ? `#${Math.round(d.devices.desktop.position)}` : '—', (d.devices || {}).desktop ? `${num(d.devices.desktop.impressions)} impression${d.devices.desktop.impressions === 1 ? '' : 's'}` : 'no impressions'],
+                ['Mobile position', (d.devices || {}).mobile?.position ? `#${Math.round(d.devices.mobile.position)}` : '—', (d.devices || {}).mobile ? `${num(d.devices.mobile.impressions)} impression${d.devices.mobile.impressions === 1 ? '' : 's'}` : 'no impressions'],
+                ['Visibility', d.visibility != null ? `${d.visibility}%` : '—', 'estimate from the average click curve'],
+                ['Estimated traffic', d.traffic != null ? `${num(d.traffic)} / mo` : '—', 'estimate: searches × click share at this position']].map(([l, v, sub]) => (
                   <div key={l} className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3"><div className="text-12.5 text-slate-500">{l}</div><div className="text-22 font-bold text-slate-900 tabular-nums leading-tight">{v}</div><div className="text-12 text-slate-500 mt-0.5">{sub}</div></div>
                 ))}
                 <div className="rounded-xl bg-white ring-1 ring-slate-200 px-4 py-3"><div className="text-12.5 text-slate-500">SERP features{serp.data?.state === 'ok' && <span className="ml-1.5 font-semibold text-slate-800">{onFeatures} of {features.length}</span>}</div>
@@ -287,16 +287,16 @@ export default function KeywordPosition({ b, keyword }) {
                 <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
                   <Card pad={false} title="Pages ranking for it" subtitle="Your pages Google showed for this search" action={<button type="button" onClick={() => setTab('Pages')} className="text-12.5 text-indigo-600 hover:underline cursor-pointer">All</button>}>
                     <Table head={[['Page'], ['Clicks', 1], ['Impressions', 1], ['Click rate', 1], ['Avg position', 1]]} empty="No page of your site was shown for this search in this period."
-                      rows={G.pages.slice(0, 6).map(r => <tr key={r.page}><td className="px-4 py-2.5 max-w-[360px]"><a href={r.page} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">{r.page.replace(/^https?:\/\/(www\.)?/, '')}</a></td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{pct(r.ctr)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{r.position}</td></tr>)} />
+                      rows={G.pages.slice(0, 6).map(r => <tr key={r.page}><td className="px-4 py-2.5 max-w-[360px]"><a href={r.page} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">{r.page.replace(/^https?:\/\/(www\.)?/, '')}</a></td><td className="px-4 py-2.5  tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5  tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5  tabular-nums">{pct(r.ctr)}</td><td className="px-4 py-2.5  tabular-nums font-medium">#{r.position}</td></tr>)} />
                   </Card>
                   <div className="space-y-4">
                     <Card pad={false} title="By device">
                       <Table head={[['Device'], ['Clicks', 1], ['Impr.', 1], ['Pos.', 1]]} empty="No device data."
-                        rows={G.devices.map(r => <tr key={r.device}><td className="px-4 py-2.5 capitalize">{r.device}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{r.position}</td></tr>)} />
+                        rows={G.devices.map(r => <tr key={r.device}><td className="px-4 py-2.5 capitalize">{r.device}</td><td className="px-4 py-2.5  tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5  tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5  tabular-nums font-medium">#{r.position}</td></tr>)} />
                     </Card>
                     <Card pad={false} title="By country">
                       <Table head={[['Country'], ['Clicks', 1], ['Impr.', 1], ['Pos.', 1]]} empty="No country data."
-                        rows={G.countries.slice(0, 5).map(r => <tr key={r.country}><td className="px-4 py-2.5">{cc[r.country] || r.country}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{r.position}</td></tr>)} />
+                        rows={G.countries.slice(0, 5).map(r => <tr key={r.country}><td className="px-4 py-2.5">{cc[r.country] || r.country}</td><td className="px-4 py-2.5  tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5  tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5  tabular-nums font-medium">#{r.position}</td></tr>)} />
                     </Card>
                   </div>
                 </div>
@@ -307,8 +307,8 @@ export default function KeywordPosition({ b, keyword }) {
                 </tbody></table>{s.checks < 2 && <p className="mt-2 text-12 text-slate-400">Only {s.checks} check so far: previous, best and worst fill in as positions are read over time.</p>}</Card>
                 <Card title="You and your competitors" action={<button type="button" onClick={() => setTab('Competitors')} className="text-12.5 text-indigo-600 hover:underline cursor-pointer">Top 10</button>}>
                   {serp.data?.state === 'ok' ? <table className="w-full text-13"><thead><tr className="text-12 text-slate-500"><th className="text-left font-medium pb-1">Domain</th><th className="text-right font-medium pb-1">Position</th></tr></thead><tbody className="divide-y divide-slate-100">
-                    <tr className="bg-emerald-50/60"><td className="py-1.5 font-medium">{(b.website || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') || 'Your site'} <span className="text-11 font-semibold text-emerald-700">You</span></td><td className="py-1.5 text-right tabular-nums">{mine ? mine.position : s.current ? `#${s.current} (28-day avg)` : 'Not in top 10'}</td></tr>
-                    {rivalRows.map(r => <tr key={r.dom}><td className="py-1.5">{r.hit ? <a href={r.hit.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{r.dom}</a> : r.dom}</td><td className="py-1.5 text-right tabular-nums">{r.hit ? r.hit.position : <span className="text-slate-400">Not in top 10</span>}</td></tr>)}
+                    <tr className="bg-emerald-50/60"><td className="py-1.5 font-medium">{(b.website || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '') || 'Your site'} <span className="text-11 font-semibold text-emerald-700">You</span></td><td className="py-1.5  tabular-nums">{mine ? mine.position : s.current ? `#${s.current} (28-day avg)` : 'Not in top 10'}</td></tr>
+                    {rivalRows.map(r => <tr key={r.dom}><td className="py-1.5">{r.hit ? <a href={r.hit.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">{r.dom}</a> : r.dom}</td><td className="py-1.5  tabular-nums">{r.hit ? r.hit.position : <span className="text-slate-400">Not in top 10</span>}</td></tr>)}
                     {!rivalRows.length && <tr><td colSpan={2} className="py-2 text-slate-500">No competitors saved. <Link className="text-indigo-600 underline" to="/competitor-finder">Find them</Link></td></tr>}</tbody></table>
                     : serp.data?.state === 'error' ? <p className="text-13 text-slate-500">{serp.data.message}</p> : <div className="flex items-center gap-2 text-13 text-slate-400"><Loader2 size={14} className="animate-spin" />Reading Google's results…</div>}
                 </Card>
@@ -327,7 +327,7 @@ export default function KeywordPosition({ b, keyword }) {
             <div className="space-y-4">
               <Card pad={false} title="Pages that ranked for this search" subtitle={G ? `Search Console, ${dayName(G.from)} to ${dayName(G.to)}` : ''}>
                 {G ? <Table head={[['Page'], ['Clicks', 1], ['Impressions', 1], ['Click rate', 1], ['Avg position', 1]]} empty="No page of your site was shown for this search in this period."
-                  rows={G.pages.map(r => <tr key={r.page}><td className="px-4 py-2.5 max-w-[520px]"><a href={r.page} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">{r.page}</a></td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{pct(r.ctr)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{r.position}</td></tr>)} /> : <div className="px-4 pb-4 text-13 text-slate-500">{gsc.data?.message || 'Reading Search Console…'}</div>}
+                  rows={G.pages.map(r => <tr key={r.page}><td className="px-4 py-2.5 max-w-[520px]"><a href={r.page} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">{r.page}</a></td><td className="px-4 py-2.5  tabular-nums">{num(r.clicks)}</td><td className="px-4 py-2.5  tabular-nums">{num(r.impressions)}</td><td className="px-4 py-2.5  tabular-nums">{pct(r.ctr)}</td><td className="px-4 py-2.5  tabular-nums font-medium">#{r.position}</td></tr>)} /> : <div className="px-4 pb-4 text-13 text-slate-500">{gsc.data?.message || 'Reading Search Console…'}</div>}
               </Card>
               <Card pad={false} title="Pages of your website that carry the keyword" subtitle="From the last website crawl: the keyword is in the page's title, heading or description">
                 <Table head={[['Page'], ['Where it appears']]} empty={P.crawled === false ? 'Your website has not been crawled yet.' : 'No page carries this keyword yet. Add it to the page you want to rank.'}
@@ -338,7 +338,7 @@ export default function KeywordPosition({ b, keyword }) {
           {tab === 'Progress' && (
             <Card pad={false} title="Day by day" subtitle={G ? `Search Console, the days Google showed your site for this search (${gdays.length} of ${G.series.length || 0} days)` : ''}>
               {G ? <Table head={[['Date'], ['Position', 1], ['Impressions', 1], ['Clicks', 1], ['Click rate', 1]]} empty="No impressions for this search in this period."
-                rows={[...gdays].reverse().map(x => <tr key={x.day}><td className="px-4 py-2.5">{dayName(x.day)}</td><td className="px-4 py-2.5 text-right tabular-nums font-medium">#{x.position}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(x.impressions)}</td><td className="px-4 py-2.5 text-right tabular-nums">{num(x.clicks)}</td><td className="px-4 py-2.5 text-right tabular-nums">{pct(x.ctr)}</td></tr>)} /> : <div className="px-4 pb-4 text-13 text-slate-500">{gsc.data?.message || 'Reading Search Console…'}</div>}
+                rows={[...gdays].reverse().map(x => <tr key={x.day}><td className="px-4 py-2.5">{dayName(x.day)}</td><td className="px-4 py-2.5  tabular-nums font-medium">#{x.position}</td><td className="px-4 py-2.5  tabular-nums">{num(x.impressions)}</td><td className="px-4 py-2.5  tabular-nums">{num(x.clicks)}</td><td className="px-4 py-2.5  tabular-nums">{pct(x.ctr)}</td></tr>)} /> : <div className="px-4 pb-4 text-13 text-slate-500">{gsc.data?.message || 'Reading Search Console…'}</div>}
             </Card>
           )}
         </>
