@@ -244,3 +244,22 @@ def test_competitors_a_research_run_finds_are_listed_but_only_chosen_ones_are_wa
         assert client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()["competitors"] == []
     finally:
         db.close()
+
+
+def test_a_report_made_for_other_competitors_says_nothing_about_them(client):
+    from datetime import date
+    from app.backlinks import watch
+    from app.backlinks.models import WatchReport
+    from app.db import SessionLocal
+    from app.models import Competitor
+    bid = client.post("/api/v1/businesses", json={"name": "Old Report Co", "website": "https://oldreport.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add(Competitor(business_id=bid, website="https://now-chosen.com", name="Now", source="manual", selected=True, domain="now-chosen.com"))
+    from datetime import datetime, timezone
+    db.add(WatchReport(business_id=bid, week_start=date(2026, 11, 23), created_at=datetime.now(timezone.utc), source="rules", events=0, baseline=True,
+                       summary={"headline": "Now watching 2 competitor site(s)", "summary": "We recorded 129 pages across old-a.com, old-b.com.", "what_it_means": "x", "actions": [], "highlights": ["old-a.com", "old-b.com"]}))
+    db.commit()
+    from app.models import Business
+    out = watch.status(db, db.get(Business, bid))
+    db.close()
+    assert out["latest"]["outdated"] is True and out["latest"]["other_sites"] == ["old-a.com", "old-b.com"] and out["latest"]["summary"] == ""

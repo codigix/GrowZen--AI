@@ -13,7 +13,11 @@ const KIND = {
 };
 const FIELD = { title: 'title', h1: 'heading', snippet: 'description', content: 'text' };
 
-const Report = ({ r, compact }) => (
+const Report = ({ r, compact }) => (r.outdated ? (
+  <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2.5 text-13 text-amber-900">
+    <b>This report is about other competitors.</b> It was made for {r.other_sites?.slice(0, 6).join(', ') || 'sites'}{r.other_sites?.length > 6 ? ` and ${r.other_sites.length - 6} more` : ''}, which you have not chosen. Nothing is shown about them. The report for the competitors you chose is written after their first visit finishes.
+  </div>
+) : (
   <div>
     <div className="flex flex-wrap items-center gap-2 mb-1">
       <span className="text-[15px] font-semibold text-gray-900">{r.headline}</span>
@@ -29,7 +33,7 @@ const Report = ({ r, compact }) => (
       </>
     )}
   </div>
-);
+));
 
 const reportMd = (r) => [`## ${r.headline}`, '', `Week of ${String(r.week_start || '').slice(0, 10)} · ${r.events} change${r.events === 1 ? '' : 's'}${r.baseline ? ' · first visit' : ''}`, '', r.summary || '', '', ...(r.what_it_means ? [`**What it means for you:** ${r.what_it_means}`, ''] : []), ...(r.actions?.length ? ['**What to do:**', ...r.actions.map(a => `- ${a}`), ''] : [])].join('\n');
 
@@ -90,7 +94,7 @@ function Body({ b }) {
               <tbody className="divide-y divide-gray-100">
                 {d.competitors.map(c => {
                   const ch = c.changes_30d || {};
-                  const num = (v, tone) => <td className={`px-3 py-2.5 text-right tabular-nums ${v ? `font-semibold ${tone}` : 'text-gray-300'}`}>{v || 0}</td>;
+                  const num = (v, tone) => <td className={`px-3 py-2.5  tabular-nums ${v ? `font-semibold ${tone}` : 'text-gray-300'}`}>{v || 0}</td>;
                   return (
                     <tr key={c.domain} className="hover:bg-gray-50">
                       <td className="px-3 py-2.5 min-w-[220px]">
@@ -98,7 +102,7 @@ function Body({ b }) {
                         <a href={c.website} target="_blank" rel="noreferrer noopener nofollow" className="text-12 text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.domain}</span><ExternalLink size={10} className="shrink-0" /></a>
                         {c.rating ? <span className="ml-2 text-12 text-gray-500 inline-flex items-center gap-0.5"><Star size={11} className="text-amber-500" />{c.rating}{c.reviews ? ` (${c.reviews})` : ''}</span> : null}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{c.pages_watched}</td>
+                      <td className="px-3 py-2.5  tabular-nums">{c.pages_watched || (d.running ? <span className="text-xs text-gray-400" title="Its pages are being visited now">Visiting…</span> : <span className="text-xs text-gray-400" title="The watch has not visited this competitor yet. Press Visit now.">Not visited yet</span>)}</td>
                       {num(ch.new_page, 'text-green-700')}{num(ch.changed, 'text-amber-700')}{num(ch.removed, 'text-red-700')}
                       <td className="px-3 py-2.5 text-12.5 text-gray-600 whitespace-nowrap">{c.last_change_at ? fmtDate(c.last_change_at) : <span className="text-gray-400">none in 30 days</span>}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-12.5 font-semibold">
@@ -118,7 +122,7 @@ function Body({ b }) {
         </Card>
       )}
 
-      {d.latest && <Card className="mb-4" title="This week" action={<Button size="sm" icon={Download} onClick={() => exportReport([d.latest], 'report')}>Download report</Button>}><Report r={d.latest} /></Card>}
+      {d.latest && <Card className="mb-4" title="This week" action={d.latest.outdated ? null : <Button size="sm" icon={Download} onClick={() => exportReport([d.latest], 'report')}>Download report</Button>}><Report r={d.latest} /></Card>}
 
       <Card className="mb-4" title="What changed" subtitle="Newest first" action={d.events.length ? <Button size="sm" icon={Download} onClick={exportEvents}>Export CSV</Button> : null}>
         {d.events.length === 0 ? <div className="py-6 text-center text-13 text-gray-500">{none ? 'Nothing to show yet.' : 'No changes recorded yet. The first visit only sets the starting point.'}</div> : (

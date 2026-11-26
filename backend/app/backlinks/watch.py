@@ -269,6 +269,7 @@ def build_report(db: Session, b: Business, since: datetime, now: datetime, check
                     summary, source = ok, "ai"
             except (ai.AiUnavailable, ValueError) as exc:
                 log.warning("AI watch summary failed, using the template: %s", exc)
+    summary = {**summary, "watched": list(competitors)}  # who this report was made for: it is not shown once the chosen competitors are others
     monday = (now.date() - timedelta(days=now.date().weekday()))
     rep = db.scalar(select(WatchReport).where(WatchReport.business_id == b.id, WatchReport.week_start == monday)) or WatchReport(business_id=b.id, week_start=monday)
     rep.summary, rep.source, rep.events, rep.baseline, rep.created_at = summary, source, len(events), baseline, now
@@ -394,7 +395,13 @@ def status(db: Session, b: Business, event_limit: int = 40) -> dict:
     wanted = {d.lower().removeprefix("www.") for d in chosen}
     events = [e for e in db.scalars(select(WatchEvent).where(WatchEvent.business_id == b.id).order_by(WatchEvent.at.desc()).limit(event_limit * 6))
               if (e.domain or "").lower().removeprefix("www.") in wanted][:event_limit]  # what changed: only on the chosen competitors, not on ones since taken out
-    rep = lambda r: {"week_start": r.week_start, "created_at": r.created_at, "source": r.source, "events": r.events, "baseline": r.baseline, **r.summary}
+    def rep(r):
+        made_for = [d.lower().removeprefix("www.") for d in ((r.summary or {}).get("watched") or ((r.summary or {}).get("highlights") if r.baseline else None) or [])]
+        other = [d for d in made_for if d not in wanted]  # a competitor in the report that is not chosen now: the report is about a different set
+        out = {"week_start": r.week_start, "created_at": r.created_at, "source": r.source, "events": r.events, "baseline": r.baseline, **r.summary, "made_for": made_for}
+        if made_for and (other or not wanted):
+            out.update(outdated=True, other_sites=other, summary="", what_it_means="", actions=[], highlights=[])  # nothing is said about businesses that are not chosen
+        return out
     return {"enabled": cfg.watch_enabled is not False, "running": is_running(cfg), "last_run_at": cfg.watch_last_run_at,
             "next_run_at": (_aw(cfg.watch_last_run_at) + INTERVAL) if cfg.watch_last_run_at else None,
             "competitors": _chosen_cards(db, b, pages, events),
