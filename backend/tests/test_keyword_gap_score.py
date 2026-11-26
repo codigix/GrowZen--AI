@@ -84,3 +84,25 @@ def test_difficulty_is_looked_up_once_kept_and_only_changed_by_a_sync(client, mo
     answer["kd"] = 20
     again = client.get(url + "?sync=true").json()
     assert len(calls) == 2 and {r["keyword"]: r["difficulty"] for r in again["rows"]}["seo help"] == 20 and again["difficulty_sync"]["updated"] >= 1
+
+
+def test_real_difficulty_is_read_only_for_the_best_useful_keywords_and_kept(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Competitor, CompetitorKeyword
+    from app.services import keyword_difficulty, keyword_metrics
+    monkeypatch.setattr(keyword_metrics, "lookup", lambda words, country=None: ({}, "off"))
+    asked = []
+    monkeypatch.setattr(keyword_difficulty, "score", lambda kw, country, volume=None, use_cache=False, **k: asked.append(kw) or {"score": 61})
+    bid = client.post("/api/v1/businesses", json={"name": "Kd Real Co", "website": "https://kdreal.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add(Competitor(business_id=bid, website="https://rival-x.com", name="Rival", source="manual", selected=True, domain="rival-x.com"))
+    db.add_all([CompetitorKeyword(business_id=bid, domain="rival-x.com", keyword=f"seo service {i}", position=3 + i, volume=1000 - i * 10) for i in range(6)])
+    db.commit()
+    db.close()
+    url = f"/api/v1/businesses/{bid}/keyword-workspace/competitor-gap/kd"
+    out = client.post(url, json={"limit": 2}).json()
+    assert out["read"] == len(asked) <= 2
+    again = client.post(url, json={"limit": 2}).json()
+    assert not set(asked[:out["read"]]) & set(asked[out["read"]:])  # a keyword read is not read again
+    kd = {r["keyword"]: r.get("kd") for r in again["gap"]["rows"]}
+    assert sum(1 for v in kd.values() if v == 61) == len(asked) and len(asked) <= 4

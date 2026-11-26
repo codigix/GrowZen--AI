@@ -268,6 +268,18 @@ def competitor_gap(sync: bool = False, b: Business = Depends(get_business), db: 
     return ck.gap(db, b, sync=sync)  # sync=true asks Google Keyword Planner again for every keyword and updates the kept difficulty, volume and cost per click
 
 
+class KdIn(BaseModel):
+    limit: int = Field(20, ge=1, le=40)
+    force: bool = False
+
+
+@router.post("/competitor-gap/kd")
+def competitor_gap_kd(body: KdIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Reads the real SEO difficulty (top 10 on Google) of the best useful keywords of the gap, at most `limit`, and keeps it. Costs Apify credit per keyword."""
+    from ..services import competitor_keyword_report as ck  # noqa: PLC0415
+    return {**ck.read_kd(db, b, body.limit, body.force), "gap": ck.gap(db, b)}
+
+
 class AnalysisIn(BaseModel):
     domains: list[str] = Field(default_factory=list, max_length=60)
 

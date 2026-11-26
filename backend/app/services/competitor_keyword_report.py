@@ -74,7 +74,7 @@ def opportunity(r: dict[str, Any]) -> tuple[int, dict[str, int]]:
     import math  # noqa: PLC0415
     vol = r.get("volume")
     searches = round(min(1.0, math.log10(vol + 1) / 4) * 30) if vol else 0
-    kd = r.get("difficulty")
+    kd = r.get("kd") if r.get("kd") is not None else r.get("difficulty")  # the real SEO difficulty when it was read, else the Google Ads competition index
     ease = round((100 - max(0, min(100, kd))) / 100 * 25) if kd is not None else 12
     intent = INTENT_POINTS.get(r.get("intent") or "", 7)
     st, diff = r.get("status"), r.get("difference") or 0
@@ -168,7 +168,7 @@ def store(db: Session, b: Business, domain: str, rows: list[dict[str, Any]]) -> 
     domain = domain.lower().removeprefix("www.")
     kept: dict[str, Any] = {}
     for old in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain == domain)):
-        kept[old.keyword] = (old.difficulty, old.intent, old.metrics_at)  # what was already looked up for a keyword is not lost when the competitor is read again
+        kept[old.keyword] = (old.difficulty, old.intent, old.metrics_at, old.kd, old.kd_at)  # what was already looked up for a keyword is not lost when the competitor is read again
         db.delete(old)
     db.flush()
     now = datetime.now(timezone.utc)
@@ -178,9 +178,10 @@ def store(db: Session, b: Business, domain: str, rows: list[dict[str, Any]]) -> 
         if not k or k in seen:
             continue
         seen.add(k)
-        db.add(CompetitorKeyword(business_id=b.id, domain=domain, keyword=k, position=r.get("position"), volume=r.get("volume"), cpc=r.get("cpc"), difficulty=r.get("difficulty") if r.get("difficulty") is not None else (kept.get(k) or (None, None, None))[0],
-                                 intent=r.get("intent") or (kept.get(k) or (None, None, None))[1], url=r.get("url"), traffic=r.get("traffic"), read_at=now,
-                                 metrics_at=(kept.get(k) or (None, None, None))[2]))
+        db.add(CompetitorKeyword(business_id=b.id, domain=domain, keyword=k, position=r.get("position"), volume=r.get("volume"), cpc=r.get("cpc"), difficulty=r.get("difficulty") if r.get("difficulty") is not None else (kept.get(k) or (None, None, None, None, None))[0],
+                                 intent=r.get("intent") or (kept.get(k) or (None, None, None, None, None))[1], url=r.get("url"), traffic=r.get("traffic"), read_at=now,
+                                 metrics_at=(kept.get(k) or (None, None, None, None, None))[2],
+                                 kd=(kept.get(k) or (None, None, None, None, None))[3], kd_at=(kept.get(k) or (None, None, None, None, None))[4]))
     db.commit()
 
 
@@ -283,6 +284,8 @@ def gap(db: Session, b: Business, sync: bool = False) -> dict[str, Any]:
         e = by.setdefault(kw, {"keyword": kw, "volume": volume, "competitors": {}, **{k: v for k, v in extra.items() if v is not None}})
         if volume and not e.get("volume"):
             e["volume"] = volume
+        if extra.get("kd") is not None and e.get("kd") is None:
+            e["kd"] = extra["kd"]
         cur = e["competitors"].get(dom)
         if cur is None or (pos is not None and (cur["position"] is None or pos < cur["position"])):
             e["competitors"][dom] = {"domain": dom, "position": pos, "url": url, "source": source, "traffic": round(traffic, 1) if traffic is not None else None}
@@ -290,7 +293,7 @@ def gap(db: Session, b: Business, sync: bool = False) -> dict[str, Any]:
     kept = list(db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain.in_(domains or [""]))))  # only the chosen competitors: a found one that was not chosen feeds nothing
     stats = fill_missing(db, b, kept, sync=sync)
     for r in kept:
-        add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, r.traffic, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc)
+        add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, r.traffic, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc, kd=r.kd)
         s = reads.setdefault(r.domain, {"domain": r.domain, "keywords": 0, "read_at": None, "from_google": 0})
         s["keywords"] += 1
         s["read_at"] = max(filter(None, [s["read_at"], r.read_at.isoformat() if r.read_at else None]), default=None)
@@ -315,7 +318,7 @@ def gap(db: Session, b: Business, sync: bool = False) -> dict[str, Any]:
             continue
         status = "missing" if not mine else ("weak" if mine - best["position"] > SHARED_WITHIN else "strong" if best["position"] - mine > SHARED_WITHIN else "shared")
         v = _row(ctx, b, best["domain"], kw, volume=e.get("volume"))
-        rows.append({"keyword": kw, "volume": e.get("volume"), "intent": e.get("intent"), "difficulty": e.get("difficulty"), "cpc": e.get("cpc"), "competitors": comps, "best": best, "yours": mine,
+        rows.append({"keyword": kw, "volume": e.get("volume"), "intent": e.get("intent"), "difficulty": e.get("difficulty"), "kd": e.get("kd"), "cpc": e.get("cpc"), "competitors": comps, "best": best, "yours": mine,
                      "status": status, "difference": (mine - best["position"]) if mine else None, "fit": v["fit"], "why": v["why"]})
         rows[-1]["score"], rows[-1]["score_parts"] = opportunity(rows[-1])
     for kw, t in tracked.items():
@@ -326,3 +329,51 @@ def gap(db: Session, b: Business, sync: bool = False) -> dict[str, Any]:
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in order}
     counts["useful_gaps"] = sum(1 for r in rows if r["status"] == "missing" and r["fit"] in ("yes", "maybe"))
     return {"competitors": list(reads.values()), "rows": rows[:2000], "counts": counts, "total": len(rows), "country": market.serp_country(b), "own_read": bool(own and any(own.values())), "difficulty_sync": stats}
+
+
+KD_BATCH = 20  # the most keywords whose real SEO difficulty is read in one go
+KD_FRESH_DAYS = 30
+
+
+def read_kd(db: Session, b: Business, limit: int = KD_BATCH, force: bool = False) -> dict[str, Any]:
+    """The real SEO difficulty (from the top 10 on Google, as the Keyword Magic Tool works it out) for the best keywords of the gap only: the useful ones with the highest score, at most `limit`.
+    Each read costs Apify credit (one Google search and the Domain Authority of its results), so it is never done for the whole list. A keyword already read in the last KD_FRESH_DAYS is not read
+    again unless `force`. The result is kept on every row of that keyword, with the day."""
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from ..models import CompetitorKeyword  # noqa: PLC0415
+    from . import keyword_difficulty as kdm  # noqa: PLC0415
+    limit = max(1, min(int(limit or KD_BATCH), 40))
+    rows = [r for r in gap(db, b)["rows"] if r.get("fit") in ("yes", "maybe") and r.get("status") in ("missing", "weak") and r.get("score") is not None]
+    rows.sort(key=lambda r: -(r["score"] or 0))
+    cutoff = datetime.now(timezone.utc) - timedelta(days=KD_FRESH_DAYS)
+    stored = {r.keyword: r for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id))}
+
+    def fresh(kw: str) -> bool:
+        at = getattr(stored.get(kw), "kd_at", None)
+        return bool(at) and (at if at.tzinfo else at.replace(tzinfo=timezone.utc)) >= cutoff and stored[kw].kd is not None
+
+    chosen = [r for r in rows if force or not fresh(r["keyword"])][:limit]
+    country = market.serp_country(b)
+    out = {"read": 0, "failed": 0, "skipped_fresh": sum(1 for r in rows[:limit] if fresh(r["keyword"]) and not force), "errors": []}
+
+    def one(r: dict[str, Any]) -> tuple[str, int | None, str | None]:
+        try:
+            res = kdm.score(r["keyword"], country, r.get("volume"), use_cache=True)
+            return r["keyword"], (int(res["score"]) if res.get("score") is not None else None), None if res.get("score") is not None else "Google gave too few results with figures to score it."
+        except Exception as exc:  # noqa: BLE001 -- one keyword failing must not lose the others
+            return r["keyword"], None, str(exc)[:140]
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        done = list(pool.map(one, chosen))
+    now = datetime.now(timezone.utc)
+    for kw, score, err in done:
+        if score is None:
+            out["failed"] += 1
+            if err and err not in out["errors"]:
+                out["errors"].append(err)
+            continue
+        for row in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.keyword == kw)):
+            row.kd, row.kd_at = score, now
+        out["read"] += 1
+    db.commit()
+    return out

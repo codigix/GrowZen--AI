@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { FocusBar, sameSite } from './TableBits';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Eye, Loader2, Plus, RefreshCw, Search } from 'lucide-react';
+import { ExternalLink, Eye, Gauge, Loader2, Plus, RefreshCw, Search } from 'lucide-react';
 import { Button, Badge, ErrorNote, Modal, useAction, useToast } from './SeoUi';
 import DataTable from './DataTable';
 import MultiSelect from '../components/MultiSelect';
@@ -199,6 +199,7 @@ export function KeywordGapTab({ b, focus = '' }) {
   if (!g) return <div className="flex items-center justify-center gap-2 py-14 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Loading…</div>;
   const c = g.counts;
   const syncKd = () => wsRun('sync', async () => { const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-gap?sync=true`, { timeout: 120000 }); gap.setData(r); const n = r.difficulty_sync?.updated || 0; toast(n ? `${n} keyword${n === 1 ? '' : 's'} updated` : 'Everything is up to date'); });
+  const readKd = () => wsRun('kd', async () => { const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-gap/kd`, { method: 'POST', body: { limit: 20 }, timeout: 600000 }); gap.setData(r.gap); toast(r.read ? `Difficulty read for ${r.read} keyword${r.read === 1 ? '' : 's'}${r.failed ? `, ${r.failed} could not be read` : ''}.` : r.failed ? `Could not read: ${(r.errors || [])[0] || 'no figures'}` : 'The best keywords already have their difficulty.'); });
   const send = () => wsRun('ws', async () => { const list = viewRef.current.filter(r => r.fit === 'yes' || r.fit === 'maybe'); const r = await api(`/businesses/${b.id}/keyword-workspace/add`, { method: 'POST', body: { ideas: list.slice(0, 300).map(i => ({ keyword: i.keyword, volume: i.volume, detail: `Keyword gap: ${i.best?.domain || 'competitor'} ranks #${i.best?.position ?? '?'}` })), label: 'Keyword gap' } }); toast(r.added ? `${r.added} keywords sent to Find Keywords` : 'Already in Find Keywords'); });
   const hasData = g.competitors.some(x => x.keywords || x.from_google);
   const stale = c.missing === undefined && (c.gap !== undefined || c.behind !== undefined); // the server still sends the old status names: it is running code from before this page was updated
@@ -207,6 +208,7 @@ export function KeywordGapTab({ b, focus = '' }) {
     { id: 'keyword', header: 'Keyword', first: 'asc', value: r => r.keyword, cell: r => <span className="font-medium text-slate-900">{r.keyword}</span>, className: 'px-3 py-2.5 min-w-[170px]' },
     { id: 'status', header: 'Gap', value: r => STATUS[r.status][0], cell: r => <Badge tone={STATUS[r.status][1]} title={STATUS[r.status][2]}>{STATUS[r.status][0]}</Badge> },
     { id: 'volume', header: 'Searches', right: true, first: 'desc', value: r => r.volume ?? null, cell: r => num(r.volume) },
+    { id: 'seokd', header: 'KD', right: true, first: 'desc', value: r => r.kd ?? null, cell: r => (r.kd == null ? <span className="text-slate-300" title="Not read yet. Use Read KD for the best keywords.">—</span> : <span title={`SEO difficulty ${r.kd}/100, read from the real top 10 on Google`}>{r.kd}</span>), tip: { what: 'SEO difficulty, 0 to 100 (higher is harder): worked out from the real top 10 on Google, the same way as the Keyword Magic Tool. Read only for the best useful keywords, because each read costs Apify credit.', from: 'Top 10 on Google + Moz authority (Apify), kept with the date' } },
     { id: 'kd', header: 'Ad comp.', right: true, value: r => r.difficulty ?? null, tip: { what: 'How many advertisers compete for this keyword in Google Ads, 0 to 100. It is not the SEO difficulty of ranking on page 1, which the Keyword Magic Tool works out from the real top 10 (so the two numbers differ). A keyword nobody advertises on shows 0.', from: 'Google Ads Keyword Planner (kept, refreshed by Sync KD)' } },
     { id: 'score', header: 'Score', right: true, first: 'desc', value: r => r.score ?? null, tip: { what: SCORE_HELP },
       cell: r => (r.score == null ? <span className="text-slate-300">—</span> : <span title={r.score_parts ? `Searches ${r.score_parts.searches}/30 · Ease ${r.score_parts.ease}/25 · Intent ${r.score_parts.intent}/15 · Distance ${r.score_parts.distance}/20 · Fit ${r.score_parts.fit}/10` : ''} className={`inline-flex min-w-[34px] justify-center px-2 py-0.5 rounded-md text-13 font-bold ${r.score >= 70 ? 'bg-emerald-100 text-emerald-800' : r.score >= 45 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>{r.score}</span>) },
@@ -243,6 +245,7 @@ export function KeywordGapTab({ b, focus = '' }) {
       {!hasData ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-8 text-center text-13 text-slate-500">No competitor rankings are kept yet. They are read automatically on the Competitors tab, or open <b>SERP Features</b> in Position Tracking to read Google's top 10 on your tracked searches. Then the gap appears here.</div> : (
         <DataTable columnsKey="keyword-gap" dense key={only} columns={cols} rows={pool} rowKey={r => r.keyword} filters={only ? filters.filter(f => f.id !== 'comp') : filters} collapseFilters initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-gap" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={860} onState={s => { viewRef.current = s.rows; }}
           toolbar={<><Button size="sm" variant="primary" icon={Plus} busy={wsBusy === 'ws'} onClick={send}>Send useful to Find Keywords</Button>
+            <Button size="sm" icon={Gauge} busy={wsBusy === 'kd'} title="Reads the real SEO difficulty (top 10 on Google) of the 20 best useful keywords that have none yet. Costs Apify credit for each keyword; already read keywords are kept and not read again." onClick={readKd}>Read KD (top 20)</Button>
             <Button size="sm" icon={RefreshCw} busy={wsBusy === 'sync'} title="Ad competition, searches and cost per click are kept once looked up. Sync asks Google Keyword Planner again and updates what changed." onClick={syncKd}>Sync figures</Button></>} empty="No keywords in this view." />
       )}
       <p className="text-12 text-slate-500">Rankings are for {COUNTRY[g.country] || g.country || 'the project market'}. Your position is your checked position, or Search Console's average when Google showed your site.</p>
