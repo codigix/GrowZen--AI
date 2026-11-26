@@ -52,8 +52,8 @@ export default function CompetitorMaps({ b, rows, legacy = null }) {
         {parts.map(([k, l]) => <button key={k} type="button" aria-pressed={part === k} onClick={() => setPart(k)} className={`h-9 px-3.5 text-13 font-medium cursor-pointer ${part === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}
       </div>
       {part === 'found' && <>
-        <div className="rounded-lg bg-sky-50 ring-1 ring-sky-200 px-3 py-2 text-12.5 text-sky-900">This is <b>discovery</b>: the businesses Google Maps returned around your place. Being on this list does not mean a business ranks above or below you for any keyword, and it is not automatically a competitor for organic search. Real Maps positions are in <button type="button" onClick={() => setPart('rank')} className="font-semibold underline cursor-pointer">Local rank tracking</button>.</div>
-        <DataTable columns={cols} rows={list} rowKey={r => r.id} filters={filters} initialSort={{ key: 'distance', dir: 'asc' }} exportName="google-maps-competitors" searchPlaceholder="Search businesses, categories or addresses" label="businesses" minWidth={1300}
+        <div className="rounded-lg bg-sky-50 ring-1 ring-sky-200 px-3 py-2 text-12.5 text-sky-900"><b>Discovery only.</b> This is who Google Maps returned around your place: it does not show who ranks higher. Real positions are in <button type="button" onClick={() => setPart('rank')} className="font-semibold underline cursor-pointer">Local rank tracking</button>.</div>
+        <DataTable columns={cols} rows={list} rowKey={r => r.id} filters={filters} collapseFilters initialSort={{ key: 'distance', dir: 'asc' }} exportName="google-maps-competitors" searchPlaceholder="Search businesses, categories or addresses" label="businesses" minWidth={1300}
           empty="No business found on Google Maps yet. Press Find or refresh on Google Maps on the Competitors tab." />
       </>}
       {part === 'rank' && <>

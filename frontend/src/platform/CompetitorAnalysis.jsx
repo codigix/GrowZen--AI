@@ -505,26 +505,26 @@ export function TrafficTab({ b, rows, analysis, focus = '' }) {
     <div className="space-y-4">
       <FocusBar name={fh} what="its traffic, rankings and authority" onAll={() => setFh('')} />
       {n > 0 && <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-12.5 text-amber-900">{n} competitor{n === 1 ? ' has' : 's have'} not been analyzed yet, so {n === 1 ? 'its' : 'their'} traffic is “not read”. They are analyzed automatically; you can also select them on the Competitors tab and press Analyze selected.</div>}
+      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} collapseFilters initialSort={{ key: 'traffic', dir: 'desc' }} exportName="traffic-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Organic traffic: estimated vs verified" sub="Competitors: estimated visits a month from the keywords they rank for. You (green): verified Google clicks in the last 28 days from Search Console. The two are measured differently, so compare them as a guide, not as equals."><Bars rows={mk('traffic')} /></Panel>
-        <Panel title="Ranking keywords" sub="How many keywords each one ranks for (yours: your tracked keywords that rank)."><Bars rows={mk('keywords')} fmt={num} color="#0ea5e9" /></Panel>
-        <Panel title="Where the competitors' traffic is" sub="Each competitor's share of the estimated traffic of all the competitors read. An estimate, and your own verified clicks are left out.">
+        <Panel title="Organic traffic: estimated vs verified" sub="Competitors are estimated; you (green) are verified Google clicks, last 28 days."><Bars rows={mk('traffic')} /></Panel>
+        <Panel title="Ranking keywords" sub="Keywords each one ranks for (yours: tracked keywords that rank)."><Bars rows={mk('keywords')} fmt={num} color="#0ea5e9" /></Panel>
+        <Panel title="Where the competitors' traffic is" sub="Each competitor's share of the estimated competitor traffic.">
           {compTotal ? <><div className="flex h-5 rounded-full overflow-hidden bg-slate-100" role="img" aria-label="Share of estimated competitor traffic">{list.filter(c => analysis.metrics[c.host]?.traffic).map((c, i) => <div key={c.host} title={`${c.host}: ${Math.round((analysis.metrics[c.host].traffic / compTotal) * 100)}%`} style={{ width: `${(analysis.metrics[c.host].traffic / compTotal) * 100}%`, background: PALETTE[i % PALETTE.length] }} />)}</div>
             <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-12.5">{list.filter(c => analysis.metrics[c.host]?.traffic).map((c, i) => <li key={c.host} className="flex items-center gap-1.5 min-w-0"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} /><span className="truncate">{c.host}</span><b className="ml-auto tabular-nums">{Math.round((analysis.metrics[c.host].traffic / compTotal) * 100)}%</b></li>)}</ul></> : <p className="text-13 text-slate-500">No competitor traffic has been read yet.</p>}
         </Panel>
-        <Panel title="Keywords in the top 3" sub="Keywords where it holds one of the first three positions."><Bars rows={mk('top3')} fmt={num} color="#10b981" /></Panel>
+        <Panel title="Keywords in the top 3" sub="Keywords in the first three positions."><Bars rows={mk('top3')} fmt={num} color="#10b981" /></Panel>
         <Panel title="Keywords in the top 10" sub="Keywords on page 1 of Google."><Bars rows={mk('top10')} fmt={num} color="#f59e0b" /></Panel>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Traffic over time" sub="Estimated traffic at the end of each analysis. These are the only readings kept: nothing is filled in between them.">{trend ? <TrendChart trend={trend} hosts={list.map(c => c.host)} /> : <Loader2 size={16} className="animate-spin text-slate-400" />}</Panel>
-        <Panel title="Keywords that bring the most traffic" sub="Estimated visits a month for each keyword, from the keywords read." action={<Select value={kwOf || list.find(c => topKw?.[c.host])?.host || ''} onChange={e => setKwOf(e.target.value)} aria-label="Competitor" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13">{list.filter(c => topKw?.[c.host]).map(c => <option key={c.host} value={c.host}>{c.host}</option>)}</Select>}>
+        <Panel title="Traffic over time" sub="At the end of each analysis. Nothing is filled in between.">{trend ? <TrendChart trend={trend} hosts={list.map(c => c.host)} /> : <Loader2 size={16} className="animate-spin text-slate-400" />}</Panel>
+        <Panel title="Keywords that bring the most traffic" sub="Estimated visits a month for each keyword." action={<Select value={kwOf || list.find(c => topKw?.[c.host])?.host || ''} onChange={e => setKwOf(e.target.value)} aria-label="Competitor" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13">{list.filter(c => topKw?.[c.host]).map(c => <option key={c.host} value={c.host}>{c.host}</option>)}</Select>}>
           {!topKw ? <Loader2 size={16} className="animate-spin text-slate-400" /> : (() => { const h = kwOf || list.find(c => topKw[c.host])?.host; const ks = h ? topKw[h] || [] : []; return ks.length ? (
             <table className="w-full text-12.5"><thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Keyword</th><th className="font-medium text-right">Position</th><th className="font-medium text-right">Searches</th><th className="font-medium text-right">Est. visits</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{ks.map(k => <tr key={k.keyword}><td className="py-1 text-slate-900">{k.keyword}</td><td className="text-right tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className="text-right tabular-nums">{num(k.volume)}</td><td className="text-right tabular-nums font-semibold">{kfmt(Math.round(k.traffic))}</td></tr>)}</tbody></table>
           ) : <p className="text-13 text-slate-500">No keywords read yet. Analyze a competitor on the Competitors tab.</p>; })()}
         </Panel>
       </div>
-      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="traffic-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
     </div>
   );
 }
@@ -554,7 +554,7 @@ export function BacklinkTab({ rows, analysis, focus = '' }) {
         <Panel title="Domain Authority" sub="How strong each site is, 0 to 100 (Moz, through Apify)."><Bars rows={bar('da')} fmt={num} color="#8b5cf6" /></Panel>
         <Panel title="Referring domains" sub="How many different websites link to each site (Moz)."><Bars rows={bar('rd')} fmt={num} color="#6366f1" /></Panel>
       </div>
-      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} initialSort={{ key: 'da', dir: 'desc' }} exportName="backlink-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
+      <DataTable columns={cols} rows={data} rowKey={r => r.host} filters={filters} collapseFilters initialSort={{ key: 'da', dir: 'desc' }} exportName="backlink-comparison" searchPlaceholder="Search sites" label="sites" rowClass={r => (r.you ? 'bg-emerald-50/50' : 'hover:bg-slate-50')} />
       <p className="text-12 text-slate-500">The links themselves, the sites that link to a competitor and not to you, are on the <Link className="text-indigo-600 underline" to="/backlinks/overview">Backlinks</Link> page (Compare).</p>
     </div>
   );
@@ -627,7 +627,7 @@ export function TopPagesTab({ b, rows, focus = '' }) {
     { id: 'traffic', label: 'Traffic', options: [['100', '100+ a month'], ['1000', '1,000+ a month']], test: (p, v) => p.traffic >= Number(v) },
     { id: 'opp', label: 'Opportunity', options: [['yes', 'Has keywords you do not rank for']], test: (p, v) => (p.list || []).some(k => !k.yours) },
   ];
-  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} /><DataTable key={fh} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />
+  return <><FocusBar name={fh} what="its best pages" onAll={() => setFh('')} /><DataTable key={fh} columns={cols} rows={list} rowKey={p => `${p.domain}|${p.url}`} filters={filters} collapseFilters initialSort={{ key: 'traffic', dir: 'desc' }} exportName="competitor-top-pages" searchPlaceholder="Search pages or keywords" label="pages" empty="No pages yet. Analyze a competitor on the Competitors tab: the pages its keywords rank with appear here." />
     {open && <PageDrawer b={b} pg={open} all={all} onClose={() => setOpen(null)} />}</>;
 }
 
