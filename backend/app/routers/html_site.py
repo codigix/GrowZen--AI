@@ -212,6 +212,8 @@ def publish(article_id: int, b: Business = Depends(get_business), db: Session = 
     a = _article(db, b, article_id)
     if not (a.body or "").strip():
         raise HTTPException(400, "The article has no content yet.")
+    from .articles import _ready_or_409
+    _ready_or_409(db, a, b)  # the mandatory requirements must pass before a new post goes live (same check as the other publishers)
     s = hp.settings_of(_row(db, b))
     if not public(s)["ready"]:
         raise HTTPException(409, "The HTML website is not connected yet: save the settings, then Test connection and Run test deployment.")

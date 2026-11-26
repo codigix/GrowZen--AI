@@ -17,7 +17,13 @@ export const featuredOf = (a) => ({
   info: a?.featured_image_info || null
 });
 
-export const featuredSrc = (b, articleId, path) => (path ? `${SEO_API}/businesses/${b.id}/articles/${articleId}/featured-image?v=${encodeURIComponent(path)}` : null);
+/** ALT text from the primary keyword: the featured image gets "wedding-dress", the article's images "wedding-dress-1", "wedding-dress-2", … */
+export const keywordAlt = (keyword, n) => {
+  const k = String(keyword || '').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+  return k ? (n ? `${k}-${n}` : k) : '';
+};
+
+export const featuredSrc =(b, articleId, path) => (path ? `${SEO_API}/businesses/${b.id}/articles/${articleId}/featured-image?v=${encodeURIComponent(path)}` : null);
 
 const readAsDataUrl = (file) => new Promise((resolve, reject) => {
   const r = new FileReader();
@@ -42,9 +48,18 @@ export default function FeaturedImageField({ b, article, value, onChange, toast 
   const fileRef = useRef(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [alt, setAlt] = useState(value.alt);
+  // ALT defaults to the primary keyword; an ALT that was only filled in automatically (empty, or the article title) is replaced by it
+  const kwAlt = keywordAlt(article.keyword);
+  const autoAlt = (v) => !String(v || '').trim() || String(v).trim() === String(article.title || '').trim();
+  const shownAlt = (v) => (autoAlt(v) && kwAlt ? kwAlt : v || '');
+  const [alt, setAlt] = useState(shownAlt(value.alt));
   const [size, setSize] = useState(null);
-  useEffect(() => { setAlt(value.alt); }, [value.alt]);
+  useEffect(() => { setAlt(shownAlt(value.alt)); }, [value.alt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {  // an image whose saved ALT was filled in automatically: the keyword ALT is saved once, so publishing uses it too
+    if (!value.path || !kwAlt || !autoAlt(value.alt)) return;
+    api(`/businesses/${b.id}/articles/${article.id}`, { method: 'PATCH', body: { featured_image_alt: kwAlt }, repeat: true })
+      .then(updated => onChange(featuredOf(updated))).catch(() => { /* the field still shows it; saved on the next edit */ });
+  }, [value.path, value.alt, kwAlt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const src = featuredSrc(b, article.id, value.path);
   useEffect(() => { setSize(null); if (src) dimensions(src).then(setSize); }, [src]);
@@ -58,7 +73,7 @@ export default function FeaturedImageField({ b, article, value, onChange, toast 
     setBusy(label); setError('');
     try {
       const updated = await api(`/businesses/${b.id}/articles/${article.id}/featured-image`, {
-        method: 'PUT', body: { data_url: dataUrl, filename: name, alt: alt.trim() || null, page: page || null }
+        method: 'PUT', body: { data_url: dataUrl, filename: name, alt: alt.trim() || kwAlt || null, page: page || null }
       });
       onChange(featuredOf(updated));
       return updated;
@@ -103,9 +118,11 @@ export default function FeaturedImageField({ b, article, value, onChange, toast 
       .finally(() => setBusy(''));
   };
   const saveAlt = () => {
-    if (alt.trim() === (value.alt || '').trim()) return;
+    const next = alt.trim() || kwAlt;  // emptied: back to the primary keyword
+    if (!alt.trim()) setAlt(next);
+    if (next === (value.alt || '').trim()) return;
     setBusy('alt');
-    api(`/businesses/${b.id}/articles/${article.id}`, { method: 'PATCH', body: { featured_image_alt: alt.trim() || null }, repeat: true })
+    api(`/businesses/${b.id}/articles/${article.id}`, { method: 'PATCH', body: { featured_image_alt: next || null }, repeat: true })
       .then(updated => { onChange(featuredOf(updated)); toast('ALT text saved.'); })
       .catch(e => setError(e.message || String(e)))
       .finally(() => setBusy(''));
@@ -129,7 +146,7 @@ export default function FeaturedImageField({ b, article, value, onChange, toast 
           <div className="flex-1 min-w-0 space-y-2">
             <label className="block">
               <span className="text-[11px] font-semibold text-slate-600">ALT text (describes the image for search engines and screen readers)</span>
-              <input className={inputCls} value={alt} maxLength={255} placeholder="e.g. Doctor discussing a medical weight loss plan with a patient"
+              <input className={inputCls} value={alt} maxLength={255} placeholder={kwAlt || 'e.g. Doctor discussing a medical weight loss plan with a patient'}
                 onChange={e => setAlt(e.target.value)} onBlur={saveAlt} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} />
             </label>
             {value.info && (() => {

@@ -67,6 +67,16 @@ export function SeoField({ kind, value, onChange, onRegenerate, busy, disabled }
   );
 }
 
+/** The ✨ button of a field (same look as the SEO title's): asks Claude for a new value of that one field. */
+export function AiFieldButton({ busy, disabled, title, onClick }) {
+  return (
+    <button type="button" disabled={busy || disabled} title={title} aria-label={title} onClick={(e) => { e.preventDefault(); onClick(); }}
+      className="shrink-0 mr-1.5 w-7 h-7 rounded-md inline-flex items-center justify-center text-violet-600 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 cursor-pointer">
+      {busy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+    </button>
+  );
+}
+
 /** One side of the comparison: the rendered HTML, or the raw HTML. */
 function Pane({ title, tone, html, raw }) {
   return (
@@ -106,7 +116,7 @@ const RegenerateContent = forwardRef(function RegenerateContent({ b, article, bo
     try {
       const r = await regenerateField(b, article.id, part, body, fields);
       onField?.(r.field, r.value);
-      toast?.(`New ${r.label.toLowerCase()} (${r.value.length} characters) is in the editor. Review it, then click "Save changes".`);
+      toast?.(`New ${r.label} (${r.value.length} characters) is in the editor. Review it, then click "Save changes".`);
     } catch (e) {
       toast?.(e.message || String(e));
     } finally { setFieldBusy(''); }
@@ -149,7 +159,7 @@ const RegenerateContent = forwardRef(function RegenerateContent({ b, article, bo
   useEffect(() => { onFieldBusy?.(fieldBusy); }, [fieldBusy]); // eslint-disable-line react-hooks/exhaustive-deps
   // lets the editor start an option directly (the ✨ field buttons, "Regenerate full article" in the title notice)
   useImperativeHandle(ref, () => ({
-    run: (part) => (part === 'title' || part === 'meta' ? runField(part) : choose(part)),
+    run: (part) => (['title', 'meta', 'h1', 'slug'].includes(part) ? runField(part) : choose(part)),
     busy: () => running,
     fieldBusy: () => fieldBusy
   }));

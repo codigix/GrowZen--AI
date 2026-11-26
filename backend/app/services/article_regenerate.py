@@ -14,8 +14,8 @@ import threading
 from ..models import Article, Business
 from . import articles as svc
 
-PARTS = ("full", "intro", "section", "conclusion", "faqs", "title", "meta")
-FIELD_PARTS = ("title", "meta")  # one editor field each; the body is not touched
+PARTS = ("full", "intro", "section", "conclusion", "faqs", "title", "meta", "h1", "slug")
+FIELD_PARTS = ("title", "meta", "h1", "slug")  # one editor field each; the body is not touched (the editor puts a new H1 into its <h1>)
 TITLE_MIN, META_TARGET_MIN = 50, 150
 _P = re.compile(r"<p\b[^>]*>[\s\S]*?</p>", re.I)
 _H1 = re.compile(r"<h1\b[^>]*>[\s\S]*?</h1>", re.I)
@@ -209,13 +209,12 @@ def _full(b: Business, f: dict, a: Article, main: str) -> str:
     draft = svc.write(f["keyword"], f["secondary"], a.rising_keywords or [], b, topic=a.topic or "", length=a.length or "standard",
                       title_hint=f["title"] or None, meta_hint=f["meta"] or None)
     new = svc._SCHEMA_RE.sub("\n", draft["body"]).strip()
-    if f["title"]:
+    old_h1 = _H1.search(main)
+    if old_h1:  # the current H1 (the Blog title, or the SEO title when they are the same) is kept
+        new = _H1.sub(lambda _m: old_h1.group(0), new, count=1) if _H1.search(new) else f"{old_h1.group(0)}\n\n{new}"
+    elif f["title"]:
         h1 = f"<h1>{html.escape(f['title'], quote=False)}</h1>"
         new = _H1.sub(lambda _m: h1, new, count=1) if _H1.search(new) else f"{h1}\n\n{new}"
-    else:
-        old_h1 = _H1.search(main)
-        if old_h1:
-            new = _H1.sub(lambda _m: old_h1.group(0), new, count=1)
     return new
 
 
@@ -289,6 +288,63 @@ def _new_meta(b: Business, f: dict, body: str) -> str:
     raise RegenError("Claude AI did not return a usable meta description (150-160 characters with the primary keyword). Try again.", 502)
 
 
+H1_MIN, H1_MAX = 35, 90  # the Blog title (H1) range shown in the editor
+
+
+def _current_h1(body: str) -> str:
+    m = _H1.search(body or "")
+    return svc._text(m.group(0)).strip() if m else ""
+
+
+def _new_h1(b: Business, f: dict, body: str) -> str:
+    """A new Blog title (H1): the heading readers see on the page, 35-90 characters with the primary keyword, different from the SEO title."""
+    cur = _current_h1(body)
+    prompt = "\n".join([
+        *_field_brief(b, f, body),
+        *([f'SEO title (shown in Google): "{f["title"]}"'] if f["title"] else []),
+        *([f'Current Blog title (H1): "{cur}"'] if cur else []), "",
+        f"Write ONE new Blog title (the H1 heading readers see on the blog page) for this article: {H1_MIN}-{H1_MAX} characters,"
+        f" containing the exact phrase \"{f['keyword']}\", natural and reader-friendly, matching what the article covers."
+        " It may be a little longer and warmer than the SEO title, but must not copy it. No quotes, no clickbait, no trailing period."
+        + (" It must be clearly different from the current Blog title." if cur else ""),
+        "Answer with ONLY the Blog title, nothing else.",
+    ])
+    best, ask = "", prompt
+    for _attempt in range(4):
+        t = _clean_line(svc._short(ask, num_predict=80)).rstrip(".")
+        if not t or len(t) > H1_MAX or not svc._has(t, f["keyword"]) or t.lower() in (cur.lower(), f["title"].lower()):
+            continue
+        if len(t) >= H1_MIN:
+            return t
+        best = max(best, t, key=len)
+        ask = prompt + f'\n\nYour previous answer had only {len(t)} characters: "{t}". Write it again with {H1_MIN}-{H1_MAX} characters.'
+    if best:
+        return best
+    raise RegenError(f"Claude AI did not return a usable Blog title ({H1_MIN}-{H1_MAX} characters with the primary keyword). Try again.", 502)
+
+
+def _new_slug(b: Business, f: dict, body: str) -> str:
+    """A new web address (slug): short, lowercase words joined by hyphens, containing the primary keyword's words in order."""
+    want = svc.slugify(f["keyword"], 100)
+    cur = svc.slugify(f.get("slug") or "", 100) or want
+    prompt = "\n".join([
+        *_field_brief(b, f, body),
+        *([f'SEO title: "{f["title"]}"'] if f["title"] else []),
+        f'Current web address (slug): "{cur}"', "",
+        f"Write ONE new URL slug for this article: 2 to 6 lowercase words joined by hyphens, containing \"{want}\" exactly,"
+        " short and descriptive (a location or the main angle may be added), no stop words like 'a', 'the', 'and', no dates, no numbers."
+        " It must be different from the current slug.",
+        "Answer with ONLY the slug, nothing else.",
+    ])
+    for _attempt in range(4):
+        t = svc.slugify(_clean_line(svc._short(prompt, num_predict=40)).strip("/").split("/")[-1], 100)
+        if t and want in t and t != cur and len(t.split("-")) <= 8:
+            return t
+    if want != cur:  # nothing new from the model: the slug that simply follows the primary keyword
+        return want
+    raise RegenError("Claude AI did not return a usable web address (with the primary keyword). Try again.", 502)
+
+
 def regenerate(a: Article, b: Business, part: str, body: str | None = None, section_id: str | None = None, fields: dict | None = None) -> dict:
     """Current and new HTML of the part, and the whole new body; for "title" / "meta" the current and new value of
     that one field. Saves nothing."""
@@ -303,6 +359,7 @@ def regenerate(a: Article, b: Business, part: str, body: str | None = None, sect
     f = {"keyword": (fields.get("keyword") or a.keyword or "").strip(), "title": (fields.get("title") if fields.get("title") is not None else a.title or "").strip(),
          "meta": (fields.get("meta_description") if fields.get("meta_description") is not None else a.meta_description or "").strip(),
          "secondary": [k for k in (fields.get("secondary_keywords") if fields.get("secondary_keywords") is not None else a.secondary_keywords or []) if k],
+         "slug": (fields.get("slug") if fields.get("slug") is not None else a.slug or "").strip(),
          "topic": a.topic or a.keyword}
     if not f["keyword"]:
         raise RegenError("Enter the primary keyword first.")
@@ -319,6 +376,10 @@ def regenerate(a: Article, b: Business, part: str, body: str | None = None, sect
             return {"part": part, "label": "SEO title", "field": "title", "current": f["title"], "value": _new_title(b, f, body)}
         if part == "meta":
             return {"part": part, "label": "Meta description", "field": "meta_description", "current": f["meta"], "value": _new_meta(b, f, body)}
+        if part == "h1":
+            return {"part": part, "label": "Blog title (H1)", "field": "h1", "current": _current_h1(body), "value": _new_h1(b, f, body)}
+        if part == "slug":
+            return {"part": part, "label": "Web address", "field": "slug", "current": f["slug"], "value": _new_slug(b, f, body)}
         main, spans, schema = _split(body)
         if part == "full":
             new_main = _full(b, f, a, main)

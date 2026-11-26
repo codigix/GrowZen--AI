@@ -78,8 +78,10 @@ def run_article_stages(db, a, b, only: list[str] | None = None, progress=None) -
             if sid == "meta_title":
                 out = st.shorten_meta_title(art, b)
                 if out["changed"]:
+                    same_h1 = svc.blog_title_of(a).strip().lower() == (a.title or "").strip().lower()
                     a.title = out["after"][:255]
-                    a.body = _set_h1(a.body or "", a.title)
+                    if same_h1:  # the H1 followed the SEO title: keep them together; a separate Blog title (H1) is left as it is
+                        a.body = _set_h1(a.body or "", a.title)
                     changed = True
             elif sid == "meta_description":
                 out = st.shorten_meta_description(art, b)
@@ -88,13 +90,25 @@ def run_article_stages(db, a, b, only: list[str] | None = None, progress=None) -
             elif sid in ("expert", "human"):
                 out = (st.expert if sid == "expert" else st.human)(art, b)
                 plain = svc.strip_emphasis(svc._SCHEMA_RE.sub("\n", a.body or ""))
-                new, results = st.apply_edits(plain, out.pop("edits"), a.keyword)
+                dens, uses, words = st.keyword_density(a.body or "", a.keyword)
+                # only the human editor may thin out an over-used keyword, and only down to about 1.5%
+                allow = max(0, uses - round(words * 0.02 / max(1, len(a.keyword.split())))) if sid == "human" and dens > 2.5 else 0
+                new, results = st.apply_edits(plain, out.pop("edits"), a.keyword, max_kw_removals=allow)
+                if sid == "human":
+                    out["density_before"] = round(dens, 2)
+                    out["density_after"] = round(st.keyword_density(new, a.keyword)[0], 2)
                 out["edits"] = results
                 out["applied"] = sum(1 for r in results if r["applied"])
                 if out.get("heading_fixes"):  # grammar fixes for headings (human editor only), applied within safe limits
                     new, hres = st.apply_heading_fixes(new, out["heading_fixes"], a.keyword)
                     out["heading_fixes"] = hres
                     out["applied"] += sum(1 for r in hres if r["applied"])
+                if sid == "human":  # the keyword still above 2%: a focused pass rewrites just enough body sentences (spread out) to bring it to ~1.5%
+                    new, thin = st.thin_keyword(new, a.keyword)
+                    if thin["rewritten"]:
+                        out["applied"] += thin["rewritten"]
+                        out["keyword_thinned"] = thin
+                    out["density_after"] = round(st.keyword_density(new, a.keyword)[0], 2)
                 if out["applied"]:
                     a.body, changed = _finish_body(a, b, new), True
             elif sid == "seo_expert":

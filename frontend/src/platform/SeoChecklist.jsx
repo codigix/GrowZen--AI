@@ -74,6 +74,18 @@ export default function SeoChecklist({ b, articleId, unsaved, savedAt }) {
         {rep?.ai_error && <div className="text-[12px] text-red-700 bg-red-50 rounded-lg px-3 py-2">AI review failed: {rep.ai_error}</div>}
         {error && <div className="text-[12px] text-red-700 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
         {busy === 'load' && !rep && <div className="text-[12px] text-slate-500">Loading the checklist…</div>}
+        {rep && Array.isArray(rep.blocking) && (rep.blocking.length === 0 ? (
+          <div className="flex items-center gap-2 text-[12.5px] font-semibold text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-lg px-3 py-2"><CheckCircle2 size={14} />Ready to publish: every mandatory requirement passes.</div>
+        ) : (
+          <div className="rounded-lg bg-red-50 ring-1 ring-red-200 px-3 py-2.5 space-y-1.5" role="alert">
+            <div className="flex items-center gap-2 text-[12.5px] font-bold text-red-800"><XCircle size={14} />Not ready to publish: {rep.blocking.length} mandatory requirement{rep.blocking.length !== 1 ? 's' : ''} failed</div>
+            <ul className="space-y-1 text-[12px] text-red-900">
+              {rep.blocking.map(x => (
+                <li key={x.id}><b>{x.label}</b>{x.detail ? <span className="text-red-800"> ({x.detail})</span> : null}<div className="text-slate-700">Correction: {x.fix}</div></li>
+              ))}
+            </ul>
+          </div>
+        ))}
         {busy === 'ai' && <div className="text-[12px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Reviewing the article with Claude AI (this can take a minute)…</div>}
 
         {checks.length > 0 && (

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Settings2, KeyRound, AlertTriangle, FileCode2, Eye, EyeOff, PlugZap, RefreshCw } from 'lucide-react';
 import { Badge, Button, Field, inputCls, useDoubleConfirm } from './SeoUi';
+import DateTimeAmPm, { nowLocal } from './ScheduleTime';
 import { api, fmtDateTime } from './seoApi';
 import Select from '../components/Select';
 
@@ -76,6 +77,11 @@ export default function HtmlSitePanel({ b, article = null, toast = console.log, 
   const [ask, confirmNode] = useDoubleConfirm();
   const [mode, setMode] = useState('publish');
   const [when, setWhen] = useState(defaultWhen || '');
+  const whenTouched = useRef(false);  // the user picked their own date/time: don't overwrite it when Schedule is clicked again
+  const selectMode = (id) => {
+    if (id === 'schedule' && !whenTouched.current) setWhen(nowLocal());  // default to right now, every time Schedule is first chosen
+    setMode(id);
+  };
   const [pubSteps, setPubSteps] = useState([]);
   const [post, setPost] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -298,14 +304,14 @@ export default function HtmlSitePanel({ b, article = null, toast = console.log, 
         <Num n={2} done={onSite}>Publish this article</Num>
         <div className="grid grid-cols-2 gap-2">
           {modes.map(m => (
-            <button key={m.id} type="button" onClick={() => setMode(m.id)}
+            <button key={m.id} type="button" onClick={() => selectMode(m.id)}
               className={`text-left p-2.5 rounded-xl border cursor-pointer ${mode === m.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-200 bg-slate-50'}`}>
               <span className="block font-bold text-slate-800">{m.title}</span>
               <span className="block text-[11px] text-slate-500">{m.hint}</span>
             </button>
           ))}
         </div>
-        {mode === 'schedule' && <Field label="Publish at"><input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} className={inputCls} /></Field>}
+        {mode === 'schedule' && <Field label="Publish at"><DateTimeAmPm value={when} onChange={v => { whenTouched.current = true; setWhen(v); }} /></Field>}
         {onSite && <p className="text-slate-600">Already on the website. Publishing again updates the same article instead of creating a duplicate.</p>}
         <div className="flex items-center gap-2">
           <Button variant="primary" icon={Send} busy={busy === 'publish' || postBusy} disabled={!article || postBusy || (mode === 'schedule' && !when)} onClick={publish}>

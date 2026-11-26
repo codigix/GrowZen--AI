@@ -49,6 +49,7 @@ class GenerateIn(BaseModel):
     topic: str | None = Field(default=None, max_length=255)
     length: Literal["short", "standard", "long"] = "standard"
     title: str | None = Field(default=None, max_length=255)  # the SEO title picked on the Title step; empty = the model writes one
+    blog_title: str | None = Field(default=None, max_length=255)  # the Blog title (H1) picked on the Title step; empty = the H1 is the SEO title
     workflow: dict | None = None  # the SEO workflow: research stage results + the content brief the user confirmed (optional; older pages send none)
 
 
@@ -62,6 +63,8 @@ class TitleSuggestIn(BaseModel):
     primary: str = Field(min_length=2, max_length=255)
     secondary: list[str] = Field(default_factory=list, max_length=15)
     avoid: list[str] = Field(default_factory=list, max_length=20)
+    kind: Literal["seo", "blog"] = "seo"  # seo = SEO titles (Google, max 60); blog = Blog titles (the H1 on the page)
+    seo_title: str = Field(default="", max_length=255)  # for blog titles: the SEO title they go with
 
 
 class KeywordSuggestIn(BaseModel):
@@ -294,8 +297,40 @@ def duplicates(article_id: int, b: Business = Depends(get_business), db: Session
     return {"same_title": same_title, "same_image": same_image}
 
 
+@router.get("/{article_id}/slug-check")
+def slug_check(article_id: int, slug: str = "", b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Is this web address already taken: by another blog of this project, or by a post on the connected React.js website?
+    Read only (the editor shows a warning; nothing is blocked or changed here)."""
+    from urllib.parse import urlparse
+    from ..models import ReactSiteConnection
+    from ..services import react_site as rs
+    a = _get(db, b, article_id)
+    s = svc.slugify(slug or "", 100) or svc.slugify(a.keyword or "", 100)
+    if not s:
+        return {"slug": "", "used": False}
+    for o in db.scalars(select(Article).where(Article.business_id == b.id, Article.id != a.id)):
+        used = {(svc.explicit_slug(o) or "").lower()}
+        for u in (o.wp_url, o.react_url):
+            if u:
+                used.add((urlparse(u).path.rstrip("/").rsplit("/", 1)[-1] or "").lower())
+        if s in used:
+            return {"slug": s, "used": True, "by": f"another article: “{o.title or o.keyword}”"}
+    conn = db.scalar(select(ReactSiteConnection).where(ReactSiteConnection.business_id == b.id))
+    checked_site = False
+    if conn and conn.status == "connected":
+        try:
+            posts = rs.list_posts(conn)
+            checked_site = bool(posts)
+            for x in posts:
+                if str(x.get("slug") or "").lower() == s and (rs._id_of(x) or "") != str(a.react_post_id or ""):
+                    return {"slug": s, "used": True, "by": "a post already on your website", "checked_site": True}
+        except Exception:  # noqa: BLE001 - a website that cannot be read never blocks the editor
+            log.warning("Slug check could not read the website's posts for article %s", a.id)
+    return {"slug": s, "used": False, "checked_site": checked_site}
+
+
 class RegenerateIn(BaseModel):
-    part: Literal["full", "intro", "section", "conclusion", "faqs", "title", "meta"]
+    part: Literal["full", "intro", "section", "conclusion", "faqs", "title", "meta", "h1", "slug"]
     section_id: str | None = Field(default=None, max_length=20)  # for "section": an id from /regenerate/sections
     body: str | None = None  # the editor's current (maybe unsaved) HTML; the saved body when omitted
     # the editor's current (maybe unsaved) fields, for "title" / "meta"; the saved values when omitted
@@ -303,6 +338,7 @@ class RegenerateIn(BaseModel):
     meta_description: str | None = Field(default=None, max_length=500)
     keyword: str | None = Field(default=None, max_length=255)
     secondary_keywords: list[str] | None = Field(default=None, max_length=20)
+    slug: str | None = Field(default=None, max_length=100)  # the editor's current web address, for "slug"
 
 
 class SectionsIn(BaseModel):
@@ -325,7 +361,7 @@ def regenerate_part(article_id: int, body: RegenerateIn, b: Business = Depends(g
     a = _get(db, b, article_id)
     try:
         return rg.regenerate(a, b, body.part, body.body, body.section_id,
-                             fields=body.model_dump(include={"title", "meta_description", "keyword", "secondary_keywords"}))
+                             fields=body.model_dump(include={"title", "meta_description", "keyword", "secondary_keywords", "slug"}))
     except rg.RegenError as exc:
         raise HTTPException(exc.code, str(exc))
 
@@ -399,7 +435,8 @@ def suggest_keywords(body: KeywordSuggestIn, b: Business = Depends(get_business)
 def suggest_titles(body: TitleSuggestIn, b: Business = Depends(get_business)):
     """Five SEO title options for the Title step (shown before the article is written)."""
     try:
-        titles = svc.suggest_titles(body.topic, body.primary, body.secondary, b, body.avoid)
+        titles = (svc.suggest_blog_titles(body.topic, body.primary, body.seo_title, b, body.avoid) if body.kind == "blog"
+                  else svc.suggest_titles(body.topic, body.primary, body.secondary, b, body.avoid))
     except RuntimeError as exc:
         raise HTTPException(502, str(exc))
     if not titles:
@@ -460,7 +497,8 @@ def generate(body: GenerateIn, tasks: BackgroundTasks, b: Business = Depends(get
     if running:
         raise HTTPException(409, f"An article for '{keywords[0]}' is already being written. Wait for it to finish or delete it first.")
     a = Article(business_id=b.id, topic=(body.topic or "").strip() or None, length=body.length, keyword=keywords[0], title=(body.title or "").strip() or None, secondary_keywords=keywords[1:],
-                stats={"workflow": _clean_workflow(body.workflow)} if body.workflow else None, rising_keywords=[k for k, r in picked.items() if r], status="pending")
+                stats=({"workflow": _clean_workflow(body.workflow)} if body.workflow else {}) | ({"blog_title": " ".join(body.blog_title.split())} if (body.blog_title or "").strip() else {}) or None,
+                rising_keywords=[k for k, r in picked.items() if r], status="pending")
     db.add(a)
     db.commit()
     tasks.add_task(durable(svc.run_batch, [a.id], refs=[f"article:{a.id}"]))
@@ -603,7 +641,7 @@ def set_featured_image(article_id: int, body: FeaturedImageIn, b: Business = Dep
     if body.alt is not None:
         a.featured_image_alt = body.alt.strip() or None
     elif not a.featured_image_alt:
-        a.featured_image_alt = (a.title or a.keyword or "")[:255] or None
+        a.featured_image_alt = (re.sub(r"[^\w]+", "-", (a.keyword or "").lower()).strip("-") or a.title or "")[:255] or None  # the primary keyword, e.g. "wedding-dress"
     _refresh_schema(a, b)
     db.commit()
     return row(a)
@@ -677,6 +715,16 @@ def delete_content_image(article_id: int, name: str, b: Business = Depends(get_b
     return {"ok": True}
 
 
+def _ready_or_409(db: Session, a: Article, b: Business) -> None:
+    """Before publishing a new post: the SEO checklist is refreshed so it shows what is still missing. It is information only and never
+    blocks publishing (the user decides when the article is ready)."""
+    if seo._is_live(a):
+        return
+    rep = seo.build(db, a, b, with_ai=False, previous=(a.stats or {}).get("seo_report"))
+    seo.save(db, a, rep)
+    db.commit()
+
+
 @router.post("/{article_id}/publish")
 def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     a = _get(db, b, article_id)
@@ -684,6 +732,7 @@ def publish(article_id: int, body: PublishIn, b: Business = Depends(get_business
         raise HTTPException(409, "Only a completed article can be published")
     if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
         raise HTTPException(422, "Add a featured image before publishing (Featured image section, above the article body).")
+    _ready_or_409(db, a, b)
     when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
     target = _target(db, b)
     if body.mode == "schedule" and target.method in sp.LOCAL_SCHEDULE:
@@ -722,6 +771,7 @@ def publish_react(article_id: int, body: PublishIn, b: Business = Depends(get_bu
         raise HTTPException(409, "Only a completed article can be published")
     if get_settings().blog_featured_image_required and not fi.path_of(a.featured_image_path):
         raise HTTPException(422, "Add a featured image before publishing (Featured image section, above the article body).")
+    _ready_or_409(db, a, b)
     conn = _react_conn(db, b)
     when = body.scheduled_at.astimezone(timezone.utc) if body.scheduled_at and body.scheduled_at.tzinfo else None
     from ..services import article_publishing as ap
