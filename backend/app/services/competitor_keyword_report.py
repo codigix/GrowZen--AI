@@ -198,6 +198,35 @@ def _own_positions(db: Session, b: Business, keywords: list[str]) -> dict[str, i
     return out
 
 
+def fill_missing(db: Session, b: Business, rows: list[Any]) -> None:
+    """The ranked-keywords read gives no difficulty and no intent. Difficulty (and a missing volume or cost per click) is asked from Google Keyword Planner, whose figure is the competition index
+    of the keyword (0-100); intent comes from the wording of the keyword. Only what is really known is filled in; a keyword Google has no figure for keeps its empty difficulty. Kept in the database."""
+    from . import keyword_metrics  # noqa: PLC0415
+    from .providers.base import intent_of  # noqa: PLC0415
+    need = [r for r in rows if r.difficulty is None or r.intent is None]
+    if not need:
+        return
+    found: dict[str, dict] = {}
+    if any(r.difficulty is None for r in need):
+        try:
+            found, _why = keyword_metrics.lookup([r.keyword for r in need if r.difficulty is None], market.serp_country(b))
+        except Exception:  # noqa: BLE001 -- Google Ads being unavailable must not stop the page
+            found = {}
+    changed = False
+    for r in need:
+        m = found.get(_norm(r.keyword)) or {}
+        if r.difficulty is None and m.get("difficulty") is not None:
+            r.difficulty, changed = m["difficulty"], True
+        if r.volume is None and m.get("volume"):
+            r.volume, changed = m["volume"], True
+        if r.cpc is None and m.get("cpc") is not None:
+            r.cpc, changed = m["cpc"], True
+        if r.intent is None:
+            r.intent, changed = intent_of(r.keyword), True
+    if changed:
+        db.commit()
+
+
 def gap(db: Session, b: Business) -> dict[str, Any]:
     """The keyword gap against the competitors: for each keyword a competitor ranks for (from its kept ranked-keywords read, and from Google's top 10 on your tracked searches) where you stand.
     missing = they rank and you do not; weak = both rank and they are more than SHARED_WITHIN positions above you; strong = both rank and you are more than that above them;
@@ -218,7 +247,9 @@ def gap(db: Session, b: Business) -> dict[str, Any]:
         if cur is None or (pos is not None and (cur["position"] is None or pos < cur["position"])):
             e["competitors"][dom] = {"domain": dom, "position": pos, "url": url, "source": source, "traffic": round(traffic, 1) if traffic is not None else None}
 
-    for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id)):
+    kept = list(db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id)))
+    fill_missing(db, b, kept)
+    for r in kept:
         add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, r.traffic, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc)
         s = reads.setdefault(r.domain, {"domain": r.domain, "keywords": 0, "read_at": None, "from_google": 0})
         s["keywords"] += 1
