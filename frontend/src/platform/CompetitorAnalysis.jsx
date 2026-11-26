@@ -212,9 +212,8 @@ function AutoSettings({ auto, onClose }) {
 }
 
 function Logo({ host, name }) {
-  const [bad, setBad] = useState(false);
-  return bad || !host ? <span className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-700 inline-flex items-center justify-center text-13 font-bold shrink-0">{(name || host || '?').trim().charAt(0).toUpperCase()}</span>
-    : <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`} alt="" width={32} height={32} loading="lazy" referrerPolicy="no-referrer" onError={() => setBad(true)} className="w-8 h-8 rounded-md object-contain bg-white ring-1 ring-slate-200 p-1 shrink-0" />;
+  // A letter, not the site's own icon: loading icons from the web logs a 404 in the console for every competitor site that is down or unknown.
+  return <span className="w-8 h-8 rounded-md bg-indigo-50 text-indigo-700 inline-flex items-center justify-center text-13 font-bold shrink-0">{(name || host || '?').trim().charAt(0).toUpperCase()}</span>;
 }
 
 function Stat({ icon: Icon, label, value, sub, tone, help }) {
