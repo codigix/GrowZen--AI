@@ -570,7 +570,18 @@ export function BacklinkTab({ rows, analysis, focus = '' }) {
 function PageDrawer({ b, pg, all, onClose }) {
   const [toast, toastNode] = useToast();
   const [busy, setBusy] = useState(false);
+  const [kdOf, setKdOf] = useState({});
+  const [kdBusy, setKdBusy] = useState(false);
   const list = pg.list || [];
+  const readKd = async () => {
+    setKdBusy(true);
+    try {
+      const r = await api(`/businesses/${b.id}/keyword-workspace/competitor-gap/kd`, { method: 'POST', body: { limit: 10, keywords: list.filter(k => k.kd == null && kdOf[k.keyword] == null).map(k => k.keyword).slice(0, 10) }, timeout: 600000 });
+      const got = {}; for (const row of r.gap?.rows || []) if (row.kd != null) got[row.keyword] = row.kd;
+      setKdOf(m => ({ ...m, ...got }));
+      toast(r.read ? `Difficulty read for ${r.read} keyword${r.read === 1 ? '' : 's'}${r.failed ? `, ${r.failed} could not be read` : ''}.` : r.failed ? `Could not read: ${(r.errors || [])[0] || 'no figures'}` : 'These keywords already have their difficulty.');
+    } catch (e) { toast(e.message || 'The difficulty could not be read.'); } finally { setKdBusy(false); }
+  };
   const onPage = new Set(list.map(k => k.keyword));
   const near = list.filter(k => k.position >= 4 && k.position <= 20).sort((x, y) => (y.volume || 0) - (x.volume || 0));
   const opps = list.filter(k => !k.yours).sort((x, y) => (y.volume || 0) - (x.volume || 0));
@@ -584,7 +595,7 @@ function PageDrawer({ b, pg, all, onClose }) {
       toast(`${res.added} new keyword${res.added === 1 ? '' : 's'} added to My Keywords${res.existing?.length ? `. ${res.existing.length} already there, not duplicated` : ''}`);
     } catch (e) { toast(e.message || 'The keywords could not be added.'); } finally { setBusy(false); }
   };
-  const Kw = ({ k }) => <tr><td className="py-1 text-slate-900">{k.keyword}</td><td className="text-right tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className="text-right tabular-nums">{num(k.volume)}</td><td className="text-right tabular-nums">{k.difficulty ?? '—'}</td><td className="text-right tabular-nums">{k.yours ? `#${k.yours}` : <span className="text-slate-400">Not ranking</span>}</td><td className="text-right"><button type="button" onClick={() => add([k])} title="Add to My Keywords" aria-label={`Add ${k.keyword} to My Keywords`} className="p-1 text-slate-400 hover:text-emerald-700 cursor-pointer"><Plus size={14} /></button></td></tr>;
+  const Kw = ({ k }) => <tr><td className="py-1 text-slate-900">{k.keyword}</td><td className="text-right tabular-nums">{k.position ? `#${k.position}` : '—'}</td><td className="text-right tabular-nums">{num(k.volume)}</td><td className="text-right tabular-nums" title={k.kd != null ? 'SEO difficulty from the real top 10 on Google' : 'Not read yet. Use Read KD above.'}>{kdOf[k.keyword] ?? k.kd ?? '—'}</td><td className="text-right tabular-nums">{k.yours ? `#${k.yours}` : <span className="text-slate-400">Not ranking</span>}</td><td className="text-right"><button type="button" onClick={() => add([k])} title="Add to My Keywords" aria-label={`Add ${k.keyword} to My Keywords`} className="p-1 text-slate-400 hover:text-emerald-700 cursor-pointer"><Plus size={14} /></button></td></tr>;
   return (
     <Modal open onClose={onClose} width="max-w-3xl" title={pg.url.replace(/^https?:\/\/(www\.)?/, '')} footer={<Button onClick={onClose}>Close</Button>}>
       {pg.live === false && <div role="alert" className="mb-2 rounded-lg bg-rose-50 ring-1 ring-rose-200 px-3 py-2 text-13 text-rose-900"><b>This page no longer exists</b> (it answered {pg.page_status}). The rankings below were read {pg.read_at ? `on ${fdate(pg.read_at)}` : 'earlier'}, when Google still showed it, so they are out of date and its traffic is not counted.</div>}
@@ -593,7 +604,7 @@ function PageDrawer({ b, pg, all, onClose }) {
         {[['Est. traffic', kfmt(pg.traffic)], ['Ranking keywords', num(pg.keywords)], ['Best position', pg.best ? `#${pg.best}` : '—'], ['Backlinks to the page', 'Not available']].map(([k, v]) => <div key={k} className="rounded-lg bg-slate-50 px-3 py-2"><div className="text-11.5 text-slate-500">{k}</div><div className="text-14 font-semibold text-slate-900">{v}</div></div>)}
       </div>
       <p className="mt-2 text-13"><a href={pg.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all inline-flex items-center gap-1">{pg.url}<ExternalLink size={11} /></a><span className="block text-12 text-slate-500">The page title and its backlinks are not read by any data source connected here, so they are not shown. The traffic is an estimate from its ranked keywords.</span></p>
-      <h4 className="mt-4 text-13 font-semibold text-slate-900">Keywords this page ranks for <span className="font-normal text-slate-400">(top {list.length} by traffic)</span></h4>
+      <div className="mt-4 flex items-center justify-between gap-2"><h4 className="text-13 font-semibold text-slate-900">Keywords this page ranks for <span className="font-normal text-slate-400">(top {list.length} by traffic)</span></h4><Button size="sm" busy={kdBusy} disabled={!list.some(k => k.kd == null && kdOf[k.keyword] == null)} onClick={readKd} title="Reads the SEO difficulty (top 10 on Google) of up to 10 of these keywords that have none yet. Costs Apify credit for each; the result is kept.">Read KD</Button></div>
       <table className="mt-1 w-full text-12.5"><thead><tr className="text-left text-slate-500"><th className="py-1 font-medium">Keyword</th><th className="font-medium text-right">Their position</th><th className="font-medium text-right">Searches</th><th className="font-medium text-right">KD</th><th className="font-medium text-right">You</th><th /></tr></thead><tbody className="divide-y divide-slate-100">{list.map(k => <Kw key={k.keyword} k={k} />)}</tbody></table>
       <h4 className="mt-4 text-13 font-semibold text-slate-900">Page-level opportunities</h4>
       {near.length ? <><p className="text-12 text-slate-500">Keywords where this page is on page 2 or low on page 1 (position 4 to 20): the ones a competitor could lose, or you could take.</p><div className="mt-1 flex flex-wrap gap-1.5">{near.map(k => <span key={k.keyword} className="px-2.5 py-1 rounded-full text-12.5 bg-amber-50 border border-amber-200 text-amber-900">{k.keyword} <b>#{k.position}</b></span>)}</div></> : <p className="text-13 text-slate-500">None of its keywords sit between position 4 and 20.</p>}
@@ -642,6 +653,7 @@ export function TopPagesTab({ b, rows, focus = '' }) {
     { id: 'traffic', header: 'Est. organic traffic', right: true, first: 'desc', value: p => p.traffic, cell: p => (p.live === false ? <span title={`It was credited with about ${kfmt(p.traffic_was)} before the page was found gone`} className="text-slate-400">0 <span className="text-11 line-through">{kfmt(p.traffic_was)}</span></span> : kfmt(p.traffic)), tip: { what: 'Estimated visits a month to the page from the keywords it ranks for. An estimate, not verified traffic.', from: 'Ranked keywords (Apify)' } },
     { id: 'keywords', header: 'Ranking keywords', right: true, first: 'desc', value: p => p.keywords },
     { id: 'top', header: 'Top keyword', value: p => p.top_keyword || '', tip: { what: 'The most searched keyword the page ranks for.' } },
+    { id: 'topkd', header: 'Top keyword KD', right: true, value: p => p.top_kd ?? null, cell: p => (p.top_kd == null ? <span className="text-slate-300" title="Not read yet. Open the page and use Read KD.">—</span> : p.top_kd), tip: { what: 'SEO difficulty (0 to 100) of its top keyword, from the real top 10 on Google. Read on demand (open the page, then Read KD) because each read costs Apify credit.' } },
     { id: 'toppos', header: 'Top keyword position', right: true, value: p => p.top_position ?? null, cell: p => (p.top_position ? `#${p.top_position}` : '—') },
     { id: 'best', header: 'Best position', right: true, value: p => p.best ?? null, cell: p => (p.best ? `#${p.best}` : '—'), hide: true },
     { id: 'backlinks', header: 'Backlinks', right: true, value: p => p.backlinks ?? null, cell: () => NA, tip: { what: 'Backlinks to a single page are not read by any data source connected here.' } },

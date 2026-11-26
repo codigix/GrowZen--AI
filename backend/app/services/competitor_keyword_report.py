@@ -335,7 +335,7 @@ KD_BATCH = 20  # the most keywords whose real SEO difficulty is read in one go
 KD_FRESH_DAYS = 30
 
 
-def read_kd(db: Session, b: Business, limit: int = KD_BATCH, force: bool = False) -> dict[str, Any]:
+def read_kd(db: Session, b: Business, limit: int = KD_BATCH, force: bool = False, keywords: list[str] | None = None) -> dict[str, Any]:
     """The real SEO difficulty (from the top 10 on Google, as the Keyword Magic Tool works it out) for the best keywords of the gap only: the useful ones with the highest score, at most `limit`.
     Each read costs Apify credit (one Google search and the Domain Authority of its results), so it is never done for the whole list. A keyword already read in the last KD_FRESH_DAYS is not read
     again unless `force`. The result is kept on every row of that keyword, with the day."""
@@ -344,8 +344,12 @@ def read_kd(db: Session, b: Business, limit: int = KD_BATCH, force: bool = False
     from ..models import CompetitorKeyword  # noqa: PLC0415
     from . import keyword_difficulty as kdm  # noqa: PLC0415
     limit = max(1, min(int(limit or KD_BATCH), 40))
-    rows = [r for r in gap(db, b)["rows"] if r.get("fit") in ("yes", "maybe") and r.get("status") in ("missing", "weak") and r.get("score") is not None]
-    rows.sort(key=lambda r: -(r["score"] or 0))
+    if keywords:  # the keywords asked for by name (the ones one page ranks for): read as they are, at most `limit`
+        stored_vol = {r.keyword: r.volume for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.keyword.in_(keywords[:40])))}
+        rows = [{"keyword": k, "volume": stored_vol.get(k)} for k in dict.fromkeys(keywords) if k in stored_vol]
+    else:
+        rows = [r for r in gap(db, b)["rows"] if r.get("fit") in ("yes", "maybe") and r.get("status") in ("missing", "weak") and r.get("score") is not None]
+        rows.sort(key=lambda r: -(r["score"] or 0))
     cutoff = datetime.now(timezone.utc) - timedelta(days=KD_FRESH_DAYS)
     stored = {r.keyword: r for r in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id))}
 

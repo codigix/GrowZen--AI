@@ -86,3 +86,21 @@ def test_a_page_that_no_longer_exists_is_marked_and_its_traffic_not_counted(clie
     assert by["https://rival-g.com/live"]["live"] is True and by["https://rival-g.com/live"]["read_at"]
     assert out["metrics"]["rival-g.com"]["traffic"] == 100  # the gone page's 900 is not counted
     assert client.post(url, json={"domains": ["rival-g.com"]}).json()["checked"] == 0  # checked today: not asked again
+
+
+def test_a_page_s_own_keywords_can_have_their_difficulty_read(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Competitor, CompetitorKeyword
+    from app.services import keyword_difficulty
+    asked = []
+    monkeypatch.setattr(keyword_difficulty, "score", lambda kw, country, volume=None, use_cache=False, **k: asked.append(kw) or {"score": 47})
+    bid = client.post("/api/v1/businesses", json={"name": "Page Kd Co", "website": "https://pagekd.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add(Competitor(business_id=bid, website="https://rival-k.com", name="Rival", source="manual", selected=True, domain="rival-k.com"))
+    db.add_all([CompetitorKeyword(business_id=bid, domain="rival-k.com", keyword=k, position=3, volume=700, traffic=50.0, url="https://rival-k.com/p") for k in ("alpha page", "beta page")])
+    db.commit()
+    db.close()
+    out = client.post(f"/api/v1/businesses/{bid}/keyword-workspace/competitor-gap/kd", json={"keywords": ["alpha page", "not on any page"]}).json()
+    assert out["read"] == 1 and asked == ["alpha page"]
+    pages = client.post(f"/api/v1/businesses/{bid}/keyword-workspace/competitor-analysis/pages", json={"domains": ["rival-k.com"]}).json()["pages"]
+    assert pages[0]["top_kd"] in (47, None) and {k["keyword"]: k["kd"] for k in pages[0]["list"]}["alpha page"] == 47

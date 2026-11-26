@@ -315,7 +315,8 @@ def pages(db: Session, b: Business, domains: list[str], limit: int = 200) -> lis
             e["best"] = r.position
         if (r.volume or 0) > e["top_volume"]:
             e["top_keyword"], e["top_volume"], e["top_position"] = r.keyword, r.volume or 0, r.position
-        e["list"].append({"keyword": r.keyword, "position": r.position, "volume": r.volume, "difficulty": r.difficulty, "cpc": r.cpc, "intent": r.intent, "traffic": round(r.traffic or 0, 1)})
+            e["top_kd"] = r.kd
+        e["list"].append({"keyword": r.keyword, "position": r.position, "volume": r.volume, "difficulty": r.difficulty, "cpc": r.cpc, "intent": r.intent, "kd": r.kd, "traffic": round(r.traffic or 0, 1)})
     out = sorted(agg.values(), key=lambda e: (-e["traffic"], -e["keywords"]))[:limit]
     for e in out:
         e["list"] = sorted(e["list"], key=lambda k: (-(k["traffic"] or 0), -(k["volume"] or 0)))[:PAGE_KEYWORDS]
