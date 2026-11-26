@@ -912,6 +912,19 @@ function Research({ b }) {
     return r;
   });
 
+  // Choosing another place (or distance) finds the competitors there by itself: no need to press Find on Google Maps each time. Not on the first load, and one search after the last change.
+  const findKey = useRef(null);
+  const findRef = useRef(null);
+  findRef.current = findOnMaps;
+  useEffect(() => {
+    const key = `${place}|${radiusKm}`;
+    if (findKey.current === null) { findKey.current = key; return undefined; }
+    if (findKey.current === key) return undefined;
+    findKey.current = key;
+    const t = setTimeout(() => { findRef.current?.().catch(() => { }); }, 700);
+    return () => clearTimeout(t);
+  }, [place, radiusKm]);
+
   const addManual = (url, name) => runAdd('add', async () => {
     const c = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url, name } });
     await loadRegistered();
