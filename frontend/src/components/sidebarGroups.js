@@ -108,7 +108,7 @@ export const SIDEBAR_SECTIONS = [
   {
     id: 'seo', label: 'SEO', title: 'SEO', icon: TrendingUp, groups: [
       { title: '1 · Website audit ', items: [page('/website-audit', { label: 'Website audit' }), link('/page-indexing', 'Page Indexing')] },
-      { title: '2 · Competitor Research', items: [page('/competitor-finder'), go('/competitor-watch', 'Competitor Watch', 'traffic'), link('/competitor-keywords', 'Competitor Keywords'), link('/organic-rankings/page', 'Organic Rankings')] },
+      { title: '2 · Competitor Research', items: [page('/competitor-finder'), go('/competitor-watch', 'Competitor Watch', 'traffic'), link('/competitor-finder?tab=keywords', 'Competitor Keywords'), link('/organic-rankings/page', 'Organic Rankings')] },
       { title: '3 · Keywords', items: [
         { to: '/keyword-management/workspace', label: 'Find Keywords', also: ['/keyword-management/ai', '/keyword-management/discover', '/keyword-management/planner', '/keyword-management/explorer'] },
         { to: '/keyword-management/magic', label: 'Keyword Magic Tool', also: ['/keyword-overview'] },
