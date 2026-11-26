@@ -53,7 +53,7 @@ export default function CompetitorMaps({ b, rows, legacy = null }) {
       </div>
       {part === 'found' && <>
         <div className="rounded-lg bg-sky-50 ring-1 ring-sky-200 px-3 py-2 text-12.5 text-sky-900"><b>Discovery only.</b> This is who Google Maps returned around your place: it does not show who ranks higher. Real positions are in <button type="button" onClick={() => setPart('rank')} className="font-semibold underline cursor-pointer">Local rank tracking</button>.</div>
-        <DataTable columns={cols} rows={list} rowKey={r => r.id} filters={filters} collapseFilters initialSort={{ key: 'distance', dir: 'asc' }} exportName="google-maps-competitors" searchPlaceholder="Search businesses, categories or addresses" label="businesses" minWidth={1300}
+        <DataTable columnsKey="maps" columns={cols} rows={list} rowKey={r => r.id} filters={filters} collapseFilters initialSort={{ key: 'distance', dir: 'asc' }} exportName="google-maps-competitors" searchPlaceholder="Search businesses, categories or addresses" label="businesses" minWidth={1300}
           empty="No business found on Google Maps yet. Press Find or refresh on Google Maps on the Competitors tab." />
       </>}
       {part === 'rank' && <>

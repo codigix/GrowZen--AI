@@ -49,7 +49,7 @@ function SaveTable({ b, rows, cols, filters, label, kind, exportName, initialSor
   const run = async (list) => { setBusy(true); const ok = await saveToMy(b, list, toast, label, kind); setBusy(false); if (ok) setSel(new Set()); };
   return (
     <>
-      <DataTable columns={withSel} rows={rows} rowKey={r => r.id} filters={filters} initialSort={initialSort} exportName={exportName} searchPlaceholder="Search keywords" label="keywords" empty={empty} onState={s => { view.current = s.rows; }}
+      <DataTable columnsKey={`research-${exportName}`} columns={withSel} rows={rows} rowKey={r => r.id} filters={filters} initialSort={initialSort} exportName={exportName} searchPlaceholder="Search keywords" label="keywords" empty={empty} onState={s => { view.current = s.rows; }}
         toolbar={<>{toolbarExtra}<Button size="sm" variant="primary" icon={Plus} busy={busy} disabled={!picked.length} onClick={() => run(picked)}>Add {picked.length || ''} ticked</Button><Button size="sm" icon={Plus} busy={busy} disabled={!rows.length} onClick={() => run(view.current.length ? view.current : rows)} title="Add every keyword the table shows now (up to 300 at a time)">Add all filtered</Button></>} />
       {toastNode}
     </>

@@ -106,7 +106,7 @@ export function CompetitorKeywordsTab({ b, focus = '', band: focusBand = '' }) {
     <div className="space-y-4">
       <FocusBar name={only} what={focusBand ? `its ${focusBand === 'top3' ? 'top 3' : focusBand === 'top10' ? 'top 10' : focusBand} keywords` : 'its ranking keywords'} onAll={() => setFh('')} />
       <div>
-        <DataTable key={only} initialFilters={{ ...(only ? { domain: only } : {}), ...(only && focusBand ? { pos: focusBand } : {}) }} columns={cols} rows={base} rowKey={r => r.id} filters={filters.filter(f => f.id !== 'domain')} collapseFilters filtersExtra={<>
+        <DataTable columnsKey="competitor-keywords" key={only} initialFilters={{ ...(only ? { domain: only } : {}), ...(only && focusBand ? { pos: focusBand } : {}) }} columns={cols} rows={base} rowKey={r => r.id} filters={filters.filter(f => f.id !== 'domain')} collapseFilters filtersExtra={<>
           {[['Position', 'pmin', 'pmax', 1, 100], ['Searches / mo', 'vmin', 'vmax', 0, null], ['Difficulty', 'kmin', 'kmax', 0, 100]].map(([l, lo, hi, min, max]) => (
             <span key={l} className="inline-flex items-center gap-1.5">{l}
               <input type="number" min={min} max={max ?? undefined} value={rng[lo]} onChange={e => setRng(r => ({ ...r, [lo]: e.target.value }))} placeholder="from" aria-label={`${l} from`} className="h-8 w-20 rounded-lg ring-1 ring-inset ring-slate-300 px-2 text-13" />
@@ -178,7 +178,7 @@ function TopicList({ b, rows }) {
   ];
   return (
     <div className="mt-3">
-      <DataTable columns={cols} rows={rows} rowKey={r => r.keyword} filters={filters} initialSort={{ key: 'volume', dir: 'desc' }} pageSize={15} exportName="competitor-topics" searchPlaceholder="Search topics" label="keywords" bare onState={s => { viewRef.current = s.rows; }}
+      <DataTable columnsKey="topics" columns={cols} rows={rows} rowKey={r => r.keyword} filters={filters} initialSort={{ key: 'volume', dir: 'desc' }} pageSize={15} exportName="competitor-topics" searchPlaceholder="Search topics" label="keywords" bare onState={s => { viewRef.current = s.rows; }}
         toolbar={<Button size="sm" variant="primary" icon={Plus} busy={busy === 's'} onClick={send}>Send useful to Find Keywords</Button>} />
       {toastNode}
     </div>
@@ -240,7 +240,7 @@ export function KeywordGapTab({ b, focus = '' }) {
       </div>
       {stale && <div role="alert" className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-13 text-amber-900"><b>The backend is running old code.</b> It still answers with the old gap names (Gap, Behind, Ahead), so the cards and table cannot fill in. Stop every backend process on port 8000, start the backend again, and reload this page.</div>}
       {!hasData ? <div className="rounded-xl bg-white ring-1 ring-slate-200 p-8 text-center text-13 text-slate-500">No competitor rankings are kept yet. They are read automatically on the Competitors tab, or open <b>SERP Features</b> in Position Tracking to read Google's top 10 on your tracked searches. Then the gap appears here.</div> : (
-        <DataTable key={only} columns={cols} rows={pool} rowKey={r => r.keyword} filters={only ? filters.filter(f => f.id !== 'comp') : filters} collapseFilters initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-gap" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={1200} onState={s => { viewRef.current = s.rows; }}
+        <DataTable columnsKey="keyword-gap" key={only} columns={cols} rows={pool} rowKey={r => r.keyword} filters={only ? filters.filter(f => f.id !== 'comp') : filters} collapseFilters initialSort={{ key: 'volume', dir: 'desc' }} exportName="keyword-gap" searchPlaceholder="Search keywords or competitors" label="keywords" minWidth={1200} onState={s => { viewRef.current = s.rows; }}
           toolbar={<Button size="sm" variant="primary" icon={Plus} busy={wsBusy === 'ws'} onClick={send}>Send useful to Find Keywords</Button>} empty="No keywords in this view." />
       )}
       <p className="text-12 text-slate-500">Rankings are for {COUNTRY[g.country] || g.country || 'the project market'}. Your position is your checked position, or Search Console's average when Google showed your site.</p>

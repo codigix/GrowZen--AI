@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronsUpDown, Download, Search } from 'lucide-react';
 import { Head } from './TableBits';
 import Select from '../components/Select';
@@ -115,12 +115,24 @@ export function downloadCsv(name, head, body) {
  */
 export default function DataTable({
   columns, rows, rowKey = (r, i) => r.id ?? i, initialSort = null, pageSize = 25, search = true, searchPlaceholder = 'Search this table', filters = [], exportName = '',
-  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState, initialSearch = '', initialFilters = {}, collapseFilters = false, filtersExtra = null
+  empty = 'Nothing to show.', minWidth = 640, rowClass, toolbar = null, label = 'rows', columnsMenu = true, bare = false, sizes = SIZES, serial = true, headClass = 'bg-slate-50 text-slate-500', onState, initialSearch = '', initialFilters = {}, collapseFilters = false, filtersExtra = null, columnsKey = ''
 }) {
   const [q, setQ] = useState(initialSearch);
   const [fv, setFv] = useState(initialFilters);
   const [showF, setShowF] = useState(() => Object.values(initialFilters).some(Boolean)); // with collapseFilters the filters (and filtersExtra) sit behind one button
-  const [hidden, setHidden] = useState(() => new Set(columns.filter(c => c.hide === true).map(c => c.id)));
+  const defaultHidden = () => new Set(columns.filter(c => c.hide === true).map(c => c.id));
+  // the columns a person ticks are remembered on this device for tables that pass columnsKey, and come back after a reload
+  const [hidden, setHidden] = useState(() => {
+    if (columnsKey) { try { const v = JSON.parse(localStorage.getItem(`dt.columns.${columnsKey}`)); if (Array.isArray(v)) { const ids = new Set(columns.map(c => c.id)); return new Set(v.filter(x => ids.has(x))); } } catch { /* not remembered */ } }
+    return defaultHidden();
+  });
+  useEffect(() => { if (columnsKey) { try { localStorage.setItem(`dt.columns.${columnsKey}`, JSON.stringify([...hidden])); } catch { /* private window */ } } }, [hidden, columnsKey]);
+  const colsMenu = useRef(null);
+  useEffect(() => { // the Columns menu closes when you click anywhere else
+    const away = (e) => { const d = colsMenu.current; if (d && d.open && !d.contains(e.target)) d.open = false; };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, []);
   const cols = columns.filter(c => !hidden.has(c.id));
   const byId = useMemo(() => Object.fromEntries(columns.map(c => [c.id, c])), [columns]);
   const valueOf = useMemo(() => (r, key) => { const c = byId[key]; return c?.value ? c.value(r) : undefined; }, [byId]);
@@ -150,9 +162,10 @@ export default function DataTable({
           <span className="ml-auto flex flex-wrap items-center gap-2">
             {active > 0 && <span className="text-12.5 text-slate-500" role="status">{sorted.length} of {rows.length} · <button type="button" onClick={() => { setQ(''); setFv({}); }} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Clear filters</button></span>}
             {columnsMenu && columns.length > 3 && (
-              <details className="relative">
+              <details ref={colsMenu} className="relative">
                 <summary className="h-8 px-3 inline-flex items-center rounded-md border border-slate-200 bg-white text-12.5 font-semibold text-slate-700 cursor-pointer list-none hover:bg-slate-50">Columns{hidden.size ? ` (${columns.length - hidden.size} of ${columns.length})` : ''}</summary>
-                <div className="absolute right-0 z-20 mt-1 w-60 max-h-72 overflow-y-auto rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
+                <div className="absolute right-0 z-20 mt-1 w-60 max-h-80 overflow-y-auto rounded-lg bg-white shadow-lg ring-1 ring-slate-200 p-2">
+                  <div className="flex items-center justify-between px-2 pb-1.5 mb-1 border-b border-slate-100 text-12.5"><button type="button" onClick={() => setHidden(new Set())} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Show all</button><button type="button" onClick={() => setHidden(defaultHidden())} className="font-semibold text-slate-600 hover:underline cursor-pointer">Reset</button></div>
                   {columns.map(c => <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 text-13 text-slate-700 rounded hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={!hidden.has(c.id)} onChange={() => setHidden(h => { const x = new Set(h); x.has(c.id) ? x.delete(c.id) : x.add(c.id); return x; })} />{typeof c.header === 'string' ? c.header : c.label || c.id}</label>)}
                 </div>
               </details>)}
