@@ -157,7 +157,7 @@ def nearby_areas(b: Business, limit: int = 16) -> list[str]:
     own = {(b.area or "").split(",")[0].strip().lower(), (b.city or "").strip().lower()}
     out: list[str] = []
     for name in [*_google_ring(b), *_cached(("nearby", round(b.lat, 3), round(b.lng, 3)), DAY, fetch)]:
-        if name.lower() not in own and name.lower() not in {x.lower() for x in out} and len(name) <= 40 and not re.search(r"(sub)?district|taluka|division", name, re.I) and name.lower() != (b.city or "").strip().lower():
+        if name.lower() not in own and name.lower() not in {x.lower() for x in out} and len(name) <= 40 and not re.search(r"district|taluka|division", name, re.I) and name.lower() != (b.city or "").strip().lower():
             out.append(name)
     return out[:limit]
 
