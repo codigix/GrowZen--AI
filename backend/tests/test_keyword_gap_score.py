@@ -38,3 +38,19 @@ def test_status_missing_weak_shared_strong(monkeypatch):
         db.delete(b)
         db.commit()
         db.close()
+
+
+def test_the_gap_uses_only_chosen_competitors(client):
+    from app.db import SessionLocal
+    from app.models import Competitor, CompetitorKeyword
+    bid = client.post("/api/v1/businesses", json={"name": "Choice Co", "website": "https://choice.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add_all([Competitor(business_id=bid, website="https://chosen-one.com", name="Chosen", source="manual", selected=True, domain="chosen-one.com"),
+                Competitor(business_id=bid, website="https://left-out.com", name="Left out", source="research", selected=False, domain="left-out.com"),
+                CompetitorKeyword(business_id=bid, domain="chosen-one.com", keyword="alpha keyword", position=4, volume=900),
+                CompetitorKeyword(business_id=bid, domain="left-out.com", keyword="beta keyword", position=2, volume=800)])
+    db.commit()
+    db.close()
+    out = client.get(f"/api/v1/businesses/{bid}/keyword-workspace/competitor-gap").json()
+    words = {r["keyword"] for r in out["rows"]}
+    assert "alpha keyword" in words and "beta keyword" not in words

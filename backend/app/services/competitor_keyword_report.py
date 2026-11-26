@@ -247,7 +247,7 @@ def gap(db: Session, b: Business) -> dict[str, Any]:
         if cur is None or (pos is not None and (cur["position"] is None or pos < cur["position"])):
             e["competitors"][dom] = {"domain": dom, "position": pos, "url": url, "source": source, "traffic": round(traffic, 1) if traffic is not None else None}
 
-    kept = list(db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id)))
+    kept = list(db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain.in_(domains or [""]))))  # only the chosen competitors: a found one that was not chosen feeds nothing
     fill_missing(db, b, kept)
     for r in kept:
         add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, r.traffic, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc)

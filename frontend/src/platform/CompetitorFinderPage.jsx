@@ -1101,6 +1101,7 @@ function Research({ b }) {
   const isNearRow = (c) => isChosenRow(c) || (c.maps ? (c.maps.distance_m == null || c.maps.distance_m <= radius) : false);
   const nearRows = useMemo(() => tableRows.filter(isNearRow), [tableRows, radius]); // eslint-disable-line react-hooks/exhaustive-deps
   const poolRows = scope === 'near' ? nearRows : tableRows;
+  const chosenPool = useMemo(() => tableRows.filter(c => isChosenRow(c) && c.host), [tableRows]); // the tabs after Competitors use only the chosen ones
   const analysis = useAnalysis(b, tableRows.map(c => c.host).filter(Boolean));
   const statusOf = (c) => analysis.metrics[c.host]?.status || 'pending';
   // the competitors around the place that are not analyzed yet are analyzed by themselves
@@ -1201,11 +1202,19 @@ function Research({ b }) {
                 addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
               <ErrorNote>{mapsError}</ErrorNote>
             </>}
-            {tab === 'gap' && <KeywordGapTab key={focus.host} b={b} focus={focus.host} />}
-            {tab === 'keywords' && <CompetitorKeywordsTab key={`${focus.host}|${focus.band}`} b={b} focus={focus.host} band={focus.band} />}
-            {tab === 'traffic' && <TrafficTab key={focus.host} b={b} rows={poolRows} analysis={analysis} focus={focus.host} />}
-            {tab === 'pages' && <TopPagesTab key={focus.host} b={b} rows={poolRows} focus={focus.host} />}
-            {tab === 'backlinks' && <BacklinkTab key={focus.host} rows={poolRows} analysis={analysis} focus={focus.host} />}
+            {['gap', 'keywords', 'traffic', 'pages', 'backlinks'].includes(tab) && chosenPool.length === 0 && (
+              <div className="rounded-xl bg-white ring-1 ring-slate-200 px-6 py-10 text-center">
+                <div className="mx-auto w-11 h-11 rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center"><Users size={20} /></div>
+                <h3 className="mt-3 text-15 font-semibold text-slate-900">Please select a competitor first</h3>
+                <p className="mt-1 text-13 text-slate-600 max-w-md mx-auto">This tab shows the data of the competitors you have chosen. {tableRows.length ? 'Tick the checkbox of the competitors you want to compare yourself with on the Competitors tab.' : 'Find competitors first, then tick the ones you want.'}</p>
+                <div className="mt-4"><Button variant="primary" onClick={() => goTo('competitors')}>Go to Competitors</Button></div>
+              </div>
+            )}
+            {chosenPool.length > 0 && tab === 'gap' && <KeywordGapTab key={focus.host} b={b} focus={focus.host} />}
+            {chosenPool.length > 0 && tab === 'keywords' && <CompetitorKeywordsTab key={`${focus.host}|${focus.band}`} b={b} focus={focus.host} band={focus.band} />}
+            {chosenPool.length > 0 && tab === 'traffic' && <TrafficTab key={focus.host} b={b} rows={chosenPool} analysis={analysis} focus={focus.host} />}
+            {chosenPool.length > 0 && tab === 'pages' && <TopPagesTab key={focus.host} b={b} rows={chosenPool} focus={focus.host} />}
+            {chosenPool.length > 0 && tab === 'backlinks' && <BacklinkTab key={focus.host} rows={chosenPool} analysis={analysis} focus={focus.host} />}
             {tab === 'maps' && <CompetitorMaps key={b.id} b={b} rows={tableRows} legacy={result ? <MapsTab r={result} kit={null} /> : null} />}
             {tab === 'research' && <ResearchTab key={b.id} b={b} legacy={result ? (
               <div className="space-y-3">
