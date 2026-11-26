@@ -202,6 +202,31 @@ def _own_positions(db: Session, b: Business, keywords: list[str]) -> dict[str, i
     return out
 
 
+def kd_known(db: Session, b: Business, keywords: list[str]) -> dict[str, int]:
+    """The SEO difficulty already read for these keywords in the Keyword Workspace, by exact keyword: one figure for a keyword, wherever it is shown."""
+    from ..models import KeywordCandidate  # noqa: PLC0415
+    from .keyword_workspace import merge_key  # noqa: PLC0415
+    keys = {merge_key(k): k for k in keywords}
+    out: dict[str, int] = {}
+    if not keys:
+        return out
+    for c in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.norm.in_(list(keys)), KeywordCandidate.kd.is_not(None))):
+        out[keys[c.norm]] = c.kd
+    return out
+
+
+def share_kd(db: Session, b: Business, keyword: str, score: int, at: Any) -> None:
+    """A difficulty read anywhere is kept for the same keyword everywhere: on its competitor rows and in the Keyword Workspace."""
+    from ..models import CompetitorKeyword, KeywordCandidate  # noqa: PLC0415
+    from .keyword_workspace import merge_key  # noqa: PLC0415
+    for row in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.keyword == keyword)):
+        row.kd, row.kd_at = score, at
+    cand = db.scalar(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.norm == merge_key(keyword)))
+    if cand is not None and cand.kd != score:
+        cand.kd = score
+        cand.kd_detail = {**(cand.kd_detail or {}), "at": at.isoformat(), "note": "Read from the competitor keywords"}
+
+
 METRICS_FRESH_DAYS = 30  # a keyword Google Keyword Planner answered for is not asked again for this long, unless a sync is asked for
 
 
@@ -292,8 +317,9 @@ def gap(db: Session, b: Business, sync: bool = False) -> dict[str, Any]:
 
     kept = list(db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.domain.in_(domains or [""]))))  # only the chosen competitors: a found one that was not chosen feeds nothing
     stats = fill_missing(db, b, kept, sync=sync)
+    shared = kd_known(db, b, [r.keyword for r in kept if r.kd is None])  # read in the Keyword Workspace
     for r in kept:
-        add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, r.traffic, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc, kd=r.kd)
+        add(r.keyword, r.domain, r.position, r.url, "ranked", r.volume, r.traffic, intent=r.intent, difficulty=r.difficulty, cpc=r.cpc, kd=r.kd if r.kd is not None else shared.get(r.keyword))
         s = reads.setdefault(r.domain, {"domain": r.domain, "keywords": 0, "read_at": None, "from_google": 0})
         s["keywords"] += 1
         s["read_at"] = max(filter(None, [s["read_at"], r.read_at.isoformat() if r.read_at else None]), default=None)
@@ -376,8 +402,7 @@ def read_kd(db: Session, b: Business, limit: int = KD_BATCH, force: bool = False
             if err and err not in out["errors"]:
                 out["errors"].append(err)
             continue
-        for row in db.scalars(select(CompetitorKeyword).where(CompetitorKeyword.business_id == b.id, CompetitorKeyword.keyword == kw)):
-            row.kd, row.kd_at = score, now
+        share_kd(db, b, kw, score, now)
         out["read"] += 1
     db.commit()
     return out

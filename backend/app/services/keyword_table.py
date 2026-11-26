@@ -95,7 +95,13 @@ def merge(db: Session, b: Business, stored: dict[str, Any] | None) -> dict[str, 
     ga, ga_state = _ga_rows(db, b)
     out = []
     brand = gc._brand_strict(b)
-    for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.volume.desc().nullslast(), Keyword.keyword)):
+    tracked = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.volume.desc().nullslast(), Keyword.keyword)))
+    try:  # the real SEO difficulty read for a keyword anywhere (Keyword Workspace, competitor tabs) is the one shown here too
+        from . import competitor_keyword_report as _ck  # noqa: PLC0415
+        real = _ck.kd_known(db, b, [k.keyword for k in tracked])
+    except Exception:  # noqa: BLE001 -- the table must open even if this lookup fails
+        real = {}
+    for k in tracked:
         s = slow.get(k.keyword) or {}
         src = k.source or {}
         target = k.target_url
@@ -103,7 +109,7 @@ def merge(db: Session, b: Business, stored: dict[str, Any] | None) -> dict[str, 
         shown = target or (sug or {}).get("url") or s.get("ranking_url")
         landing = ga.get(path_of(shown)) if shown else None
         out.append({"id": k.id, "keyword": k.keyword, "source": {"kind": src.get("kind"), "label": src.get("label")}, "intent": k.intent, "cluster": k.cluster, "priority": k.priority,
-                    "volume": k.volume, "difficulty": k.difficulty, "rank": s.get("rank", k.rank), "change": s.get("change"), "best": s.get("best"), "impressions": s.get("impressions"), "clicks": s.get("clicks"),
+                    "volume": k.volume, "difficulty": real.get(k.keyword, k.difficulty), "difficulty_real": k.keyword in real, "rank": s.get("rank", k.rank), "change": s.get("change"), "best": s.get("best"), "impressions": s.get("impressions"), "clicks": s.get("clicks"),
                     "ctr": s.get("ctr"), "ranking_url": s.get("ranking_url"), "ranking_path": path_of(s["ranking_url"]) if s.get("ranking_url") else None, "checked": s.get("checked"),
                     "status": s.get("status") or ("unchecked" if not k.rank else None), "label": s.get("label"), "why": s.get("why"), "used_in": s.get("used_in") or [], "articles": s.get("articles") or 0,
                     "ai": s.get("ai") or {"tracked": False, "mentioned": None}, "target_url": target, "target_path": path_of(target) if target else None, "mapped": bool(target),

@@ -321,6 +321,14 @@ def pages(db: Session, b: Business, domains: list[str], limit: int = 200) -> lis
     for e in out:
         e["list"] = sorted(e["list"], key=lambda k: (-(k["traffic"] or 0), -(k["volume"] or 0)))[:PAGE_KEYWORDS]
     wanted = list({k["keyword"] for e in out for k in e["list"]})
+    shared = ck.kd_known(db, b, [k["keyword"] for e in out for k in e["list"] if k.get("kd") is None])  # read in the Keyword Workspace
+    for e in out:
+        for k in e["list"]:
+            if k.get("kd") is None and k["keyword"] in shared:
+                k["kd"] = shared[k["keyword"]]
+        top = next((k for k in e["list"] if k["keyword"] == e.get("top_keyword")), None)
+        if top and top.get("kd") is not None:
+            e["top_kd"] = top["kd"]
     mine = ck._own_positions(db, b, wanted) if wanted else {}
     for e in out:
         e["traffic"] = round(e["traffic"])

@@ -485,6 +485,11 @@ def measure_difficulty(db: Session, b: Business, ids: list[int]) -> list[dict[st
         if res and res.get("score") is not None:
             r.kd = int(res["score"])
             r.kd_detail = {"at": _now().isoformat(), "parts": res["formula"], "sites": res["sites_with_figures"], "of": res["sites"], "weight_used": res["weight_used"]}
+            try:  # the same keyword shows the same difficulty on the competitor tabs
+                from . import competitor_keyword_report as _ck  # noqa: PLC0415
+                _ck.share_kd(db, b, r.keyword, r.kd, _now())
+            except Exception as exc:  # noqa: BLE001
+                log.warning("sharing the difficulty of %s failed: %s", r.keyword, exc)
             out.append({"id": r.id, "kd": r.kd, "detail": r.kd_detail})
         else:
             out.append({"id": r.id, "kd": None, "error": err or "Google gave too few results with figures to score this keyword."})

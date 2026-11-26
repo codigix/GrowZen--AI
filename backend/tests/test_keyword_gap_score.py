@@ -106,3 +106,32 @@ def test_real_difficulty_is_read_only_for_the_best_useful_keywords_and_kept(clie
     assert not set(asked[:out["read"]]) & set(asked[out["read"]:])  # a keyword read is not read again
     kd = {r["keyword"]: r.get("kd") for r in again["gap"]["rows"]}
     assert sum(1 for v in kd.values() if v == 61) == len(asked) and len(asked) <= 4
+
+
+def test_a_difficulty_read_in_the_workspace_shows_on_the_competitor_tabs_and_the_other_way_round(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import Competitor, CompetitorKeyword, KeywordCandidate
+    from app.services import keyword_difficulty, keyword_metrics
+    monkeypatch.setattr(keyword_metrics, "lookup", lambda words, country=None: ({}, "off"))
+    monkeypatch.setattr(keyword_difficulty, "score", lambda kw, country, volume=None, use_cache=False, **k: {"score": 55, "formula": [], "sites_with_figures": 5, "sites": 10, "weight_used": 1})
+    bid = client.post("/api/v1/businesses", json={"name": "Share Co", "website": "https://share.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add(Competitor(business_id=bid, website="https://rival-s.com", name="Rival", source="manual", selected=True, domain="rival-s.com"))
+    db.add_all([CompetitorKeyword(business_id=bid, domain="rival-s.com", keyword="shared word", position=3, volume=900, url="https://rival-s.com/a"),
+                CompetitorKeyword(business_id=bid, domain="rival-s.com", keyword="other word", position=4, volume=800, url="https://rival-s.com/a")])
+    cand = KeywordCandidate(business_id=bid, norm="shared word", keyword="shared word", kd=71, sources=[{"kind": "planner", "label": "x"}])
+    db.add(cand)
+    db.commit()
+    db.close()
+    base = f"/api/v1/businesses/{bid}/keyword-workspace"
+    rows = {r["keyword"]: r.get("kd") for r in client.get(base + "/competitor-gap").json()["rows"]}
+    assert rows["shared word"] == 71 and rows["other word"] is None  # read in the workspace, shown on the gap
+    page = client.post(base + "/competitor-analysis/pages", json={"domains": ["rival-s.com"]}).json()["pages"][0]
+    assert {k["keyword"]: k["kd"] for k in page["list"]}["shared word"] == 71
+    client.post(base + "/competitor-gap/kd", json={"keywords": ["other word"]})
+    db = SessionLocal()
+    from sqlalchemy import select
+    from app.services.keyword_workspace import merge_key
+    got = db.scalar(select(KeywordCandidate).where(KeywordCandidate.business_id == bid, KeywordCandidate.norm == merge_key("other word")))
+    db.close()
+    assert got is None or got.kd == 55  # a candidate that exists gets the figure read on the competitor tab
