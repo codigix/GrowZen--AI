@@ -1,12 +1,14 @@
 """The keyword workspace of a project: every keyword from every source in one list, with where it came from; collect, compare, pick."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..auth import User, current_user
 from ..deps import get_business
-from ..models import Business
+from ..models import Business, KeywordCandidate
+from ..services import ai
 from ..services import keyword_workspace as kw
 from ..services.activity import log
 
@@ -124,6 +126,16 @@ class IdeasIn(BaseModel):
 @router.post("/add")
 def add(body: IdeasIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     return {"added": kw.add_ideas(db, b, body.ideas, body.label)}
+
+
+@router.post("/relevance")
+def relevance(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Checks the keywords not checked yet (at most 40 a call) against this business: another company's brand, another service or place is set aside with the reason. Nothing is hidden without an AI."""
+    from ..services import keyword_fit  # noqa: PLC0415
+    rows = list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)))
+    out = keyword_fit.judge(db, b, rows, limit=40)
+    db.commit()
+    return {**out, "remaining": len(keyword_fit.unchecked(rows)), "ai": ai.is_configured()}
 
 
 @router.post("/collect")

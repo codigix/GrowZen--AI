@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Audit, Business, Keyword, KeywordCandidate
-from . import competitor_keywords as ck, keyword_metrics, market
+from . import ai, competitor_keywords as ck, keyword_fit, keyword_metrics, market
 from .providers.base import intent_of
 
 log = logging.getLogger("seo.keyword_workspace")
@@ -571,7 +571,7 @@ def overview(db: Session, b: Business, *, source: str = "", tag: str = "", q: st
             "sources": [{"kind": k, "label": v, "count": counts_src[k]} for k, v in SOURCES.items()],
             "tags": [{"tag": t, "label": v, "count": counts_tag[t]} for t, v in TAGS.items()],
             "totals": {"suggested": sum(1 for i in items if i["suggested"] and not i["picked"] and not i["dismissed"]), "all": len(items), "open": sum(1 for i in items if not i["picked"] and not i["dismissed"]), "picked": sum(1 for i in items if i["picked"]), "dismissed": sum(1 for i in items if i["dismissed"])},
-            "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": shown, "shown": len(out)}
+            "unchecked": len(keyword_fit.unchecked(rows)), "fit_check": ai.is_configured(), "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": shown, "shown": len(out)}
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- Google Search Console: how each keyword performs
@@ -651,6 +651,11 @@ def add_ideas(db: Session, b: Business, ideas: list[dict[str, Any]], label: str)
     existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
     n = _add(db, b, [{"keyword": i.get("keyword"), "kind": "google_ideas", "label": label, "detail": i.get("detail") or label, "volume": i.get("volume")} for i in ideas if i.get("keyword")], existing)
     db.commit()
+    try:  # what was just added is checked against the business at once: another company's keywords do not stay in this project's list
+        keyword_fit.judge(db, b, list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))), limit=60)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 -- the check never blocks adding
+        log.warning("relevance check after add skipped: %s", exc)
     return n
 
 

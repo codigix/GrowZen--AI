@@ -47,3 +47,24 @@ def test_the_same_keyword_twice_in_one_request_is_saved_once(client, monkeypatch
     assert sorted(k["keyword"] for k in rows) == ["lehenga on rent", "saree rental pune"]
     src = next(k for k in rows if k["keyword"] == "saree rental pune")["source"]
     assert {s["label"] for s in src["sources"]} == {"Competitor keywords: a.example", "Competitor keywords: b.example"}
+
+
+def test_keywords_not_checked_yet_are_checked_against_the_project_and_unrelated_ones_set_aside(client, monkeypatch):
+    from app.db import SessionLocal
+    from app.models import KeywordCandidate
+    from app.services import ai
+    monkeypatch.setattr(ai, "is_configured", lambda: True)
+    monkeypatch.setattr(ai, "complete_json", lambda system, user, **k: {"results": [{"i": 0, "fit": "yes", "why": "a listed service", "for": "clinics"}, {"i": 1, "fit": "no", "why": "another company's brand", "for": ""}]})
+    bid = client.post("/api/v1/businesses", json={"name": "Fit Co", "website": "https://fit.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add_all([KeywordCandidate(business_id=bid, norm="seo for clinics", keyword="seo for clinics", sources=[{"kind": "planner", "label": "x"}]),
+                KeywordCandidate(business_id=bid, norm="semrush seo tool", keyword="semrush seo tool", sources=[{"kind": "competitors", "label": "x"}])])
+    db.commit()
+    db.close()
+    base = f"/api/v1/businesses/{bid}/keyword-workspace"
+    before = client.get(base).json()
+    assert before["unchecked"] == 2 and before["fit_check"] is True
+    out = client.post(base + "/relevance").json()
+    assert out["checked"] == 2 and out["hidden"] == 1 and out["remaining"] == 0
+    after = client.get(base).json()
+    assert [i["keyword"] for i in after["items"]] == ["seo for clinics"] and after["unchecked"] == 0

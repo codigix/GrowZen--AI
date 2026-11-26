@@ -217,6 +217,28 @@ export default function KeywordWorkspace({ b, onUse }) {
     trendsAsked.current = wordsKey;
     api(`/businesses/${b.id}/keyword-workspace/trends`, { method: 'POST', timeout: 120000 }).then(res => { if (res.filled) r.reload(true); }).catch(() => {});
   }, [wordsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Only keywords that belong to this project stay in the list: the ones not checked yet are checked against the business by themselves (another company's brand, another service or place is set aside with the reason)
+  const [fit, setFit] = useState({ busy: false, hidden: 0 });
+  const fitAsked = useRef('');
+  useEffect(() => {
+    const left = d?.unchecked || 0;
+    if (!left || !d?.fit_check || fitAsked.current === `${b.id}|${left}`) return undefined;
+    fitAsked.current = `${b.id}|${left}`;
+    let live = true;
+    (async () => {
+      setFit(f => ({ ...f, busy: true }));
+      let hidden = 0;
+      try {
+        for (let round = 0; round < 8; round += 1) {
+          const out = await api(`/businesses/${b.id}/keyword-workspace/relevance`, { method: 'POST', timeout: 180000 });
+          hidden += out.hidden || 0;
+          if (!live || !out.checked || !out.remaining) break;
+        }
+      } catch { /* the list stays as it is */ }
+      if (live) { setFit({ busy: false, hidden }); r.reload(true); }
+    })();
+    return () => { live = false; };
+  }, [d?.unchecked, b.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // searches per month for the chosen time: the 12-month figure is Google's own average; 6 and 3 are the average of those last months; or one month
   const searchesIn = (m) => {
     if (period === '12') return m.volume;
@@ -307,6 +329,9 @@ export default function KeywordWorkspace({ b, onUse }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 pb-20">
       <ErrorNote>{error}</ErrorNote>
+      {fit.busy && <div className="flex items-center gap-2 rounded-lg bg-indigo-50 ring-1 ring-indigo-200 px-3 py-2 text-13 text-indigo-900"><Loader2 size={14} className="animate-spin" />Checking which keywords belong to {b.name || 'this project'}…</div>}
+      {!fit.busy && fit.hidden > 0 && <div className="rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3 py-2 text-13 text-slate-700">{fit.hidden} keyword{fit.hidden === 1 ? '' : 's'} did not belong to this project (another company's brand, service or place) and {fit.hidden === 1 ? 'was' : 'were'} put under Set aside, with the reason. You can put any back.</div>}
+      {!fit.busy && (d.unchecked || 0) > 0 && !d.fit_check && <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-13 text-amber-900">{d.unchecked} keyword{d.unchecked === 1 ? ' has' : 's have'} not been checked against this project, because no AI is set up for the relevance check. Unrelated keywords may show here.</div>}
 
       {/* What is in the list, the one thing to do first, and the way out of the page; the views of the list are the tabs under it */}
       <div className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm">
