@@ -68,3 +68,12 @@ def test_keywords_not_checked_yet_are_checked_against_the_project_and_unrelated_
     assert out["checked"] == 2 and out["hidden"] == 1 and out["remaining"] == 0
     after = client.get(base).json()
     assert [i["keyword"] for i in after["items"]] == ["seo for clinics"] and after["unchecked"] == 0
+
+
+def test_nearby_areas_lists_the_areas_google_maps_names_without_districts_or_the_city(monkeypatch):
+    from app.services import keywords
+    from types import SimpleNamespace
+    b = SimpleNamespace(lat=18.6, lng=73.8, area="Pimpri-Chinchwad, Pune", city="Pune")
+    monkeypatch.setattr(keywords, "_google_ring", lambda bb: ["Wakad", "Mulshi Subdistrict", "Pune", "Nigdi", "wakad"])
+    monkeypatch.setattr(keywords, "_cached", lambda key, ttl, fetch: ["Hinjewadi", "Nigdi"])
+    assert keywords.nearby_areas(b) == ["Wakad", "Nigdi", "Hinjewadi"]

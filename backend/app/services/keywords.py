@@ -86,8 +86,58 @@ def autocomplete(query: str, gl: str = "in") -> list[tuple[str, int]]:
     return _cached(("autocomplete", gl, query.lower()), DAY, fetch)
 
 
-def nearby_areas(b: Business, limit: int = 8) -> list[str]:
-    """Localities around the business (OpenStreetMap), nearest first, without its own area."""
+WEEK = 7 * 24 * 3600
+_ring_lock = threading.Lock()
+_ring_jobs: dict[tuple, Any] = {}
+_ring_pool = ThreadPoolExecutor(max_workers=1)
+
+
+def _google_ring(b: Business) -> list[str]:
+    """Localities Google Maps names around the business: its map position is looked up at points on two rings (3 and 6 km, eight directions each), and every different area name found is kept,
+    nearest ring first. Needs the Google Maps key; one Geocoding request per point (16 at most), kept for a week."""
+    import math  # noqa: PLC0415
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+    from . import discovery, keyword_locations  # noqa: PLC0415
+    if b.lat is None or b.lng is None or not discovery.places_enabled():
+        return []
+    country = getattr(b, "country", None) or "IN"
+
+    def fetch() -> list[str]:
+        points = [(km, math.radians(deg)) for km in (3, 6) for deg in range(0, 360, 45)]
+
+        def one(pt):
+            km, rad = pt
+            lat = b.lat + (km / 111.0) * math.cos(rad)
+            lng = b.lng + (km / (111.0 * max(0.2, math.cos(math.radians(b.lat))))) * math.sin(rad)
+            try:
+                got = keyword_locations.place_at(lat, lng, country)
+            except Exception:  # noqa: BLE001 -- one point failing must not lose the others
+                got = None
+            return km, (got or {}).get("area")
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            found = list(pool.map(one, points))
+        out: list[str] = []
+        for _km, name in sorted((x for x in found if x[1]), key=lambda x: x[0]):
+            if name not in out:
+                out.append(name)
+        return out
+    key = ("nearby-google", round(b.lat, 3), round(b.lng, 3))
+    with _ring_lock:  # the first look-up takes some seconds: it runs in the background, the page waits a few seconds for it, and the areas are there from the next load on
+        job = _ring_jobs.get(key)
+        if job is None:
+            job = _ring_jobs[key] = _ring_pool.submit(_cached, key, WEEK, fetch)
+    try:
+        out = job.result(timeout=6)
+    except Exception:  # noqa: BLE001 -- not ready yet, or Google did not answer: the other areas are shown now
+        return []
+    with _ring_lock:
+        _ring_jobs.pop(key, None)
+    return out
+
+
+def nearby_areas(b: Business, limit: int = 16) -> list[str]:
+    """Localities around the business, nearest first, without its own area: the areas Google Maps names around it first, then OpenStreetMap's suburbs and neighbourhoods."""
     if b.lat is None or b.lng is None:
         return []
 
@@ -106,8 +156,8 @@ def nearby_areas(b: Business, limit: int = 8) -> list[str]:
         return found
     own = {(b.area or "").split(",")[0].strip().lower(), (b.city or "").strip().lower()}
     out: list[str] = []
-    for name in _cached(("nearby", round(b.lat, 3), round(b.lng, 3)), DAY, fetch):
-        if name.lower() not in own and name not in out and len(name) <= 40:
+    for name in [*_google_ring(b), *_cached(("nearby", round(b.lat, 3), round(b.lng, 3)), DAY, fetch)]:
+        if name.lower() not in own and name.lower() not in {x.lower() for x in out} and len(name) <= 40 and not re.search(r"(sub)?district|taluka|division", name, re.I) and name.lower() != (b.city or "").strip().lower():
             out.append(name)
     return out[:limit]
 

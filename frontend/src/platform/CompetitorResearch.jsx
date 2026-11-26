@@ -57,14 +57,52 @@ function SaveTable({ b, rows, cols, filters, label, kind, exportName, initialSor
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------- 1. keyword discovery
+/** Adds a place the list does not have: typed, then chosen from what Google Maps suggests inside the country. */
+function AddPlace({ b, country, have, onAdd }) {
+  const [text, setText] = useState('');
+  const [found, setFound] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const seq = useRef(0);
+  const type = (v) => {
+    setText(v); setNote('');
+    const mine = ++seq.current;
+    if (v.trim().length < 2) { setFound([]); return; }
+    setBusy(true);
+    setTimeout(() => {
+      if (mine !== seq.current) return;
+      api(`/businesses/${b.id}/keyword-workspace/area-search?q=${encodeURIComponent(v.trim())}&country=${country}`)
+        .then(r => { if (mine === seq.current) setFound((r.results || []).filter(x => !have.includes(x.name))); })
+        .catch(e => { if (mine === seq.current) { setFound([]); setNote(e.message || 'Google Maps did not answer.'); } })
+        .finally(() => { if (mine === seq.current) setBusy(false); });
+    }, 350);
+  };
+  return (
+    <div className="mt-2">
+      <div className="relative max-w-sm">
+        <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+        <input value={text} onChange={e => type(e.target.value)} placeholder="Add a place from Google Maps, e.g. Wakad" aria-label="Add a place" className="h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 pl-8 pr-8 text-13" />
+        {busy && <Loader2 size={14} className="absolute right-2.5 top-2.5 animate-spin text-slate-400" />}
+        {found.length > 0 && (
+          <ul className="absolute z-20 mt-1 w-full rounded-lg bg-white ring-1 ring-slate-200 shadow-lg overflow-hidden" role="listbox">
+            {found.map(x => <li key={x.label}><button type="button" onClick={() => { onAdd(x.name); setText(''); setFound([]); }} className="w-full text-left px-3 py-2 text-13 hover:bg-indigo-50 cursor-pointer"><span className="font-medium text-slate-900">{x.name}</span>{x.label !== x.name && <span className="block text-11.5 text-slate-500">{x.label}</span>}</button></li>)}
+          </ul>
+        )}
+      </div>
+      {note && <p className="mt-1 text-12 text-amber-700">{note}</p>}
+    </div>
+  );
+}
+
 function Discovery({ b, ctx, disc, setDisc }) {
   const [seeds, setSeeds] = useState(null);
   const [areas, setAreas] = useState([]);
+  const [added, setAdded] = useState([]); // places looked up on Google Maps and added here
   const [busy, error, run] = useAction();
   useEffect(() => { if (ctx && seeds == null) { setSeeds((ctx.seeds || []).slice(0, 3)); setAreas([]); } }, [ctx]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ctx || seeds == null) return <div className="flex items-center gap-2 py-8 text-13 text-slate-500"><Loader2 size={16} className="animate-spin" />Loading what the project offers…</div>;
   const services = (ctx.business?.services || []).filter(x => x && !seeds.includes(String(x).toLowerCase()));
-  const places = [...new Set([...(ctx.areas || []), ...(ctx.nearby || [])])];
+  const places = [...new Set([...(ctx.areas || []), ...(ctx.nearby || []), ...added])];
   const find = () => run('f', async () => setDisc(await api(`/businesses/${b.id}/keywords/discover`, { method: 'POST', body: { seeds, areas }, timeout: 150000 })));
   const rows = (disc?.keywords || []).map(k => ({ ...k, id: k.keyword, kd: k.difficulty }));
   const cols = [
@@ -92,7 +130,7 @@ function Discovery({ b, ctx, disc, setDisc }) {
           {services.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-1.5 text-12 text-slate-500">Your services: {services.slice(0, 8).map(x => <button key={x} type="button" disabled={seeds.length >= 6} onClick={() => setSeeds(s => [...new Set([...s, norm(x)])].slice(0, 6))} className="px-2 py-0.5 rounded-full border border-slate-200 hover:bg-slate-50 cursor-pointer disabled:opacity-40">+ {x}</button>)}</div>}
         </div>
         {places.length > 0 && <div><div className="text-13 font-semibold text-slate-900">Target locations <span className="font-normal text-slate-500">(optional)</span></div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">{places.slice(0, 14).map(p => <button key={p} type="button" aria-pressed={areas.includes(p)} onClick={() => setAreas(a => (a.includes(p) ? a.filter(x => x !== p) : [...a, p].slice(0, 10)))} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${areas.includes(p) ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{p}</button>)}</div></div>}
+          <div className="mt-1.5 flex flex-wrap gap-1.5">{places.slice(0, 30).map(p => <button key={p} type="button" aria-pressed={areas.includes(p)} onClick={() => setAreas(a => (a.includes(p) ? a.filter(x => x !== p) : [...a, p].slice(0, 10)))} className={`h-8 px-3 rounded-full text-12.5 font-semibold cursor-pointer ring-1 ring-inset ${areas.includes(p) ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}>{p}</button>)}</div><AddPlace b={b} country={b.country || 'IN'} have={places} onAdd={(name) => { setAdded(a => [...new Set([...a, name])]); setAreas(a => (a.includes(name) ? a : [...a, name].slice(0, 10))); }} /></div>}
         <div className="flex flex-wrap items-center gap-3"><Button variant="primary" icon={Search} busy={busy === 'f'} disabled={!seeds.length} onClick={find}>Find keywords</Button>
           <span className="text-12 text-slate-500">Reads Google's own suggestions for your seeds, places, questions and the competitors' ideas, then adds searches and difficulty from Keyword Planner when it is connected.</span></div>
         {error && <ErrorNote>{error}</ErrorNote>}
