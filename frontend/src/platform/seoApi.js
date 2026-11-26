@@ -103,6 +103,11 @@ async function request(path, { method = 'GET', body, raw = false, repeat = false
     const b = await r.json().catch(() => ({}));
     // Session ended: the app shell listens for this and shows the login page.
     if (r.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new Event('seo:unauthorized'));
+    // The project this page is working on no longer exists (deleted, or recreated under a new number): tell the project store, which switches to one that does.
+    if (r.status === 404 && b?.detail === 'Business not found') {
+      const m = /^\/businesses\/(\d+)(\/|$|\?)/.exec(path);
+      if (m) window.dispatchEvent(new CustomEvent('seo:project-missing', { detail: Number(m[1]) }));
+    }
     if (r.status === 403 && b?.detail?.code === 'project_code_required' && codeHandler && !codeTried && await codeHandler(b.detail.business_id)) {
       return request(path, { method, body, raw, repeat, codeTried: true });
     }

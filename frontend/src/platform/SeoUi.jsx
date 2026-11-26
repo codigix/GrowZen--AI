@@ -54,6 +54,20 @@ export const useBusinesses = () => {
 
 // Selected business in current browser
 const KEY = 'seoBusinessId';
+// A request said the selected project does not exist any more: forget it, reload the account's project list and let the page fall back to the first project it owns.
+// Once per missing project, so a project that stays missing cannot start a loop.
+const healed = new Set();
+if (typeof window !== 'undefined') {
+  window.addEventListener('seo:project-missing', async (e) => {
+    const id = Number(e.detail);
+    if (!id || healed.has(id)) return;
+    healed.add(id);
+    try { if (Number(localStorage.getItem(KEY)) === id) localStorage.removeItem(KEY); } catch (err) { /* private window */ }
+    await refreshBusinesses();
+    window.dispatchEvent(new Event('seo-business'));
+  });
+}
+
 export const useSeoBusiness = () => {
   const { list } = useBusinesses();
   const read = () => { try { return Number(localStorage.getItem(KEY)) || null; } catch (e) { return null; } };
