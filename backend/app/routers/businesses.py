@@ -186,8 +186,15 @@ def create_business(body: BusinessIn, background: BackgroundTasks, db: Session =
 
 
 @router.get("/{business_id}")
-def get_one(b: Business = Depends(get_business)):
-    return row(b) | {"services_on": project_services.enabled(b)}
+def get_one(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    out = row(b) | {"services_on": project_services.enabled(b)}
+    if not out.get("contact_email") and b.connection_id:
+        from ..models import GoogleConnection
+        conn = db.get(GoogleConnection, b.connection_id)
+        if conn and conn.email:
+            out["contact_email"] = conn.email
+            out["connection_email"] = conn.email
+    return out
 
 
 @router.patch("/{business_id}")

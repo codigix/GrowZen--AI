@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2, BookOpen, Send } from 'lucide-react';
+import { ExternalLink, Search, RefreshCw, Download, ShieldAlert, CheckCircle2, Info, Sparkles, Link2, Plus, Trash2, Loader2, BookOpen, Send, ChevronRight, ChevronDown } from 'lucide-react';
 import { SeoShell, Card, Button, Badge, Stat, ErrorNote, Modal, Field, inputCls, useAction, useToast, useDoubleConfirm, SkList } from './SeoUi';
 import Select from '../components/Select';
 import { Act, Head, OpenAct } from './TableBits';
@@ -157,12 +157,28 @@ const linkValue = (x, k) => ({
 })[k];
 function LinksTable({ d, showScores, resetKey, site }) {
   const { sorted, sort, onSort } = useSorted(d.links || NONE, linkValue);
-  const pg = usePager(sorted, { size: 25, resetKey });
+  // One row per linking site; its pages are inside it and show when it is opened. The pages of a site stay in the order of the chosen sort.
+  const groups = useMemo(() => {
+    const map = new Map();
+    for (const x of sorted) { const k = x.source_domain || x.source_url; if (!map.has(k)) map.set(k, []); map.get(k).push(x); }
+    return [...map.entries()].map(([domain, links]) => ({ domain, links }));
+  }, [sorted]);
+  const pg = usePager(groups, { size: 25, resetKey });
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (dom) => setOpen(prev => { const n = new Set(prev); if (n.has(dom)) n.delete(dom); else n.add(dom); return n; });
+  const allOpen = groups.length > 0 && groups.every(g => g.links.length < 2 || open.has(g.domain));
+  const toggleAll = () => setOpen(allOpen ? new Set() : new Set(groups.filter(g => g.links.length > 1).map(g => g.domain)));
   const csv = () => sorted.map(x => [x.source_url, x.source_domain, x.is_live ? 'Live' : x.status_label, x.anchor || '', x.target_url, (FOLLOW[x.follow] || FOLLOW.dofollow)[0], x.category?.label || '',
     ...(showScores ? [num(x.metrics?.da), num(x.metrics?.pa), num(x.metrics?.spam)] : []), num(x.metrics?.crawler?.links), num(x.metrics?.crawler?.pages), (USEFUL[x.useful] || USEFUL.unscored)[0], x.useful_why || '', x.first_seen || '']);
   return (
     <>
       <CsvBar name={`backlinks-${site}`} head={['Linking page', 'Linking site', 'Status', 'Anchor text', 'Goes to', 'Follow', 'Category', ...(showScores ? ['DA', 'PA', 'Spam score'] : []), 'Links from this site', 'Pages with the links', 'Useful?', 'Why', 'First seen']} rows={csv} tip={`Exports the ${sorted.length} loaded links (the page loads at most 100 at a time)`} />
+      {groups.some(g => g.links.length > 1) && (
+        <div className="flex items-center gap-3 px-5 py-2 text-12 text-slate-500">
+          <span>{groups.length} sites · {sorted.length} links. Sites with several pages are shown as one row.</span>
+          <button type="button" onClick={toggleAll} className="font-semibold text-indigo-600 hover:underline">{allOpen ? 'Collapse all' : 'Expand all'}</button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1150px] text-13">
           <thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr>
@@ -174,10 +190,44 @@ function LinksTable({ d, showScores, resetKey, site }) {
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
             {d.state === 'no_target' && <Empty>Add the project's website first.</Empty>}
-            {pg.rows.map(x => (
-              <tr key={x.id} className="hover:bg-slate-50 align-middle">
+            {pg.rows.map(g => {
+              const first = g.links[0];
+              const many = g.links.length > 1;
+              const isOpen = open.has(g.domain);
+              const live = g.links.filter(l => l.is_live).length;
+              const follows = g.links.filter(l => l.follow === 'dofollow').length;
+              const anyNew = g.links.some(isNew);
+              const latest = g.links.map(l => l.last_seen).filter(Boolean).sort().slice(-1)[0];
+              const earliest = g.links.map(l => l.first_seen).filter(Boolean).sort()[0];
+              const best = Math.max(...g.links.map(l => (l.authority == null ? -1 : l.authority)));
+              return (
+                <React.Fragment key={g.domain}>
+                  {many && (
+                    <tr className="bg-slate-50/60 hover:bg-slate-100/70 align-middle cursor-pointer" onClick={() => toggle(g.domain)} aria-expanded={isOpen}>
+                      <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800">{best >= 0 ? best : <span className="text-slate-300 font-normal">—</span>}</td>
+                      <td className="px-3 py-3 max-w-[300px]">
+                        <span className="inline-flex items-center gap-1.5 max-w-full">
+                          <button type="button" onClick={(e) => { e.stopPropagation(); toggle(g.domain); }} aria-label={`${isOpen ? 'Hide' : 'Show'} the ${g.links.length} links from ${g.domain}`} className="grid h-5 w-5 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-200">{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
+                          <span className="truncate font-semibold text-slate-800">{g.domain}</span>
+                        </span>
+                        <span className="block pl-[26px] text-11.5 text-slate-400">{g.links.length} pages link to you{live < g.links.length && ` · ${live} live`}{anyNew && <span className="ml-1.5 rounded bg-emerald-50 px-1.5 text-emerald-700 font-medium">New</span>}</span>
+                      </td>
+                      <td className="px-3 py-3 text-slate-400 text-12">{isOpen ? '' : 'Open to see each page'}</td>
+                      <td className="px-3 py-3"></td>
+                      <td className="px-3 py-3 text-12 text-slate-500 whitespace-nowrap">{follows}/{g.links.length} follow</td>
+                      <td className="px-3 py-3 capitalize text-slate-600">{first.category?.label}</td>
+                      {showScores && <><td className="px-3 py-3 text-right"><Num v={first.metrics?.da} /></td><td className="px-3 py-3 text-right"><Num v={first.metrics?.pa} /></td><td className="px-3 py-3 text-right"><Num v={first.metrics?.spam} bad={(first.metrics?.spam ?? 0) >= 50} /></td></>}
+                      <td className="px-3 py-3 whitespace-nowrap"><SiteCell m={first.metrics} /></td>
+                      <td className="px-3 py-3"><Verdict u={first.useful} why={first.useful_why} /></td>
+                      <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{day(earliest)}</td>
+                      <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{ago(latest)}</td>
+                      <td className="px-3 py-3"></td>
+                    </tr>
+                  )}
+                  {(!many || isOpen) && g.links.map(x => (
+              <tr key={x.id} className={`hover:bg-slate-50 align-middle ${many ? 'bg-white' : ''}`}>
                 <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800">{x.authority ?? <span className="text-slate-300 font-normal">—</span>}</td>
-                <td className="px-3 py-3 max-w-[260px]"><a href={x.source_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate font-semibold">{x.source_domain}</span><ExternalLink size={11} className="shrink-0" /></a><span className="block truncate text-11.5 text-slate-400" title={x.source_url}>{path(x.source_url)}</span>{!x.is_live && <Badge tone="red">{x.status_label}</Badge>}</td>
+                <td className={`px-3 py-3 max-w-[260px] ${many ? 'pl-9 border-l-2 border-indigo-100' : ''}`}><a href={x.source_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate font-semibold">{x.source_domain}</span><ExternalLink size={11} className="shrink-0" /></a><span className="block truncate text-11.5 text-slate-400" title={x.source_url}>{path(x.source_url)}</span>{!x.is_live && <Badge tone="red">{x.status_label}</Badge>}</td>
                 <td className="px-3 py-3 max-w-[200px]"><span className="block truncate" title={x.anchor || ''}>{x.anchor || <span className="text-slate-300">no text</span>}</span><span className="inline-flex items-center gap-1.5 text-11.5 text-slate-400">{ANCHOR[x.anchor_type] || x.anchor_type}{isNew(x) && <span className="rounded bg-emerald-50 px-1.5 text-emerald-700 font-medium">New</span>}</span></td>
                 <td className="px-3 py-3 max-w-[160px]"><span className="block truncate text-slate-600" title={x.target_url}>{path(x.target_url)}</span></td>
                 <td className="px-3 py-3"><FollowBadge f={x.follow} /></td>
@@ -191,12 +241,15 @@ function LinksTable({ d, showScores, resetKey, site }) {
                   <OpenAct url={x.target_url} tip="Open your page: the page of your site this link points to." />
                 </span></td>
               </tr>
-            ))}
+                  ))}
+                </React.Fragment>
+              );
+            })}
             {d.state === 'ok' && !d.links.length && <Empty>{d.live_total ? 'No link matches these filters.' : 'No backlinks yet. Connect the crawler and press “Find backlinks now”.'}</Empty>}
           </tbody>
         </table>
       </div>
-      <Pager p={pg} label="links" />
+      <Pager p={pg} label="sites" />
     </>
   );
 }
