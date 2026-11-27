@@ -169,7 +169,12 @@ def _change(now: dict[str, Any], prev: dict[str, Any]) -> dict[str, float | None
 def report(ga: Ga4, prop: str, days: int = 28) -> dict[str, Any]:
     """The GA4 overview for one property: totals with the previous period, timeline, channels, countries, pages, devices, sources, realtime.
     A part Google refuses is recorded under `errors` and the rest still loads."""
+    from . import report_filter  # noqa: PLC0415
     end = datetime.now(ga.timezone(prop)).date() - timedelta(days=1)  # GA4's "last N days" stop at yesterday, in the property's own time zone
+    f = report_filter.current()
+    if f.has_period:  # the period chosen in the page header
+        end = min(f.end, end)
+        days = (end - min(f.start, end)).days + 1
     start = end - timedelta(days=days - 1)
     p_end, p_start = start - timedelta(days=1), start - timedelta(days=days)
     parts = {

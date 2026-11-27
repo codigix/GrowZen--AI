@@ -140,20 +140,30 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
   const searches = [...suggestedRows, ...marked.filter(k => k.group !== 'question')];
   const questions = marked.filter(k => k.group === 'question');
   const isTracked = (k) => k.tracked || trackedSet.has(k.keyword);
-  const pickCol = (id, list) => ({ id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8',
+  const pickCol = (id, list) => ({
+    id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8',
     header: (() => { const sel = list.filter(k => !isTracked(k)); const shownNow = (discRows.current[id] || sel).filter(k => !isTracked(k)); return <input type="checkbox" className="accent-indigo-600" aria-label="Select all shown" checked={shownNow.length > 0 && shownNow.every(k => selected.includes(k.keyword))} onChange={e => setSelected(s => (e.target.checked ? [...new Set([...s, ...shownNow.map(k => k.keyword)])] : s.filter(x => !shownNow.some(k => k.keyword === x))))} />; })(),
-    cell: k => <input type="checkbox" className="accent-indigo-600" disabled={isTracked(k)} checked={selected.includes(k.keyword)} onChange={() => setSelected(s => (s.includes(k.keyword) ? s.filter(x => x !== k.keyword) : [...s, k.keyword]))} aria-label={`Select ${k.keyword}`} /> });
-  const keywordCol = (tag) => ({ id: 'keyword', header: tag ? 'Question' : 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
-    cell: k => { const G = GROUPS[k.group]; return <>
-      <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
-      {k.reason && <div className="text-11.5 text-slate-500 mt-0.5">{k.reason}</div>}
-      {!tag && <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div>}</>; } });
-  const demandCol = { id: 'demand', header: live ? 'Searches / mo' : 'Demand', first: 'desc', value: k => (live && k.volume != null ? k.volume : k.stars ?? null), className: 'px-2 py-2 whitespace-nowrap',
-    cell: k => (live && k.volume != null ? <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span> : <Stars n={k.stars} />) };
+    cell: k => <input type="checkbox" className="accent-indigo-600" disabled={isTracked(k)} checked={selected.includes(k.keyword)} onChange={() => setSelected(s => (s.includes(k.keyword) ? s.filter(x => x !== k.keyword) : [...s, k.keyword]))} aria-label={`Select ${k.keyword}`} />
+  });
+  const keywordCol = (tag) => ({
+    id: 'keyword', header: tag ? 'Question' : 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
+    cell: k => {
+      const G = GROUPS[k.group]; return <>
+        <div className="text-slate-900" title={k.from_competitors || undefined}>{k.keyword}</div>{k.from_competitors && <div className="text-11 text-rose-700">{k.from_competitors}</div>}
+        {k.reason && <div className="text-11.5 text-slate-500 mt-0.5">{k.reason}</div>}
+        {!tag && <div className="mt-0.5 flex items-center gap-1.5"><span className={`text-10.5 font-semibold px-1.5 py-px rounded ring-1 ring-inset inline-flex items-center gap-1 ${G.tone}`}><G.icon size={10} /> {G.label}</span><span className="text-10.5 text-slate-400">{k.intent}</span></div>}</>;
+    }
+  });
+  const demandCol = {
+    id: 'demand', header: live ? 'Searches / mo' : 'Demand', first: 'desc', value: k => (live && k.volume != null ? k.volume : k.stars ?? null), className: 'px-2 py-2 whitespace-nowrap',
+    cell: k => (live && k.volume != null ? <span className="tabular-nums text-slate-900">{fmt(k.volume)}{k.trend != null && k.trend !== 0 && <span className={`ml-1.5 text-11 font-semibold inline-flex items-center ${k.trend > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{k.trend > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(k.trend)}%</span>}</span> : <Stars n={k.stars} />)
+  };
   const difficultyCol = { id: 'difficulty', header: 'Difficulty', value: k => k.difficulty ?? null, className: 'px-2 py-2 whitespace-nowrap', cell: k => { const [dl, dt] = kd(k.difficulty); return k.difficulty != null ? <Badge tone={dt}>{dl} · {k.difficulty}</Badge> : '—'; } };
   const websiteCol = { id: 'website', header: 'Your website', value: k => k.coverage?.status || null, className: 'px-2 py-2', cell: k => <Coverage c={k.coverage} /> };
-  const statusCol = { id: 'status', header: 'Status', right: true, value: k => (isTracked(k) ? (k.rank ? `Rank ${k.rank}` : 'Tracked') : 'Not tracked'), className: 'px-2 pr-4 py-2 text-right whitespace-nowrap',
-    cell: k => (isTracked(k) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <span className="inline-flex items-center gap-3"><button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>{k.apId && <button type="button" onClick={() => reject(k)} title="Not for me: do not suggest it again" className="text-11.5 font-semibold text-slate-500 hover:text-red-600 hover:underline cursor-pointer">Reject</button>}</span>) };
+  const statusCol = {
+    id: 'status', header: 'Status', right: true, value: k => (isTracked(k) ? (k.rank ? `Rank ${k.rank}` : 'Tracked') : 'Not tracked'), className: 'px-2 pr-4 py-2 text-right whitespace-nowrap',
+    cell: k => (isTracked(k) ? <span className="text-11.5 text-emerald-700 font-medium">{k.rank ? `Rank ${k.rank}` : 'Tracked'}</span> : <span className="inline-flex items-center gap-3"><button type="button" onClick={() => track([k])} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>{k.apId && <button type="button" onClick={() => reject(k)} title="Not for me: do not suggest it again" className="text-11.5 font-semibold text-slate-500 hover:text-red-600 hover:underline cursor-pointer">Reject</button>}</span>)
+  };
   const statusFilter = { id: 'status', label: 'Status', options: [['new', 'Not tracked yet'], ['tracked', 'Tracked']], test: (k, v) => (isTracked(k) ? v === 'tracked' : v === 'new') };
   const siteFilter = result?.website_checked ? [{ id: 'site', label: 'Website', options: [['gap', 'Content gaps'], ['covered', 'Covered']], test: (k, v) => (v === 'gap' ? k.coverage?.status === 'gap' : Boolean(k.coverage?.status) && k.coverage.status !== 'gap') }] : [];
 
@@ -210,39 +220,41 @@ function Discover({ b, tracked, onTracked, seedSearch }) {
             <span><b className={`tabular-nums ${result.website_checked && result.gaps ? 'text-red-600' : 'text-slate-900'}`}>{result.website_checked ? result.gaps : '—'}</b> content gaps</span>
             {result.trending_today.length > 0 && <span className="inline-flex flex-wrap items-center gap-1.5" title="Today's trending searches in India that mention your topics"><Flame size={13} className="text-orange-500" />Trending: {result.trending_today.slice(0, 5).map(x => <span key={x.keyword} className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 text-12">{x.keyword}</span>)}</span>}
           </div>
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
-        <Card pad={false} title={`Search keywords (${searches.length})`}
-          action={<Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword) && !isTracked(k)))}>Track {selected.length || ''}</Button>}>
-          <DataTable bare rows={searches} rowKey={k => k.keyword} pageSize={15} exportName="keyword-ideas" label="keywords" searchPlaceholder="Search keywords" minWidth={520} sizes={[10, 15, 25, 50]}
-            onState={st => { discRows.current.main = st.rows; }}
-            rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
-            empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
-            filters={[
-              { id: 'group', label: 'Type', options: [...(suggestedRows.length ? [['suggested', `Suggested (${suggestedRows.length})`]] : []), ...ORDER.filter(g => g !== 'question' && result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`])], test: (k, v) => k.group === v },
-              ...siteFilter,
-              { id: 'intent', label: 'Intent', options: [...new Set(searches.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
-              ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
-              statusFilter
-            ]}
-            columns={[pickCol('main', searches), keywordCol(false), demandCol, ...(live ? [difficultyCol] : []), { ...websiteCol, hide: true }, statusCol]} />
-        </Card>
-        <Card pad={false} title={`Questions to answer (${questions.length})`}
-          action={<span className="text-12 text-slate-500 hidden sm:inline">People ask these before they buy: answer them on your site</span>}>
-          <DataTable bare rows={questions} rowKey={k => k.keyword} pageSize={15} exportName="keyword-questions" label="questions" searchPlaceholder="Search questions" minWidth={520} sizes={[10, 15, 25, 50]}
-            onState={st => { discRows.current.q = st.rows; }}
-            rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
-            empty="Google had no questions for these services."
-            filters={[...siteFilter, statusFilter]}
-            columns={[
-              pickCol('q', questions),
-              { ...keywordCol(true), cell: k => <><div className="text-slate-900 font-medium">{k.keyword}?</div><div className="text-10.5 text-slate-400">{k.intent}</div></> },
-              { ...websiteCol, header: 'Answered on your site?', cell: k => (k.coverage?.status === 'gap' ? <span className="text-12 font-semibold text-red-600">Not answered yet</span> : k.coverage?.status ? <Coverage c={k.coverage} /> : <span className="text-12 text-slate-400">Not checked</span>) },
-              { id: 'answer', header: 'Answer it in', className: 'px-2 py-2',
-                cell: k => <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-12"><span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800">FAQ</span><span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-800">Google Q&amp;A</span><Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`} className="font-semibold text-indigo-700 hover:underline">Write a post</Link></span> },
-              statusCol
-            ]} />
-        </Card>
-      </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+            <Card pad={false} title={`Search keywords (${searches.length})`}
+              action={<Button size="sm" variant="primary" icon={Plus} busy={busy === 'track'} disabled={!selected.length} onClick={() => track(all.filter(k => selected.includes(k.keyword) && !isTracked(k)))}>Track {selected.length || ''}</Button>}>
+              <DataTable bare rows={searches} rowKey={k => k.keyword} pageSize={15} exportName="keyword-ideas" label="keywords" searchPlaceholder="Search keywords" minWidth={520} sizes={[10, 15, 25, 50]}
+                onState={st => { discRows.current.main = st.rows; }}
+                rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
+                empty={all.length ? 'No keywords match these filters.' : 'Google had no suggestions for these services. Try broader service names.'}
+                filters={[
+                  { id: 'group', label: 'Type', options: [...(suggestedRows.length ? [['suggested', `Suggested (${suggestedRows.length})`]] : []), ...ORDER.filter(g => g !== 'question' && result.counts[g]).map(g => [g, `${GROUPS[g].label} (${result.counts[g]})`])], test: (k, v) => k.group === v },
+                  ...siteFilter,
+                  { id: 'intent', label: 'Intent', options: [...new Set(searches.map(k => k.intent).filter(Boolean))].sort().map(x => [x, x]), test: (k, v) => k.intent === v },
+                  ...(live ? [{ id: 'kd', label: 'Difficulty', options: [['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard']], test: (k, v) => k.difficulty != null && kd(k.difficulty)[0].toLowerCase() === v }] : []),
+                  statusFilter
+                ]}
+                columns={[pickCol('main', searches), keywordCol(false), demandCol, ...(live ? [difficultyCol] : []), { ...websiteCol, hide: true }, statusCol]} />
+            </Card>
+            <Card pad={false} title={`Questions to answer (${questions.length})`}
+              action={<span className="text-12 text-slate-500 hidden sm:inline">People ask these before they buy: answer them on your site</span>}>
+              <DataTable bare rows={questions} rowKey={k => k.keyword} pageSize={15} exportName="keyword-questions" label="questions" searchPlaceholder="Search questions" minWidth={520} sizes={[10, 15, 25, 50]}
+                onState={st => { discRows.current.q = st.rows; }}
+                rowClass={k => (selected.includes(k.keyword) ? 'bg-indigo-50/50' : 'hover:bg-slate-50')}
+                empty="Google had no questions for these services."
+                filters={[...siteFilter, statusFilter]}
+                columns={[
+                  pickCol('q', questions),
+                  { ...keywordCol(true), cell: k => <><div className="text-slate-900 font-medium">{k.keyword}?</div><div className="text-10.5 text-slate-400">{k.intent}</div></> },
+                  { ...websiteCol, header: 'Answered on your site?', cell: k => (k.coverage?.status === 'gap' ? <span className="text-12 font-semibold text-red-600">Not answered yet</span> : k.coverage?.status ? <Coverage c={k.coverage} /> : <span className="text-12 text-slate-400">Not checked</span>) },
+                  {
+                    id: 'answer', header: 'Answer it in', className: 'px-2 py-2',
+                    cell: k => <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-12"><span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800">FAQ</span><span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-800">Google Q&amp;A</span><Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(k.keyword)}`} className="font-semibold text-indigo-700 hover:underline">Write a post</Link></span>
+                  },
+                  statusCol
+                ]} />
+            </Card>
+          </div>
         </>
       )}
       {toastNode}
@@ -474,7 +486,7 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
                     <button key={c} type="button" onClick={() => setComp(comp === c ? 'all' : c)} className={`w-full flex items-center gap-3 text-12.5 rounded px-1.5 py-1 cursor-pointer ${comp === c ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>
                       <span className="w-16 text-left text-slate-700">{COMPETITION[c].label}</span>
                       <span className="flex-1"><Meter value={compCounts[c]} max={rows.length} color={COMPETITION[c].bar} /></span>
-                      <span className="w-8 text-right tabular-nums text-slate-600">{compCounts[c]}</span>
+                      <span className="w-8  tabular-nums text-slate-600">{compCounts[c]}</span>
                     </button>
                   ))}
                 </div>
@@ -541,7 +553,7 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
                           <button type="button" onClick={() => setFocus(r.keyword)} className="text-left text-slate-900 hover:text-indigo-700 cursor-pointer">{r.keyword}</button>
                           {r.keyword.toLowerCase() === seed && <span className="ml-1.5 text-10.5 font-semibold px-1.5 py-px rounded bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200">Seed</span>}
                         </td>
-                        <td className="px-2 py-2 text-right tabular-nums text-slate-900 font-medium">{fmt(r.avg_monthly_searches)}</td>
+                        <td className="px-2 py-2  tabular-nums text-slate-900 font-medium">{fmt(r.avg_monthly_searches)}</td>
                         {data.include_monthly && <td className="px-2 py-2"><Sparkline points={r.monthly_search_volumes} /></td>}
                         <td className="px-2 py-2 text-right"><Change v={r.three_month_change} /></td>
                         <td className="px-2 py-2 text-right"><Change v={r.yoy_change} /></td>
@@ -552,7 +564,7 @@ function GooglePlanner({ b, tracked, onTracked, seedSearch }) {
                             {r.competition_index != null && <span className="text-11 tabular-nums text-slate-500">{r.competition_index}</span>}
                           </div>
                         </td>
-                        <td className="px-2 py-2 text-right tabular-nums text-slate-700 whitespace-nowrap">{bidRange(r)}</td>
+                        <td className="px-2 py-2  tabular-nums text-slate-700 whitespace-nowrap">{bidRange(r)}</td>
                         <td className="px-2 pr-6 py-2 text-right whitespace-nowrap">
                           {isTracked ? <span className="text-11.5 text-emerald-700 font-medium">Tracked</span>
                             : <button type="button" onClick={() => track([r])} disabled={busy === 'track'} className="text-11.5 font-semibold text-indigo-700 hover:underline cursor-pointer">Track</button>}
@@ -647,23 +659,23 @@ function PagePicker({ b, pages: fallback, value, onPick, onCancel, listId }) {
     <>
       <span ref={anchor} className="block h-8 text-12 text-slate-400">{value ? value.replace(/^https?:\/\/[^/]+/, '') || '/' : 'Choosing a page…'}</span>
       {createPortal(
-    <div ref={panel} style={{ position: 'fixed', top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: 360, zIndex: 80 }} className="max-w-[calc(100vw-16px)] rounded-lg bg-white ring-1 ring-slate-300 shadow-xl" onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}>
-      <div className="p-2 border-b border-slate-100"><input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} page${list.length === 1 ? '' : 's'}`} aria-label="Search the pages of your website" className={`${inputCls} w-full`} /></div>
-      <ul role="listbox" aria-label="Pages of your website" className="max-h-64 overflow-y-auto divide-y divide-slate-100">
-        <li><button type="button" role="option" aria-selected={!value} onClick={() => onPick('')} className="w-full text-left px-3 py-2 text-13 text-slate-600 hover:bg-slate-50 cursor-pointer">No page yet</button></li>
-        {shown.map(p => (
-          <li key={p.url} className={`flex items-center ${current(p) ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
-            <button type="button" role="option" aria-selected={current(p)} onClick={() => onPick(p.url)} className="flex-1 min-w-0 text-left px-3 py-2 cursor-pointer">
-              <span className="flex items-center gap-1.5 text-13 font-semibold text-slate-900">{p.path}{current(p) && <Check size={13} className="text-indigo-600" />}</span>
-              <span className="block text-11.5 text-slate-500 truncate" title={p.url}>{p.url}</span>
-              {p.title && !dup(p) && <span className="block text-11.5 text-slate-400 truncate">{p.title}</span>}
-            </button>
-            <a href={p.url} target="_blank" rel="noreferrer noopener" title="Open this page in a new tab" aria-label={`Open ${p.path}`} className="px-2.5 py-2 text-slate-400 hover:text-indigo-700"><ExternalLink size={14} /></a>
-          </li>))}
-        {!shown.length && <li className="px-3 py-4 text-12.5 text-slate-500">{r.data ? 'No page matches. Use "Type another address".' : 'Reading your pages…'}</li>}
-      </ul>
-      <div className="flex gap-3 px-3 py-2 border-t border-slate-100 text-12"><button type="button" onClick={() => setTyping(true)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Type another address</button><button type="button" onClick={onCancel} className="text-slate-500 hover:underline cursor-pointer">Cancel</button></div>
-    </div>, document.body)}
+        <div ref={panel} style={{ position: 'fixed', top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: 360, zIndex: 80 }} className="max-w-[calc(100vw-16px)] rounded-lg bg-white ring-1 ring-slate-300 shadow-xl" onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}>
+          <div className="p-2 border-b border-slate-100"><input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${list.length} page${list.length === 1 ? '' : 's'}`} aria-label="Search the pages of your website" className={`${inputCls} w-full`} /></div>
+          <ul role="listbox" aria-label="Pages of your website" className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+            <li><button type="button" role="option" aria-selected={!value} onClick={() => onPick('')} className="w-full text-left px-3 py-2 text-13 text-slate-600 hover:bg-slate-50 cursor-pointer">No page yet</button></li>
+            {shown.map(p => (
+              <li key={p.url} className={`flex items-center ${current(p) ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
+                <button type="button" role="option" aria-selected={current(p)} onClick={() => onPick(p.url)} className="flex-1 min-w-0 text-left px-3 py-2 cursor-pointer">
+                  <span className="flex items-center gap-1.5 text-13 font-semibold text-slate-900">{p.path}{current(p) && <Check size={13} className="text-indigo-600" />}</span>
+                  <span className="block text-11.5 text-slate-500 truncate" title={p.url}>{p.url}</span>
+                  {p.title && !dup(p) && <span className="block text-11.5 text-slate-400 truncate">{p.title}</span>}
+                </button>
+                <a href={p.url} target="_blank" rel="noreferrer noopener" title="Open this page in a new tab" aria-label={`Open ${p.path}`} className="px-2.5 py-2 text-slate-400 hover:text-indigo-700"><ExternalLink size={14} /></a>
+              </li>))}
+            {!shown.length && <li className="px-3 py-4 text-12.5 text-slate-500">{r.data ? 'No page matches. Use "Type another address".' : 'Reading your pages…'}</li>}
+          </ul>
+          <div className="flex gap-3 px-3 py-2 border-t border-slate-100 text-12"><button type="button" onClick={() => setTyping(true)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">Type another address</button><button type="button" onClick={onCancel} className="text-slate-500 hover:underline cursor-pointer">Cancel</button></div>
+        </div>, document.body)}
     </>
   );
 }
@@ -681,7 +693,8 @@ function Tracked({ b, kw }) {
   const fresh = useMemo(() => new Set((location.state?.added || []).map(x => String(x).toLowerCase())), [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const [useIds, setUseIds] = useState(null); // the keywords the "Where to use" window is open for
   const NO_FILTER = { role: '', page: '', google: '', kd: '', intent: '', status: '', topic: '' };
-  const [hidden, setHidden] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('kw-hidden-cols') || '[]')); } catch { return new Set(); } });
+  // Saved Keywords holds the keyword's own figures; the mapped page belongs to Keyword Mapping and the verdict to Keyword Status, so those two columns start hidden (the Columns menu brings them back)
+  const [hidden, setHidden] = useState(() => { try { const v = localStorage.getItem('kw-hidden-cols'); return new Set(v === null ? ['page', 'status'] : JSON.parse(v)); } catch { return new Set(['page', 'status']); } });
   const show = (c) => !hidden.has(c);
   const toggleCol = (c) => setHidden(h => { const x = new Set(h); x.has(c) ? x.delete(c) : x.add(c); try { localStorage.setItem('kw-hidden-cols', JSON.stringify([...x])); } catch { /* not remembered */ } return x; });
   const [f, setF] = useState(NO_FILTER); // the filters of the table: one box for each column worth filtering
@@ -820,11 +833,11 @@ function Tracked({ b, kw }) {
           <div className="flex flex-wrap items-center gap-2">
             <label className="relative flex-1 min-w-[220px] max-w-md"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(30); }} placeholder="Search my keywords or topics" aria-label="Search my keywords" className="h-8 w-full pl-9 pr-3 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" /></label>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-            {nopage > 0 && <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages} title={`${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet: give each the page where it already appears (a page you chose yourself is never changed)`}>Match {nopage} to my pages</Button>}
-            <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-1.5">
-              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Add a keyword" aria-label="Add a keyword" className="h-8 w-40 px-2.5 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
-              <Button size="sm" type="submit" icon={Plus} busy={busy === 'add'} disabled={typed.trim().length < 2}>Add</Button>
-            </form>
+              {nopage > 0 && <Button size="sm" variant="primary" icon={Sparkles} busy={busy === 'auto'} onClick={autoPages} title={`${nopage} keyword${nopage === 1 ? ' has' : 's have'} no page yet: give each the page where it already appears (a page you chose yourself is never changed)`}>Match {nopage} to my pages</Button>}
+              <form onSubmit={(e) => { e.preventDefault(); add(); }} className="flex gap-1.5">
+                <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Add a keyword" aria-label="Add a keyword" className="h-8 w-40 px-2.5 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
+                <Button size="sm" type="submit" icon={Plus} busy={busy === 'add'} disabled={typed.trim().length < 2}>Add</Button>
+              </form>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-11.5 text-slate-500 px-1 -mt-1 -mb-1">
@@ -886,7 +899,7 @@ function Tracked({ b, kw }) {
                             {k.cluster && <span data-f={`topic:${k.cluster}`} title="Its topic group">{k.cluster}</span>}
                           </span>
                         </td>
-                        {show('rank') && (<td className="px-3 py-2 text-right whitespace-nowrap">
+                        {show('rank') && (<td className="px-3 py-2  whitespace-nowrap">
                           {(t?.rank ?? k.rank) ? <span data-f="google:yes" className="inline-flex items-center justify-end gap-1.5" title="Average position on Google, last 28 days (Search Console). Click to show only keywords that rank">
                             <span className={`font-semibold tabular-nums ${(t?.rank ?? k.rank) <= 10 ? 'text-emerald-700' : 'text-slate-800'}`}>#{t?.rank ?? k.rank}</span>
                             {t?.change ? <span className={`inline-flex items-center text-12 ${t.change > 0 ? 'text-emerald-700' : 'text-red-600'}`}>{t.change > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{Math.abs(t.change)}</span> : null}
@@ -894,11 +907,11 @@ function Tracked({ b, kw }) {
                           <span className="block mt-0.5">{!t ? null : t.ai?.mentioned ? <span title="AI assistants mention your business for this question" className="text-11.5 font-semibold text-emerald-700">AI ✓ mentioned</span>
                             : t.ai?.tracked ? <span title="You track the question this keyword makes; no assistant names your business yet" className="text-11.5 text-slate-500">AI asked, not named</span> : <span title="Not tracked as an AI search question yet" className="text-11.5 text-slate-300">AI not tracked</span>}</span>
                         </td>)}
-                        {show('volume') && (<td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>)}
-                        {show('difficulty') && (<td className="px-3 py-2 text-right whitespace-nowrap" title={k.difficulty != null ? `Keyword difficulty ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'Google gave no difficulty figure for this keyword'}>
+                        {show('volume') && (<td className="px-3 py-2  tabular-nums whitespace-nowrap" title="Searches per month in your country (Google Ads Keyword Planner)">{fmt(k.volume)}</td>)}
+                        {show('difficulty') && (<td className="px-3 py-2  whitespace-nowrap" title={k.difficulty != null ? `${k.difficulty_real ? 'SEO difficulty, read from the real top 10 on Google' : 'Google Ads competition (the real SEO difficulty is not read yet: open Find Keywords and read it)'} ${k.difficulty} of 100: ${k.difficulty <= 30 ? 'easier to rank for' : k.difficulty <= 60 ? 'a fair fight' : 'hard to rank for'}` : 'No difficulty figure for this keyword yet'}>
                           {k.difficulty != null ? <span data-f={`kd:${kdBand(k.difficulty)}`} className={`inline-flex items-center justify-center min-w-[36px] rounded-md px-2 py-0.5 text-13 font-semibold tabular-nums ${k.difficulty <= 30 ? 'bg-emerald-50 text-emerald-700' : k.difficulty <= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{k.difficulty}</span> : <span className="text-slate-300">—</span>}
                         </td>)}
-                        {show('impressions') && (<td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
+                        {show('impressions') && (<td className="px-3 py-2  tabular-nums whitespace-nowrap text-13" title="Google Search Console, last 28 days">
                           {t && t.impressions > 0 ? <><span className="text-slate-700">{fmt(t.impressions)}</span> <span className="text-slate-300">/</span> <span className="font-semibold text-slate-900">{fmt(t.clicks || 0)}</span> <span className="text-slate-300">/</span> <span className="text-slate-700">{t.ctr != null ? `${t.ctr}%` : '—'}</span></>
                             : t && t.impressions === 0 ? <span className="text-slate-400" title="Google showed your site 0 times for this exact search in the last 28 days">0 shown</span>
                               : <span className="text-slate-300" title={!t ? '' : tbl.data?.google_error ? `Search Console could not be read: ${tbl.data.google_error}` : 'Not read yet'}>{!t ? '…' : '—'}</span>}
@@ -932,7 +945,7 @@ function Tracked({ b, kw }) {
                         {show('status') && (<td className="px-3 py-2 whitespace-nowrap">
                           {t?.label ? <span data-f={`status:${t.status}`} title={t.why || ''}><Badge tone={{ working: 'green', climbing: 'amber', weak: 'red', invisible: 'gray', unchecked: 'gray' }[t.status] || 'gray'}>{t.label}</Badge></span> : <span className="text-slate-300">{!t ? '…' : '—'}</span>}
                         </td>)}
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <td className="px-3 py-2  whitespace-nowrap">
                           <KeywordRowActions b={b} k={k} t={t} usedOn={used} busy={busy} onMap={(url) => update(k, { target_url: url })} onChoose={() => setEditing(k.id)} onAskAi={() => askAi(k)} onRemove={() => remove(k)} onRole={(role) => update(k, { role })} onUse={() => setUseIds([k.id])} />
                         </td>
                       </tr>);
@@ -1038,57 +1051,57 @@ function Topics({ b, kw }) {
       <ErrorNote>{error}</ErrorNote>
       {!kw.data ? <SkCard title="Topics" subtitle="Keywords grouped into topics, one page per topic"><SkTable headers={["Keyword", "Volume", "Difficulty", "Rank"]} rows={5} bare /></SkCard>
         : !tracked.length ? <Card><div className="py-10 text-center text-13 text-slate-500">Save some keywords first: they are grouped into topics here.<div className="mt-3"><Link to="/keyword-management/workspace"><Button variant="primary" icon={Search}>Find keywords</Button></Link></div></div></Card>
-        : !shown.length ? <Card><div className="py-8 text-center text-13 text-slate-500">No topic matches this.</div></Card> : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {shown.map(x => {
-              const loose = x.topic === NOT_GROUPED;
-              const full = x.mapped === x.list.length;
-              return (
-                <section key={x.topic} className={`rounded-xl bg-white ring-1 ${loose ? 'ring-amber-200' : 'ring-slate-200'} overflow-hidden flex flex-col`}>
-                  <header className="px-4 pt-3.5 pb-3">
-                    <div className="flex items-start gap-2">
-                      {renaming === x.topic
-                        ? <input autoFocus value={name} onChange={e => setName(e.target.value)} onBlur={() => rename(x)} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setRenaming(null); } }} className={`${inputCls} h-8 flex-1`} aria-label="Topic name" />
-                        : <h3 className="flex-1 text-15 font-semibold text-slate-900 capitalize">{x.topic}</h3>}
-                      {!loose && renaming !== x.topic && <button type="button" onClick={() => { setName(x.topic); setRenaming(x.topic); }} title="Rename this topic" className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"><Pencil size={14} /></button>}
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-12.5 text-slate-600">
-                      <span><b className="text-slate-900">{x.list.length}</b> keywords</span>
-                      <span><b className="text-slate-900 tabular-nums">{x.volume ? fmt(x.volume) : '—'}</b> searches/mo</span>
-                      <span>{x.best ? <>Best rank <b className="text-slate-900">#{x.best}</b> · {x.ranking} of {x.list.length} on Google</> : 'Not on Google yet'}</span>
-                    </div>
-                    {loose && <p className="mt-2 text-12.5 text-amber-800 bg-amber-50 rounded px-2.5 py-1.5">These have no topic yet. Use "Group again with AI", or move each one with the list beside it.</p>}
-                    {!loose && x.lead && <p className="mt-2 text-12.5 text-slate-600">Lead keyword: <b className="text-slate-900">{x.lead.keyword}</b>{x.lead.role === 'primary' ? ' (main keyword of its page)' : ''}</p>}
-                  </header>
-                  <ul className="px-4 divide-y divide-slate-100 border-t border-slate-100">
-                    {x.list.slice(0, 8).map(k => (
-                      <li key={k.id} className="py-1.5 flex items-center gap-2 text-12.5">
-                        <span className="flex-1 min-w-0 truncate text-slate-800" title={k.keyword}>{k.keyword}</span>
-                        {k.volume ? <span className="tabular-nums text-slate-500 w-14 text-right" title="Searches a month">{fmt(k.volume)}</span> : null}
-                        <span className={`tabular-nums w-10 text-right ${k.rank ? 'text-slate-800 font-semibold' : 'text-slate-300'}`} title="Where it ranks on Google">{k.rank ? `#${k.rank}` : '—'}</span>
-                        <select value={loose ? '' : x.topic} disabled={busy === `m${k.id}`} onChange={e => e.target.value && move(k, e.target.value)} aria-label={`Move ${k.keyword} to another topic`} title="Move to another topic" className="h-7 max-w-[8.5rem] rounded border border-slate-200 bg-white text-12 text-slate-600 cursor-pointer">
-                          <option value="">{loose ? 'Choose a topic' : 'Move to…'}</option>
-                          {names.filter(n => n !== x.topic).map(n => <option key={n} value={n}>{n}</option>)}
-                          {!loose && <option value={NOT_GROUPED}>Not grouped</option>}
-                        </select>
-                      </li>))}
-                  </ul>
-                  {x.list.length > 8 && <p className="px-4 pb-1 text-12 text-slate-500">and {x.list.length - 8} more</p>}
-                  <footer className="mt-auto px-4 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center gap-2">
-                    <div className="flex-1 min-w-[10rem] text-12.5">
-                      {!x.pages.length ? <span className="inline-flex items-center gap-1.5 text-amber-800"><AlertTriangle size={13} />No page chosen yet</span>
-                        : <span className="inline-flex items-center gap-1.5 text-slate-700 min-w-0"><FileText size={13} className="text-slate-400 shrink-0" /><span className="truncate" title={x.pages.join('\n')}>{x.pages.length === 1 ? pageOf(x.pages[0]) : `${x.pages.length} different pages`}</span></span>}
-                      {x.pages.length > 0 && !full && <span className="block text-11.5 text-amber-700">{x.list.length - x.mapped} of {x.list.length} keywords have no page</span>}
-                      {x.pages.length > 1 && <span className="block text-11.5 text-amber-700">One topic should be one page: pick a single page for it.</span>}
-                    </div>
-                    {!loose && <Act icon={Eye} tone="indigo" tip="Where each keyword of this topic can be used: pages, FAQ, blog, Google posts" onClick={() => setUseIds(x.list.map(k => k.id))}>Where to use</Act>}
-                    {!loose && x.lead && <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.lead.keyword)}`}><Act icon={PenLine} tone="primary" tip={`Write a blog post for "${x.lead.keyword}"`}>Write</Act></Link>}
-                    <Link to={`/keyword-management/mapping${x.lead ? `?keyword=${encodeURIComponent(x.lead.keyword)}` : ''}`}><Act icon={FileText} tone="slate" tip="Choose the page for this topic">{x.pages.length ? 'Change page' : 'Choose page'}</Act></Link>
-                  </footer>
-                </section>
-              );
-            })}
-          </div>)}
+          : !shown.length ? <Card><div className="py-8 text-center text-13 text-slate-500">No topic matches this.</div></Card> : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {shown.map(x => {
+                const loose = x.topic === NOT_GROUPED;
+                const full = x.mapped === x.list.length;
+                return (
+                  <section key={x.topic} className={`rounded-xl bg-white ring-1 ${loose ? 'ring-amber-200' : 'ring-slate-200'} overflow-hidden flex flex-col`}>
+                    <header className="px-4 pt-3.5 pb-3">
+                      <div className="flex items-start gap-2">
+                        {renaming === x.topic
+                          ? <input autoFocus value={name} onChange={e => setName(e.target.value)} onBlur={() => rename(x)} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setRenaming(null); } }} className={`${inputCls} h-8 flex-1`} aria-label="Topic name" />
+                          : <h3 className="flex-1 text-15 font-semibold text-slate-900 capitalize">{x.topic}</h3>}
+                        {!loose && renaming !== x.topic && <button type="button" onClick={() => { setName(x.topic); setRenaming(x.topic); }} title="Rename this topic" className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"><Pencil size={14} /></button>}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-12.5 text-slate-600">
+                        <span><b className="text-slate-900">{x.list.length}</b> keywords</span>
+                        <span><b className="text-slate-900 tabular-nums">{x.volume ? fmt(x.volume) : '—'}</b> searches/mo</span>
+                        <span>{x.best ? <>Best rank <b className="text-slate-900">#{x.best}</b> · {x.ranking} of {x.list.length} on Google</> : 'Not on Google yet'}</span>
+                      </div>
+                      {loose && <p className="mt-2 text-12.5 text-amber-800 bg-amber-50 rounded px-2.5 py-1.5">These have no topic yet. Use "Group again with AI", or move each one with the list beside it.</p>}
+                      {!loose && x.lead && <p className="mt-2 text-12.5 text-slate-600">Lead keyword: <b className="text-slate-900">{x.lead.keyword}</b>{x.lead.role === 'primary' ? ' (main keyword of its page)' : ''}</p>}
+                    </header>
+                    <ul className="px-4 divide-y divide-slate-100 border-t border-slate-100">
+                      {x.list.slice(0, 8).map(k => (
+                        <li key={k.id} className="py-1.5 flex items-center gap-2 text-12.5">
+                          <span className="flex-1 min-w-0 truncate text-slate-800" title={k.keyword}>{k.keyword}</span>
+                          {k.volume ? <span className="tabular-nums text-slate-500 w-14 text-right" title="Searches a month">{fmt(k.volume)}</span> : null}
+                          <span className={`tabular-nums w-10 text-right ${k.rank ? 'text-slate-800 font-semibold' : 'text-slate-300'}`} title="Where it ranks on Google">{k.rank ? `#${k.rank}` : '—'}</span>
+                          <Select value={loose ? '' : x.topic} disabled={busy === `m${k.id}`} onChange={e => e.target.value && move(k, e.target.value)} aria-label={`Move ${k.keyword} to another topic`} title="Move to another topic" className="h-7 max-w-[8.5rem] rounded border border-slate-200 bg-white text-12 text-slate-600 cursor-pointer">
+                            <option value="">{loose ? 'Choose a topic' : 'Move to…'}</option>
+                            {names.filter(n => n !== x.topic).map(n => <option key={n} value={n}>{n}</option>)}
+                            {!loose && <option value={NOT_GROUPED}>Not grouped</option>}
+                          </Select>
+                        </li>))}
+                    </ul>
+                    {x.list.length > 8 && <p className="px-4 pb-1 text-12 text-slate-500">and {x.list.length - 8} more</p>}
+                    <footer className="mt-auto px-4 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                      <div className="flex-1 min-w-[10rem] text-12.5">
+                        {!x.pages.length ? <span className="inline-flex items-center gap-1.5 text-amber-800"><AlertTriangle size={13} />No page chosen yet</span>
+                          : <span className="inline-flex items-center gap-1.5 text-slate-700 min-w-0"><FileText size={13} className="text-slate-400 shrink-0" /><span className="truncate" title={x.pages.join('\n')}>{x.pages.length === 1 ? pageOf(x.pages[0]) : `${x.pages.length} different pages`}</span></span>}
+                        {x.pages.length > 0 && !full && <span className="block text-11.5 text-amber-700">{x.list.length - x.mapped} of {x.list.length} keywords have no page</span>}
+                        {x.pages.length > 1 && <span className="block text-11.5 text-amber-700">One topic should be one page: pick a single page for it.</span>}
+                      </div>
+                      {!loose && <Act icon={Eye} tone="indigo" tip="Where each keyword of this topic can be used: pages, FAQ, blog, Google posts" onClick={() => setUseIds(x.list.map(k => k.id))}>Where to use</Act>}
+                      {!loose && x.lead && <Link to={`/ai-content-generation/blog?keyword=${encodeURIComponent(x.lead.keyword)}`}><Act icon={PenLine} tone="primary" tip={`Write a blog post for "${x.lead.keyword}"`}>Write</Act></Link>}
+                      <Link to={`/keyword-management/mapping${x.lead ? `?keyword=${encodeURIComponent(x.lead.keyword)}` : ''}`}><Act icon={FileText} tone="slate" tip="Choose the page for this topic">{x.pages.length ? 'Change page' : 'Choose page'}</Act></Link>
+                    </footer>
+                  </section>
+                );
+              })}
+            </div>)}
       <UseKeywordsModal b={b} ids={useIds} onClose={() => setUseIds(null)} />
       {toastNode}
     </div>
@@ -1249,7 +1262,7 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
         </div>
         <label className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">Country<input aria-label="Country" className="h-8 w-14 px-2 text-13 rounded-md border border-slate-200 uppercase font-mono text-slate-800" maxLength={2} value={country} onChange={e => setCountry(e.target.value.toUpperCase())} /></label>
         <label className="inline-flex items-center gap-1.5 text-12 font-semibold text-slate-500">Limit
-          <select aria-label="Limit" className="h-8 px-2 text-13 rounded-md border border-slate-200 bg-white text-slate-800 cursor-pointer" value={limit} onChange={e => setLimit(Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></select>
+          <Select aria-label="Limit" className="h-8 px-2 text-13 rounded-md border border-slate-200 bg-white text-slate-800 cursor-pointer" value={limit} onChange={e => setLimit(Number(e.target.value))}><option value={50}>50</option><option value={100}>100</option><option value={200}>200</option></Select>
         </label>
         <Button size="sm" variant="primary" icon={Search} busy={busy === 'search'} disabled={!keyword.trim()} onClick={() => search()} className="ml-auto">Explore again</Button>
       </div>
@@ -1404,13 +1417,12 @@ function KeywordExplorer({ b, tracked = [], onTracked, seedSearch }) {
                           ${(item.cpc || 0).toFixed(2)}
                         </td>
                         <td className="p-3 text-center">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-11 font-bold ${
-                            item.difficulty < 30
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : item.difficulty < 60
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-11 font-bold ${item.difficulty < 30
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : item.difficulty < 60
                               ? 'bg-amber-50 text-amber-700'
                               : 'bg-rose-50 text-rose-700'
-                          }`}>
+                            }`}>
                             {item.difficulty}
                           </span>
                         </td>
@@ -1512,9 +1524,11 @@ function AiSuggestions({ b, tracked, onTracked, seedSearch }) {
               { id: 'topic', label: 'Topic', options: [...new Set(items.map(i => i.topic).filter(Boolean))].sort().map(x => [x, x]), test: (i, v) => i.topic === v }
             ].filter(f => f.options.length > 1)}
             columns={[
-              { id: 'pick', label: 'Pick', csv: false, className: 'pl-4 pr-1 py-3 w-10', thClass: 'pl-4 pr-1 py-3 w-10',
+              {
+                id: 'pick', label: 'Pick', csv: false, className: 'pl-4 pr-1 py-3 w-10', thClass: 'pl-4 pr-1 py-3 w-10',
                 header: <input type="checkbox" aria-label="Pick all shown" checked={aiRows.current.length > 0 && aiRows.current.every(i => picked.includes(i.keyword))} onChange={() => { const every = aiRows.current.every(i => picked.includes(i.keyword)); setPicked(p => (every ? p.filter(k => !aiRows.current.some(i => i.keyword === k)) : [...new Set([...p, ...aiRows.current.map(i => i.keyword)])])); }} />,
-                cell: i => <input type="checkbox" checked={picked.includes(i.keyword)} onChange={() => toggle(i.keyword)} aria-label={`Pick ${i.keyword}`} /> },
+                cell: i => <input type="checkbox" checked={picked.includes(i.keyword)} onChange={() => toggle(i.keyword)} aria-label={`Pick ${i.keyword}`} />
+              },
               { id: 'keyword', header: 'Keyword and why', value: i => i.keyword, className: 'px-3 py-3 min-w-[260px]', cell: i => <><div className="text-14 font-semibold text-slate-900">{i.keyword}</div>{i.why && <div className="text-12.5 text-slate-600 mt-0.5">{i.why}</div>}</> },
               { id: 'topic', header: 'Topic', value: i => i.topic || null, cell: i => (i.topic ? <Badge tone="gray">{i.topic}</Badge> : <span className="text-slate-300">—</span>) },
               { id: 'intent', header: 'Intent', value: i => i.intent || null, cell: i => (i.intent ? <Badge tone={INTENT_TONE[i.intent] || 'gray'}>{i.intent}</Badge> : <span className="text-slate-300">—</span>) },
@@ -1751,8 +1765,20 @@ function KeywordPath({ b, tab, setTab }) {
 
 export default function KeywordResearchPage() {
   const [tab, setTab] = useUrlTab('workspace', ['workspace', 'mapping', 'ai', 'discover', 'planner', 'explorer', 'tracked', 'topics', 'use', 'status']);
+  const HEAD = {
+    workspace: ['Find Keywords', 'One list of keywords from Google Keyword Planner, your website, Search Console, your Google listing and competitors; AI suggestions on request. Compare them, then pick'],
+    tracked: ['Saved Keywords', 'The keywords you keep: primary or secondary, priority, searches, difficulty, the page that targets each and where it ranks'],
+    topics: ['Keyword Strategy Builder', 'Group your saved keywords into topics, see the lead keyword of each topic and which page it still needs'],
+    use: ['Where to Use Keywords', 'Put each saved keyword into your blog, posts, website and AI answers'],
+    mapping: ['Keyword Mapping', 'Choose the page that targets each keyword and fix keywords that compete for one page'],
+    status: ['Keyword Status', 'How each saved keyword is doing and what to do next'],
+    ai: ['AI Keyword Suggestions', 'Keywords written from what your business has done and could grow into'],
+    discover: ['Ideas for My Business', 'Real Google searches around your services and areas'],
+    planner: ['Google Numbers', 'Searches per month and cost for a keyword'],
+    explorer: ['Other Platforms', 'What people search on YouTube, Bing, Amazon and more'],
+  }[tab] || ['Keywords', 'Find, choose, use and track your keywords'];
   return (
-    <SeoShell step="keywords" title="Keywords" subtitle="Get keyword ideas from AI, pick the best, group them into topics, use them in your blog, posts and AI answers, then track where they rank">
+    <SeoShell step="keywords" title={HEAD[0]} subtitle={HEAD[1]}>
       {(b) => <KeywordPath key={b.id} b={b} tab={tab} setTab={setTab} />}
     </SeoShell>
   );

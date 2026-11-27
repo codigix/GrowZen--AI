@@ -133,20 +133,20 @@ export default function PositionCompetitors({ d, b, onChanged }) {
               {moverBars.length > 0 && <div className="flex gap-5 justify-center text-12 text-slate-600 -mt-1"><span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />Winners: gained visibility</span><span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-500" />Losers: lost visibility</span></div>}
             </div>
           ) : (
-          <div className="h-80">
-            {plotted.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 16, left: 4, bottom: 22 }}>
-                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" />
-                  <XAxis type="number" dataKey="keywords" name="Keywords" tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} domain={[0, 'dataMax + 1']} label={{ value: 'Number of Keywords', position: 'insideBottom', offset: -12, fontSize: 12, fill: '#475569' }} />
-                  <YAxis type="number" dataKey="avg_position" name="Avg. position" reversed tick={AXIS} tickLine={false} axisLine={false} width={44} domain={posDomain} label={{ value: 'Average Position', angle: -90, position: 'insideLeft', fontSize: 12, fill: '#475569' }} />
-                  <ZAxis type="number" dataKey="visibility" range={[200, 1800]} />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} content={({ payload }) => payload?.[0] ? <div className="bg-white border border-slate-200 rounded px-2.5 py-1.5 text-12"><b>{payload[0].payload.domain}</b><div>{payload[0].payload.keywords} keywords · avg position {payload[0].payload.avg_position}</div><div>Visibility {payload[0].payload.visibility}%{payload[0].payload.change ? ` (${payload[0].payload.change > 0 ? '+' : ''}${payload[0].payload.change})` : ''}</div></div> : null} />
-                  {plotted.map(c => <Scatter key={c.domain} name={c.domain} data={[c]} fill={colorOf(c)} fillOpacity={0.55} />)}
-                </ScatterChart>
-              </ResponsiveContainer>
-            ) : <Empty>Competitors appear after the first position check.</Empty>}
-          </div>
+            <div className="h-80">
+              {plotted.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 10, right: 16, left: 4, bottom: 22 }}>
+                    <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" />
+                    <XAxis type="number" dataKey="keywords" name="Keywords" tick={AXIS} tickLine={false} axisLine={false} allowDecimals={false} domain={[0, 'dataMax + 1']} label={{ value: 'Number of Keywords', position: 'insideBottom', offset: -12, fontSize: 12, fill: '#475569' }} />
+                    <YAxis type="number" dataKey="avg_position" name="Avg. position" reversed tick={AXIS} tickLine={false} axisLine={false} width={44} domain={posDomain} label={{ value: 'Average Position', angle: -90, position: 'insideLeft', fontSize: 12, fill: '#475569' }} />
+                    <ZAxis type="number" dataKey="visibility" range={[200, 1800]} />
+                    <Tooltip cursor={{ strokeDasharray: '3 3' }} content={({ payload }) => payload?.[0] ? <div className="bg-white border border-slate-200 rounded px-2.5 py-1.5 text-12"><b>{payload[0].payload.domain}</b><div>{payload[0].payload.keywords} keywords · avg position {payload[0].payload.avg_position}</div><div>Visibility {payload[0].payload.visibility}%{payload[0].payload.change ? ` (${payload[0].payload.change > 0 ? '+' : ''}${payload[0].payload.change})` : ''}</div></div> : null} />
+                    {plotted.map(c => <Scatter key={c.domain} name={c.domain} data={[c]} fill={colorOf(c)} fillOpacity={0.55} />)}
+                  </ScatterChart>
+                </ResponsiveContainer>
+              ) : <Empty>Competitors appear after the first position check.</Empty>}
+            </div>
           )}
           <div>
             <div className="flex justify-between text-12 text-slate-500 px-1 pb-2 border-b border-slate-100"><span>Competitor</span><span>Visibility{mapView === 'losers' ? ' change' : ''}</span></div>
@@ -180,13 +180,13 @@ export default function PositionCompetitors({ d, b, onChanged }) {
                     {c.you && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">You</span>}
                     {c.platform && <Badge className="ml-2">directory</Badge>}
                     {!c.you && (tracked.has(c.domain) ? <Badge tone="green" className="ml-2"><Check size={11} /> Tracked</Badge> : <button type="button" disabled={busy === c.domain} onClick={() => track(c.domain)} className="ml-2 inline-flex items-center gap-0.5 text-12 text-indigo-600 hover:underline cursor-pointer"><Plus size={11} />Track</button>)}</td>
-                  <td className="px-2 py-3 text-right tabular-nums">{c.visibility}%</td>
+                  <td className="px-2 py-3  tabular-nums">{c.visibility}%</td>
                   <td className="px-2 py-3 w-28"><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-500" style={{ width: `${Math.min(100, c.visibility || 0)}%` }} /></div></td>
                   <td className="px-3 py-3 text-right">{c.change == null ? dash : c.change ? <Chg v={c.change} /> : <span className="text-slate-500">0</span>}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{d.has_volume ? c.traffic : dash}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{!d.has_volume || c.traffic_change == null ? dash : c.traffic_change ? <Chg v={c.traffic_change} /> : <span className="text-slate-500">0</span>}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{c.keywords}</td>
-                  <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap">{c.avg_position != null ? <>{Number(c.avg_position).toFixed(2)}{c.avg_position_sd ? <span className="text-slate-500"> ± {Number(c.avg_position_sd).toFixed(2)}</span> : null}</> : dash}</td>
+                  <td className="px-3 py-3  tabular-nums">{d.has_volume ? c.traffic : dash}</td>
+                  <td className="px-3 py-3  tabular-nums">{!d.has_volume || c.traffic_change == null ? dash : c.traffic_change ? <Chg v={c.traffic_change} /> : <span className="text-slate-500">0</span>}</td>
+                  <td className="px-3 py-3  tabular-nums">{c.keywords}</td>
+                  <td className="px-3 py-3  tabular-nums whitespace-nowrap">{c.avg_position != null ? <>{Number(c.avg_position).toFixed(2)}{c.avg_position_sd ? <span className="text-slate-500"> ± {Number(c.avg_position_sd).toFixed(2)}</span> : null}</> : dash}</td>
                   <td className="px-2 py-3"><RowMenu c={c} tracked={tracked.has(c.domain)} onTrack={track} onIgnore={ignore} /></td>
                 </tr>))}
               {!mine && !slice.length && <tr><td colSpan={10} className="px-5 py-10 text-center text-slate-500">No domain matches. Competitors appear after the first position check.</td></tr>}

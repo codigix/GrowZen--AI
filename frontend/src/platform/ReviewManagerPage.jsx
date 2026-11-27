@@ -114,7 +114,7 @@ function Reviews({ b, tab }) {
           <div className="space-y-4">
             <Card title="Rating breakdown">
               <div className="space-y-1.5">
-                {[5, 4, 3, 2, 1].map(s => { const c = summary.distribution[s] || 0; return <div key={s} className="flex items-center gap-2 text-12"><span className="w-6 text-gray-600">{s}★</span><Meter value={c} max={n || 1} color={s >= 4 ? SERIES[0] : s === 3 ? SERIES[3] : SERIES[1]} /><span className="w-6 text-right tabular-nums text-gray-600">{c}</span></div>; })}
+                {[5, 4, 3, 2, 1].map(s => { const c = summary.distribution[s] || 0; return <div key={s} className="flex items-center gap-2 text-12"><span className="w-6 text-gray-600">{s}★</span><Meter value={c} max={n || 1} color={s >= 4 ? SERIES[0] : s === 3 ? SERIES[3] : SERIES[1]} /><span className="w-6  tabular-nums text-gray-600">{c}</span></div>; })}
               </div>
             </Card>
             <Card title="What customers talk about" subtitle="Topics tagged from review text">
@@ -168,7 +168,7 @@ export default function ReviewManagerPage() {
         <>
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'Review inbox' }, { id: 'requests', label: 'Review requests' }, { id: 'google', label: 'Replies on Google' }, { id: 'tasks', label: 'Tasks' }]} />
           {tab === 'tasks' ? <ProcessTasks b={b} areas={['reviews']} /> : tab === 'google' ? <AccessGate b={b} kind="gmb"><div className="space-y-5"><AutopilotPanel bid={b.id} feature="replies" /><ReviewsSection key={b.id} b={b} toast={toast} /></div></AccessGate> : <AccessGate b={b} kind="gmb"><Reviews key={b.id} b={b} tab={tab} /></AccessGate>}
-        {toastNode}
+          {toastNode}
         </>
       )}
     </SeoShell>

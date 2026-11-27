@@ -3,6 +3,7 @@ import { ResponsiveContainer, ComposedChart, Area, Bar, Line, XAxis, YAxis, Cart
 import { Phone, Navigation, MousePointerClick, Eye, Star, FileText, Printer, TrendingUp } from 'lucide-react';
 import { Spark, Delta } from './StatBits';
 import DataTable from './DataTable';
+import Select from '../components/Select';
 
 const monthName = (m) => { const [y, mo] = String(m).split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }); };
 const short = (m) => { const [y, mo] = String(m).split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('en-GB', { month: 'short' }) + (mo === 1 ? ` ${String(y).slice(2)}` : ''); };
@@ -56,11 +57,12 @@ export function Growth({ rows, current }) {
           columns={[
             { id: 'month', header: 'Month', value: r => r.month, className: 'px-3 py-2 whitespace-nowrap font-medium text-slate-900', cell: r => monthName(r.month) },
             ...[['views', 'Profile views'], ['calls', 'Calls'], ['directions', 'Directions'], ['website_clicks', 'Website clicks'], ['actions', 'All actions']].map(([k, label]) => ({
-              id: k, header: label, right: true, value: r => r[k], className: 'px-3 py-2 text-right tabular-nums', cell: r => (
-                <span>{fmt(r[k])}{r.change && <span className={`ml-1.5 text-11.5 font-semibold ${r.change[k] > 0 ? 'text-emerald-600' : r.change[k] < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{r.change[k] > 0 ? '▲' : r.change[k] < 0 ? '▼' : '–'} {pct(Math.abs(r.change[k]))}</span>}</span>) })),
-            { id: 'new_reviews', header: 'New reviews', right: true, value: r => r.new_reviews, className: 'px-3 py-2 text-right tabular-nums', cell: r => r.new_reviews },
-            { id: 'rating', header: 'Rating', right: true, value: r => r.rating ?? null, className: 'px-3 py-2 text-right tabular-nums', cell: r => (r.rating ? `${r.rating} ★` : '—') },
-            { id: 'posts', header: 'Posts', right: true, value: r => r.posts, className: 'px-3 py-2 text-right tabular-nums', cell: r => r.posts },
+              id: k, header: label, right: true, value: r => r[k], className: 'px-3 py-2  tabular-nums', cell: r => (
+                <span>{fmt(r[k])}{r.change && <span className={`ml-1.5 text-11.5 font-semibold ${r.change[k] > 0 ? 'text-emerald-600' : r.change[k] < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{r.change[k] > 0 ? '▲' : r.change[k] < 0 ? '▼' : '–'} {pct(Math.abs(r.change[k]))}</span>}</span>)
+            })),
+            { id: 'new_reviews', header: 'New reviews', right: true, value: r => r.new_reviews, className: 'px-3 py-2  tabular-nums', cell: r => r.new_reviews },
+            { id: 'rating', header: 'Rating', right: true, value: r => r.rating ?? null, className: 'px-3 py-2  tabular-nums', cell: r => (r.rating ? `${r.rating} ★` : '—') },
+            { id: 'posts', header: 'Posts', right: true, value: r => r.posts, className: 'px-3 py-2  tabular-nums', cell: r => r.posts },
           ]} />
       </div>
     </div>
@@ -101,8 +103,8 @@ export function ReportBody({ d }) {
             <DataTable bare rows={d.keywords} rowKey={k => k.keyword} pageSize={6} sizes={[6]} search={false} columnsMenu={false} serial={false} headClass="bg-slate-100 text-slate-700"
               columns={[
                 { id: 'kw', header: 'Search', value: k => k.keyword, className: 'px-3 py-2 text-13 text-slate-900', cell: k => k.keyword },
-                { id: 'rank', header: 'Position', right: true, value: k => k.rank, className: 'px-3 py-2 text-right tabular-nums font-semibold', cell: k => k.rank },
-                { id: 'move', header: 'Moved', right: true, value: k => (k.prev_rank ? k.prev_rank - k.rank : 0), className: 'px-3 py-2 text-right tabular-nums text-12', cell: k => (!k.prev_rank ? <span className="text-slate-400">new</span> : k.prev_rank === k.rank ? <span className="text-slate-400">–</span> : <span className={k.prev_rank > k.rank ? 'text-emerald-600 font-semibold' : 'text-rose-600 font-semibold'}>{k.prev_rank > k.rank ? '▲' : '▼'} {Math.abs(k.prev_rank - k.rank)}</span>) },
+                { id: 'rank', header: 'Position', right: true, value: k => k.rank, className: 'px-3 py-2  tabular-nums font-semibold', cell: k => k.rank },
+                { id: 'move', header: 'Moved', right: true, value: k => (k.prev_rank ? k.prev_rank - k.rank : 0), className: 'px-3 py-2  tabular-nums text-12', cell: k => (!k.prev_rank ? <span className="text-slate-400">new</span> : k.prev_rank === k.rank ? <span className="text-slate-400">–</span> : <span className={k.prev_rank > k.rank ? 'text-emerald-600 font-semibold' : 'text-rose-600 font-semibold'}>{k.prev_rank > k.rank ? '▲' : '▼'} {Math.abs(k.prev_rank - k.rank)}</span>) },
               ]} />)}
         </div>
       </div>
@@ -136,7 +138,7 @@ export default function ClientReportPage({ token }) {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
           {d.business.logo && <img src={d.business.logo} alt="" referrerPolicy="no-referrer" className="w-10 h-10 rounded-lg object-cover ring-1 ring-slate-200" />}
           <div className="min-w-0 mr-auto"><h1 className="text-18 font-semibold text-slate-900 truncate">{d.business.name}</h1><p className="text-12 text-slate-500">Google profile report{d.business.city ? ` · ${d.business.city}` : ''} · live, updated {new Date(d.generated_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p></div>
-          <select value={month} onChange={e => { setD(null); setMonth(e.target.value); }} aria-label="Month" className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-13">{lastMonths().map(m => <option key={m} value={m}>{monthName(m)}</option>)}</select>
+          <Select value={month} onChange={e => { setD(null); setMonth(e.target.value); }} aria-label="Month" className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-13">{lastMonths().map(m => <option key={m} value={m}>{monthName(m)}</option>)}</Select>
           <button type="button" onClick={() => window.print()} className="h-9 px-3 rounded-lg border border-slate-300 bg-white text-13 font-medium inline-flex items-center gap-1.5 cursor-pointer print:hidden"><Printer size={14} />Print / PDF</button>
         </div>
       </header>

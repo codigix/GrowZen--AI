@@ -46,18 +46,20 @@ function KeywordTable({ items, added, pick, setPick, open, setOpen, save, tag })
             <SortTh id="pages" sort={sort} onSort={onSort} right first="desc" className="px-3 py-2">Pages</SortTh>
             <th className="px-3 py-2" /></tr></thead>
           <tbody className="divide-y divide-slate-100">
-            {pager.rows.map(i => { const done = i.tracked || added[i.keyword]; const [sl, st] = SIDE[i.side]; return (
-              <React.Fragment key={i.keyword}>
-                <tr className="align-middle">
-                  <td className="px-3 py-2"><input type="checkbox" disabled={done} checked={pick.includes(i.keyword)} onChange={() => setPick(p => (p.includes(i.keyword) ? p.filter(x => x !== i.keyword) : [...p, i.keyword]))} aria-label={`Select ${i.keyword}`} /></td>
-                  <td className="px-3 py-2 font-semibold text-slate-900">{i.keyword}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{i.volume != null ? i.volume.toLocaleString('en-IN') : <span className="text-slate-300" title="Not verified">—</span>}</td>
-                  <td className="px-3 py-2"><Badge tone={st}>{sl}</Badge> <button type="button" onClick={() => setOpen(open === i.keyword ? null : i.keyword)} className="ml-1 text-12 text-indigo-600 hover:underline cursor-pointer">{open === i.keyword ? 'hide pages' : 'see pages'}</button></td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{i.pages}</td>
-                  <td className="px-3 py-2 text-right">{done ? <span className="text-12 text-emerald-700 font-semibold">In My Keywords</span> : <Button size="sm" onClick={() => save([i])}>Add</Button>}</td>
-                </tr>
-                {open === i.keyword && <tr><td /><td colSpan={5} className="px-3 pb-3"><ul className="grid gap-1 text-12.5 text-slate-600">{i.sources.map((x, n) => <li key={n}><b>{x.name}</b>: <a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{x.path}</a> · in the {x.in.join(', ')}</li>)}</ul></td></tr>}
-              </React.Fragment>); })}
+            {pager.rows.map(i => {
+              const done = i.tracked || added[i.keyword]; const [sl, st] = SIDE[i.side]; return (
+                <React.Fragment key={i.keyword}>
+                  <tr className="align-middle">
+                    <td className="px-3 py-2"><input type="checkbox" disabled={done} checked={pick.includes(i.keyword)} onChange={() => setPick(p => (p.includes(i.keyword) ? p.filter(x => x !== i.keyword) : [...p, i.keyword]))} aria-label={`Select ${i.keyword}`} /></td>
+                    <td className="px-3 py-2 font-semibold text-slate-900">{i.keyword}</td>
+                    <td className="px-3 py-2  tabular-nums">{i.volume != null ? i.volume.toLocaleString('en-IN') : <span className="text-slate-300" title="Not verified">—</span>}</td>
+                    <td className="px-3 py-2"><Badge tone={st}>{sl}</Badge> <button type="button" onClick={() => setOpen(open === i.keyword ? null : i.keyword)} className="ml-1 text-12 text-indigo-600 hover:underline cursor-pointer">{open === i.keyword ? 'hide pages' : 'see pages'}</button></td>
+                    <td className="px-3 py-2  tabular-nums text-slate-600">{i.pages}</td>
+                    <td className="px-3 py-2 ">{done ? <span className="text-12 text-emerald-700 font-semibold">In My Keywords</span> : <Button size="sm" onClick={() => save([i])}>Add</Button>}</td>
+                  </tr>
+                  {open === i.keyword && <tr><td /><td colSpan={5} className="px-3 pb-3"><ul className="grid gap-1 text-12.5 text-slate-600">{i.sources.map((x, n) => <li key={n}><b>{x.name}</b>: <a href={x.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{x.path}</a> · in the {x.in.join(', ')}</li>)}</ul></td></tr>}
+                </React.Fragment>);
+            })}
             {!pager.rows.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">No keyword matches.</td></tr>}
           </tbody>
         </table>
@@ -78,9 +80,14 @@ function ResearchedKeywords({ r, bid, competitor }) {
   const items = r.items;
   const todo = items.filter(i => !i.tracked && !added[i.keyword]);
   const save = (list) => run('add', async () => {
-    await api(`/businesses/${bid}/keywords`, { method: 'POST', body: list.map(i => ({ keyword: i.keyword, volume: i.volume || undefined, source: {
-      kind: 'competitor_compare', label: i.side === 'client' ? 'Your own site' : `${competitor || 'Competitor'} website`, side: i.side, from: competitor || null,
-      pages: i.sources.slice(0, 4).map(x => ({ url: x.url, in: x.in })), searches: i.volume ?? null, at: new Date().toISOString().slice(0, 10) } })) });
+    await api(`/businesses/${bid}/keywords`, {
+      method: 'POST', body: list.map(i => ({
+        keyword: i.keyword, volume: i.volume || undefined, source: {
+          kind: 'competitor_compare', label: i.side === 'client' ? 'Your own site' : `${competitor || 'Competitor'} website`, side: i.side, from: competitor || null,
+          pages: i.sources.slice(0, 4).map(x => ({ url: x.url, in: x.in })), searches: i.volume ?? null, at: new Date().toISOString().slice(0, 10)
+        }
+      }))
+    });
     setAdded(a => ({ ...a, ...Object.fromEntries(list.map(i => [i.keyword, true])) })); setPick([]);
   });
   return (
@@ -188,9 +195,9 @@ function MetricRow({ m }) {
   return (
     <tr>
       <td className="px-4 py-2.5 text-13 font-medium text-slate-900">{m.label}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums text-13">{m.ours_display ?? m.ours ?? '—'}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums text-13">{m.competitor_display ?? m.competitor ?? '—'}</td>
-      <td className={`px-3 py-2.5 text-right tabular-nums text-13 font-semibold ${better}`}>
+      <td className="px-3 py-2.5  tabular-nums text-13">{m.ours_display ?? m.ours ?? '—'}</td>
+      <td className="px-3 py-2.5  tabular-nums text-13">{m.competitor_display ?? m.competitor ?? '—'}</td>
+      <td className={`px-3 py-2.5  tabular-nums text-13 font-semibold ${better}`}>
         {m.available ? (m.better === 'tie' ? 'Tie' : m.better === 'ours' ? 'You lead' : 'They lead') : '—'}
       </td>
     </tr>
@@ -215,8 +222,8 @@ function PairRow({ m }) {
       <div className="flex items-center justify-between gap-2 mb-1.5"><span className="text-13 font-medium text-slate-900">{m.label}</span>
         <span className={`text-11.5 font-semibold ${lead === 'ours' ? 'text-emerald-700' : lead === 'competitor' ? 'text-rose-700' : 'text-slate-400'}`}>{!m.available ? 'no data' : lead === 'tie' ? 'Tie' : lead === 'ours' ? 'You lead' : 'They lead'}</span></div>
       <div className="grid grid-cols-[44px_1fr_70px] items-center gap-x-2 gap-y-1 text-12">
-        <span className="text-slate-500">You</span>{bar(a, true)}<span className="text-right tabular-nums text-slate-800">{m.ours_display ?? m.ours ?? '—'}</span>
-        <span className="text-slate-500">Them</span>{bar(b, false)}<span className="text-right tabular-nums text-slate-800">{m.competitor_display ?? m.competitor ?? '—'}</span>
+        <span className="text-slate-500">You</span>{bar(a, true)}<span className=" tabular-nums text-slate-800">{m.ours_display ?? m.ours ?? '—'}</span>
+        <span className="text-slate-500">Them</span>{bar(b, false)}<span className=" tabular-nums text-slate-800">{m.competitor_display ?? m.competitor ?? '—'}</span>
       </div>
     </div>
   );
@@ -280,8 +287,8 @@ function ChecksTable({ checks, tag }) {
           <thead className="bg-slate-50 text-left text-11  tracking-wide text-slate-500">
             <tr>
               <SortTh id="title" sort={sort} onSort={onSort} className="px-4 py-2.5">Check</SortTh>
-              <SortTh id="ours" sort={sort} onSort={onSort} className="px-3 py-2.5 text-center">You</SortTh>
-              <SortTh id="competitor" sort={sort} onSort={onSort} className="px-3 py-2.5 text-center">Competitor</SortTh>
+              <SortTh id="ours" sort={sort} onSort={onSort} className="px-3 py-2.5">You</SortTh>
+              <SortTh id="competitor" sort={sort} onSort={onSort} className="px-3 py-2.5">Competitor</SortTh>
               <SortTh id="status" sort={sort} onSort={onSort} className="px-3 py-2.5">Status</SortTh>
             </tr>
           </thead>
@@ -291,8 +298,8 @@ function ChecksTable({ checks, tag }) {
               return (
                 <tr key={ch.id}>
                   <td className="px-4 py-2.5 font-medium text-slate-900" title={ch.description}>{ch.title || ch.id}</td>
-                  <td className="px-3 py-2.5 text-center text-slate-600">{ch.ours?.status || '—'}</td>
-                  <td className="px-3 py-2.5 text-center text-slate-600">{ch.competitor?.status || '—'}</td>
+                  <td className="px-3 py-2.5 text-slate-600">{ch.ours?.status || '—'}</td>
+                  <td className="px-3 py-2.5 text-slate-600">{ch.competitor?.status || '—'}</td>
                   <td className="px-3 py-2.5"><Badge tone={tone}><Icon size={11} />{label}</Badge></td>
                 </tr>
               );
@@ -334,7 +341,7 @@ function PagesTable({ matched, tag }) {
                 <td className="px-4 py-2.5  text-12 text-slate-700">{m.path}</td>
                 <td className="px-3 py-2.5 truncate max-w-[220px]" title={m.ours?.title}>{m.ours?.title || '(missing)'}</td>
                 <td className="px-3 py-2.5 truncate max-w-[220px]" title={m.competitor?.title}>{m.competitor?.title || '(missing)'}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{m.ours?.word_count ?? '—'} / {m.competitor?.word_count ?? '—'}</td>
+                <td className="px-3 py-2.5  tabular-nums">{m.ours?.word_count ?? '—'} / {m.competitor?.word_count ?? '—'}</td>
               </tr>
             ))}
             {!pager.rows.length && <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-500">No page matches.</td></tr>}
@@ -386,7 +393,7 @@ export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="w-full">
               <thead className="bg-slate-50 text-left text-11  tracking-wide text-slate-500">
-                <tr><th className="px-4 py-2 font-semibold">Metric</th><th className="px-3 py-2 font-semibold text-right">You</th><th className="px-3 py-2 font-semibold text-right">Competitor</th><th className="px-3 py-2 font-semibold text-right">Edge</th></tr>
+                <tr><th className="px-4 py-2 font-semibold">Metric</th><th className="px-3 py-2 font-semibold ">You</th><th className="px-3 py-2 font-semibold ">Competitor</th><th className="px-3 py-2 font-semibold ">Edge</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {(c.overall?.scores || []).map(m => <MetricRow key={m.key} m={m} />)}
@@ -438,25 +445,25 @@ export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
           <details className="group">
             <summary className="text-12 font-semibold uppercase tracking-wide text-slate-500 cursor-pointer">All repeated words on the pages (raw, not checked for searches)</summary>
             <div className="mt-3">
-            <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2">On-page keywords (from the crawled content, no external API)</div>
-            {gaps.on_page?.available ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <div className="text-12 font-semibold text-emerald-700 mb-1.5">Shared ({gaps.on_page.shared_keywords.length})</div>
-                  <Chips items={gaps.on_page.shared_keywords} empty="None in common." />
+              <div className="text-12 font-semibold  tracking-wide text-slate-500 mb-2">On-page keywords (from the crawled content, no external API)</div>
+              {gaps.on_page?.available ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <div className="text-12 font-semibold text-emerald-700 mb-1.5">Shared ({gaps.on_page.shared_keywords.length})</div>
+                    <Chips items={gaps.on_page.shared_keywords} empty="None in common." />
+                  </div>
+                  <div>
+                    <div className="text-12 font-semibold text-indigo-700 mb-1.5">Only you emphasise ({gaps.on_page.ours_only_keywords.length})</div>
+                    <Chips items={gaps.on_page.ours_only_keywords} empty="Nothing unique to your content." />
+                  </div>
+                  <div>
+                    <div className="text-12 font-semibold text-rose-700 mb-1.5">Only they emphasise ({gaps.on_page.competitor_only_keywords.length}) — the gap</div>
+                    <Chips items={gaps.on_page.competitor_only_keywords} empty="They cover nothing you don't." tone="rose" />
+                  </div>
                 </div>
-                <div>
-                  <div className="text-12 font-semibold text-indigo-700 mb-1.5">Only you emphasise ({gaps.on_page.ours_only_keywords.length})</div>
-                  <Chips items={gaps.on_page.ours_only_keywords} empty="Nothing unique to your content." />
-                </div>
-                <div>
-                  <div className="text-12 font-semibold text-rose-700 mb-1.5">Only they emphasise ({gaps.on_page.competitor_only_keywords.length}) — the gap</div>
-                  <Chips items={gaps.on_page.competitor_only_keywords} empty="They cover nothing you don't." tone="rose" />
-                </div>
-              </div>
-            ) : (
-              <div className="text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">{gaps.on_page?.reason}</div>
-            )}
+              ) : (
+                <div className="text-13 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">{gaps.on_page?.reason}</div>
+              )}
             </div>
           </details>
 
@@ -467,15 +474,15 @@ export function ComparisonResult({ c, bare = false, onGo, extraTabs = [] }) {
                 {gaps.search.note && <p className="text-12 text-slate-500">{gaps.search.note}</p>}
                 {!gaps.search.keyword_gaps?.length ? <p className="text-13 text-slate-500">No search keyword gaps found against this competitor.</p> : (
                   <>
-                  <div className="flex justify-end">{exportBtn(() => downloadCsv(`competitor-keyword-gaps-${slugOf(c.competitor?.name || c.competitor?.target)}`, ['Keyword', 'Outranked by'], gaps.search.keyword_gaps.map(g => [g.keyword, (g.competitors || []).map(x => x.domain).join('; ')])))}</div>
-                  <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                    {gaps.search.keyword_gaps.map(g => (
-                      <li key={g.keyword} className="px-4 py-2.5 text-13 flex flex-wrap items-center gap-2">
-                        <b className="text-slate-900">{g.keyword}</b>
-                        <span className="text-slate-500">· outranked by {g.competitors?.map(x => x.domain).join(', ')}</span>
-                      </li>
-                    ))}
-                  </ul>
+                    <div className="flex justify-end">{exportBtn(() => downloadCsv(`competitor-keyword-gaps-${slugOf(c.competitor?.name || c.competitor?.target)}`, ['Keyword', 'Outranked by'], gaps.search.keyword_gaps.map(g => [g.keyword, (g.competitors || []).map(x => x.domain).join('; ')])))}</div>
+                    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                      {gaps.search.keyword_gaps.map(g => (
+                        <li key={g.keyword} className="px-4 py-2.5 text-13 flex flex-wrap items-center gap-2">
+                          <b className="text-slate-900">{g.keyword}</b>
+                          <span className="text-slate-500">· outranked by {g.competitors?.map(x => x.domain).join(', ')}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </>
                 )}
               </div>

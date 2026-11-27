@@ -190,9 +190,9 @@ function ProfilesTab({ toast }) {
             { id: 'name', header: 'Business', thClass: 'p-2', className: 'p-2', value: b => `${b.name} ${[b.primary_category, b.area || b.city].filter(Boolean).join(' ')}`, cell: b => <><div className="text-gray-900">{b.name}</div><div className="text-12 text-gray-500">{[b.primary_category, b.area || b.city].filter(Boolean).join(' · ')}</div></> },
             { id: 'plan', header: 'Plan', thClass: 'p-2', className: 'p-2', value: b => b.plan || null, cell: b => (b.plan ? <Badge tone="blue">{b.plan}</Badge> : '—') },
             { id: 'source', header: 'Source', thClass: 'p-2', className: 'p-2 text-gray-600', value: b => b.source || null },
-            { id: 'score', header: 'Score', right: true, first: 'desc', thClass: 'p-2', className: 'p-2 text-right tabular-nums font-medium', value: b => b.last_audit_score ?? null, cell: b => b.last_audit_score ?? '—' },
+            { id: 'score', header: 'Score', right: true, first: 'desc', thClass: 'p-2', className: 'p-2  tabular-nums font-medium', value: b => b.last_audit_score ?? null, cell: b => b.last_audit_score ?? '—' },
             { id: 'status', header: 'Status', thClass: 'p-2', className: 'p-2', value: b => (b.status === 'active' ? 'On autopilot' : b.status === 'paused' ? 'Paused' : 'Needs approval'), cell: b => (b.status === 'active' ? <StatusPill level="good">On autopilot</StatusPill> : b.status === 'paused' ? <Badge>Paused</Badge> : <StatusPill level="warning">Needs approval</StatusPill>) },
-            { id: 'pending', header: 'Waiting tasks', right: true, first: 'desc', thClass: 'p-2', className: 'p-2 text-right tabular-nums', value: b => b.pending_tasks ?? null },
+            { id: 'pending', header: 'Waiting tasks', right: true, first: 'desc', thClass: 'p-2', className: 'p-2  tabular-nums', value: b => b.pending_tasks ?? null },
             { id: 'next', header: 'Next job', thClass: 'p-2', className: 'p-2 text-gray-600', value: b => (b.next_run_at ? Date.parse(b.next_run_at) : null), cell: b => (b.next_run_at ? fmtDateTime(b.next_run_at) : '—'), csv: false },
             { id: 'actions', header: '', thClass: 'p-2', className: 'p-2 text-right', cell: b => <Button size="sm" icon={CalendarClock} onClick={() => setOpen(list?.find(x => x.id === b.id) || b)}>Schedule</Button> },
           ]} />

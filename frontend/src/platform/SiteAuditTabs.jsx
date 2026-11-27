@@ -145,18 +145,18 @@ export function CrawledPagesTab({ r }) {
                   <React.Fragment key={p.url}>
                     <tr className="hover:bg-slate-50 align-top">
                       <td className="pl-3 pt-3 w-8">{p.issues.length > 0 && <button type="button" onClick={() => toggle(p.url)} aria-label="Show issues" className="text-slate-400 hover:text-slate-700 cursor-pointer"><ChevronRight size={14} className={`transition-transform ${open.has(p.url) ? 'rotate-90' : ''}`} /></button>}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{p.inbound ?? dash}</td>
+                      <td className="px-4 py-3  tabular-nums">{p.inbound ?? dash}</td>
                       <td className="px-4 py-3 max-w-[320px]"><Url u={p.url} /></td>
                       <td className="px-4 py-3 max-w-[260px] truncate" title={p.title || ''}>{p.title || dash}</td>
                       <td className="px-4 py-3">{code(p.status)}</td>
                       <td className="px-4 py-3 text-right">{p.issues.length ? <button type="button" onClick={() => toggle(p.url)} className="text-indigo-600 hover:underline cursor-pointer">{p.issues.length} {p.issues.length === 1 ? 'issue' : 'issues'}</button> : <span className="inline-flex items-center gap-1 text-emerald-600"><Check size={13} />Healthy</span>}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{p.depth != null ? `${p.depth} ${p.depth === 1 ? 'click' : 'clicks'}` : dash}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{p.words ?? dash}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{p.text_ratio != null ? `${p.text_ratio}%` : dash}</td>
+                      <td className="px-4 py-3  tabular-nums">{p.depth != null ? `${p.depth} ${p.depth === 1 ? 'click' : 'clicks'}` : dash}</td>
+                      <td className="px-4 py-3  tabular-nums">{p.words ?? dash}</td>
+                      <td className="px-4 py-3  tabular-nums">{p.text_ratio != null ? `${p.text_ratio}%` : dash}</td>
                     </tr>
                     {open.has(p.url) && <tr className="bg-slate-50/60"><td /><td colSpan={8} className="px-4 py-3"><ul className="space-y-1.5">{p.issues.map(i => <li key={i.code} className="flex gap-2 text-13"><span className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ background: SEV[i.severity][1] }} /><span><b className="text-slate-900">{i.label}.</b> <span className="text-slate-600">{i.fix}.</span></span></li>)}</ul></td></tr>}
                   </React.Fragment>))}
-                {!slice.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-500">No page matches.</td></tr>}</tbody>
+                  {!slice.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-slate-500">No page matches.</td></tr>}</tbody>
               </table>
             </div>
             <Pager p={pager} label="pages" />
@@ -222,7 +222,7 @@ export function CompareTab({ r }) {
   const gen = [['Pages crawled', x => x.pages], ['Site Health', x => x.health], ['Total issues', x => x.totals.issues], ['Total errors', x => x.totals.errors], ['Total warnings', x => x.totals.warnings], ['Total notices', x => x.totals.notices]];
   const exportCompare = () => downloadCsv(`audit-comparison-${r.project}`, ['Group', 'Check', `Newer crawl (${when(A.date)})`, `Older crawl (${when(B.date)})`, 'Fixed', 'New'],
     [...gen.map(([l, f]) => ['General', l, f(A), f(B), l.startsWith('Total') && f(B) > f(A) ? f(B) - f(A) : 0, l.startsWith('Total') && f(A) > f(B) ? f(A) - f(B) : 0]),
-      ...r.checks.map(c => { const x = A.counts[c.code] ?? 0; const y = B.counts[c.code] ?? 0; return [SEV[c.severity][0], c.label, x, y, y > x ? y - x : 0, x > y ? x - y : 0]; })]);
+    ...r.checks.map(c => { const x = A.counts[c.code] ?? 0; const y = B.counts[c.code] ?? 0; return [SEV[c.severity][0], c.label, x, y, y > x ? y - x : 0, x > y ? x - y : 0]; })]);
   const cell = (n, o) => (n > o ? <span className="text-indigo-600 font-semibold">{n - o}</span> : dash);
   return (
     <Card pad={false} action={<Button size="sm" icon={Download} onClick={exportCompare}>Export CSV</Button>}>
@@ -238,9 +238,11 @@ export function CompareTab({ r }) {
         {SEV_ORDER.map(s => (
           <tbody key={s} className="divide-y divide-slate-100">
             <tr><td colSpan={5} className="px-5 pt-5 pb-2 text-16 font-bold text-slate-900">{SEV[s][0]}<div className="h-[3px] mt-2" style={{ background: SEV[s][1] }} /></td></tr>
-            {r.checks.filter(c => c.severity === s).map(c => { const x = A.counts[c.code] ?? 0; const y = B.counts[c.code] ?? 0; return (
-              <tr key={c.code}><td className="px-5 py-2.5 text-indigo-700">{c.label}</td><td className="px-5 py-2.5 text-center tabular-nums">{x}</td><td className="px-5 py-2.5 text-center tabular-nums">{y}</td>
-                <td className="px-5 py-2.5 text-right">{y > x ? <span className="text-emerald-600 font-semibold">{y - x}</span> : dash}</td><td className="px-5 py-2.5 text-right">{cell(x, y)}</td></tr>); })}
+            {r.checks.filter(c => c.severity === s).map(c => {
+              const x = A.counts[c.code] ?? 0; const y = B.counts[c.code] ?? 0; return (
+                <tr key={c.code}><td className="px-5 py-2.5 text-indigo-700">{c.label}</td><td className="px-5 py-2.5 text-center tabular-nums">{x}</td><td className="px-5 py-2.5 text-center tabular-nums">{y}</td>
+                  <td className="px-5 py-2.5 text-right">{y > x ? <span className="text-emerald-600 font-semibold">{y - x}</span> : dash}</td><td className="px-5 py-2.5 text-right">{cell(x, y)}</td></tr>);
+            })}
           </tbody>))}
       </table>
       {h.length < 2 && <p className="px-5 py-4 text-12 text-slate-500 border-t border-slate-100">Only one crawl so far: run the audit again to compare.</p>}

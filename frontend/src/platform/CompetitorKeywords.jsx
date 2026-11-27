@@ -78,7 +78,7 @@ function Body({ b }) {
             <table className="w-full text-13">
               <thead><tr className="text-12 uppercase tracking-wide text-slate-500 bg-slate-50/70">
                 <th className="px-4 py-2 text-left">Keyword</th><th className="px-3 py-2 text-left">Useful for you?</th><th className="px-3 py-2 text-left">Competitors</th>
-                <th className="px-3 py-2 text-right">Searches / mo</th><th className="px-3 py-2 text-right">CPC</th><th className="px-3 py-2 text-right">Their position</th><th className="px-3 py-2" />
+                <th className="px-3 py-2 ">Searches / mo</th><th className="px-3 py-2 ">CPC</th><th className="px-3 py-2 ">Their position</th><th className="px-3 py-2" />
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {pager.rows.map(r => (
@@ -86,10 +86,10 @@ function Body({ b }) {
                     <td className="px-4 py-2 font-medium text-slate-900">{r.keyword}</td>
                     <td className="px-3 py-2"><Badge tone={VERDICT[r.fit][1]}>{VERDICT[r.fit][0]}</Badge> <span className="text-12 text-slate-500">{r.why}</span></td>
                     <td className="px-3 py-2 text-slate-600">{(r.competitors || []).join(', ')}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{num(r.volume)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.cpc ? `$${Number(r.cpc).toFixed(2)}` : '—'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.rankings?.length ? r.rankings.map(x => <a key={x.d} href={x.url} target="_blank" rel="noreferrer" title={`${x.d}: ${x.url}`} className="text-indigo-600 hover:underline ml-2">#{x.pos}</a>) : '—'}</td>
-                    <td className="px-3 py-2 text-right">{r.fit !== 'have' && r.fit !== 'no' && <Link className="text-12.5 text-indigo-600 hover:underline" to={`/keyword-management/prepare?k=${encodeURIComponent(r.keyword)}`}>Prepare</Link>}</td>
+                    <td className="px-3 py-2  tabular-nums">{num(r.volume)}</td>
+                    <td className="px-3 py-2  tabular-nums">{r.cpc ? `$${Number(r.cpc).toFixed(2)}` : '—'}</td>
+                    <td className="px-3 py-2  tabular-nums">{r.rankings?.length ? r.rankings.map(x => <a key={x.d} href={x.url} target="_blank" rel="noreferrer" title={`${x.d}: ${x.url}`} className="text-indigo-600 hover:underline ml-2">#{x.pos}</a>) : '—'}</td>
+                    <td className="px-3 py-2 ">{r.fit !== 'have' && r.fit !== 'no' && <Link className="text-12.5 text-indigo-600 hover:underline" to={`/keyword-management/prepare?k=${encodeURIComponent(r.keyword)}`}>Prepare</Link>}</td>
                   </tr>
                 ))}
                 {!pager.rows.length && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No keywords in this view.</td></tr>}

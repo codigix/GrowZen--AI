@@ -4,7 +4,9 @@ import base64
 from datetime import date, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+import hashlib
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -330,6 +332,31 @@ class PostEditIn(BaseModel):
     body: str = Field(min_length=1, max_length=1500)
     cta_type: str | None = None
     cta_url: str | None = None
+
+
+class PostPictureIn(BaseModel):
+    data_base64: str = Field(max_length=40_000_000)
+    name: str | None = Field(default=None, max_length=120)
+
+
+@router.post("/post-picture")
+def upload_post_picture(body: PostPictureIn, request: Request, b: Business = Depends(get_business), user: User = Depends(current_user)):
+    """A picture for ONE post. It is kept on this server and only attached to the post: it is NOT added to the profile's Photos (that is what /media does).
+    Returns the address of the picture; when the post is published, Google fetches it from a public address (see post_image_host)."""
+    from ..config import get_settings
+    from ..services import autopilot, featured_images as fi, post_image_host as ph
+    try:
+        data, info = autopilot._jpeg(f"data:image/jpeg;base64,{body.data_base64}", body.name)
+    except fi.ImageError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    digest = hashlib.sha256(data).hexdigest()[:24]
+    folder = fi.UPLOAD_ROOT / "post-pictures" / str(int(b.id))
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{digest}.jpg").write_bytes(data)
+    path = f"{get_settings().api_prefix}/public/gbp-post-image/upload/{int(b.id)}/{digest}.jpg"
+    bases = ph._public_bases()
+    base = bases[0] if bases else str(request.base_url).rstrip("/")
+    return {"url": f"{base}{path}", "width": info.get("width"), "height": info.get("height")}
 
 
 @router.post("/posts/{post_id}/publish")

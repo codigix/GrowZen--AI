@@ -3,6 +3,7 @@ import { ImagePlus, Trash2, ArrowUp, ArrowDown, Loader2, AlertTriangle, Plus, Ch
 import { Button, inputCls } from './SeoUi';
 import { api, SEO_API } from './seoApi';
 import Select from '../components/Select';
+import { keywordAlt } from './FeaturedImageField';
 
 /**
  * Article-body images (Images & Analysis step): upload several at once (drag & drop or multi-select), give each ALT text
@@ -98,9 +99,10 @@ export default function ContentImageUploader({ b, article, draft, onDraftChange,
     if (seeded.current || !stored) return;
     seeded.current = true;
     const inDraft = new Set([...(draft || '').matchAll(/data-gz-image="([^"]+)"/g)].map(m => m[1]));
-    const waiting = stored.filter(x => !inDraft.has(x.name)).map(x => ({
+    const imgs = new Set([...String(draft || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*["']?([^"'\s>]+)/gi)].map(m => m[1])).size;
+    const waiting = stored.filter(x => !inDraft.has(x.name)).map((x, i) => ({
       name: x.name, size: x.size, info: { width: x.width, height: x.height, original_size: x.original_size }, file: x.original_name || x.name,
-      alt: String(x.original_name || '').replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim(), caption: ''
+      alt: keywordAlt(article.keyword, imgs + i + 1) || String(x.original_name || '').replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim(), caption: ''
     }));
     if (waiting.length) setItems(xs => [...waiting.filter(w => !xs.some(x => x.name === w.name)), ...xs]);
   }, [stored]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -126,8 +128,12 @@ export default function ContentImageUploader({ b, article, draft, onDraftChange,
         if (!EXTS.includes(ext)) throw new Error(`".${ext}" is not an image GrowZen can use. Upload JPG, PNG, WebP, GIF, AVIF or HEIC.`);
         if (file.size > MAX_MB * 1048576) throw new Error(`${(file.size / 1048576).toFixed(1)} MB: larger than ${MAX_MB} MB.`);
         const r = await api(`/businesses/${b.id}/articles/${article.id}/content-images`, { method: 'POST', body: { data_url: await readAsDataUrl(file), filename: file.name } });
-        const alt = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
-        setItems(xs => (xs.some(x => x.name === r.name) ? xs : [...xs, { name: r.name, size: r.size, info: r.info, file: file.name, alt, caption: '' }]));
+        // ALT from the primary keyword, numbered after the images already in the article: "wedding-dress-1", "wedding-dress-2", …
+        const inArticle = new Set([...String(draft || '').matchAll(/<img\b[^>]*\bsrc\s*=\s*["']?([^"'\s>]+)/gi)].map(m => m[1])).size;
+        setItems(xs => (xs.some(x => x.name === r.name) ? xs : [...xs, {
+          name: r.name, size: r.size, info: r.info, file: file.name, caption: '',
+          alt: keywordAlt(article.keyword, inArticle + xs.length + 1) || file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
+        }]));
         if (onUploaded) onUploaded();
       } catch (e) {
         setErrors(es => [...es, `${file.name}: ${e.message || e}`]);

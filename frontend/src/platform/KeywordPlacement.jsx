@@ -75,7 +75,7 @@ export function KeywordsView({ b, onOpen }) {
               <SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className="px-3 py-2">Searches / mo</SortTh>
               <SortTh id="meant" sort={sort} onSort={onSort} className="px-3 py-2">Page</SortTh>
               {areas.map(a => <th key={a.key} scope="col" className="px-1 py-2 text-center font-semibold leading-tight w-[64px]" title={`${a.label}: tick it if this keyword will be used here`}>{a.label}</th>)}
-              <th className="px-3 py-2 text-right">Actions</th>
+              <th className="px-3 py-2 ">Actions</th>
             </tr>
           </thead>
           {rows.map(k => {
@@ -85,7 +85,7 @@ export function KeywordsView({ b, onOpen }) {
               <tbody key={k.id} className="border-t border-slate-200">
                 <tr className="hover:bg-slate-50 align-middle">
                   <td className="px-3 py-2.5 font-semibold text-slate-900 min-w-[170px]">{k.keyword}{k.rank ? <span className="block text-11.5 font-normal text-slate-500">Google position {k.rank}</span> : null}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{n0(k.volume)}</td>
+                  <td className="px-3 py-2.5  tabular-nums">{n0(k.volume)}</td>
                   <td className="px-3 py-2.5 min-w-[210px] text-12.5">
                     {k.meant_for ? <span><button type="button" onClick={() => onOpen(k.meant_for.url, k.keyword)} className="font-semibold text-indigo-700 hover:underline cursor-pointer">{k.meant_for.path}</button> <span className="text-slate-500">({k.meant_for.role})</span></span>
                       : k.other_fits.length ? <span className="text-slate-600">Could go on {k.other_fits.map(f => f.path).join(', ')}</span> : <span className="text-amber-700">{k.kind === 'post' ? 'Needs a blog post' : 'Needs a new page'}</span>}
@@ -172,15 +172,17 @@ export function UseKeywordsModal({ b, ids, onClose }) {
               </header>
               {k.meant_for && ['info', 'policy'].includes(k.meant_for.scope) && <p className="px-4 py-2 text-12.5 text-amber-900 bg-amber-50 border-t border-amber-100">⚠ It is mapped to {k.meant_for.path}, {k.meant_for.scope === 'policy' ? 'a policy page' : 'an information page'}, which should not compete for it. Pick the page that offers it (Change the page in the keyword's menu) before you add it there.</p>}
               <ul className="divide-y divide-slate-100">
-                {k.purposes.map(p => { const id = `${k.id}-${p.key}`; return (
-                  <li key={p.key} className={`px-4 py-3 grid grid-cols-1 md:grid-cols-[130px_1fr] gap-x-4 gap-y-1.5 ring-1 ring-inset ${PURPOSE_TONE(p)}`}>
-                    <div><div className="text-12.5 font-semibold text-slate-900">{p.label}</div>{p.used ? <Badge tone="green">Already used</Badge> : p.planned ? <Badge tone="blue">Planned</Badge> : <span className="text-11.5 text-slate-400">Not yet</span>}</div>
-                    <div className="min-w-0">
-                      <div className="text-13 font-semibold text-slate-800">{p.headline}</div>
-                      <div className="mt-1 flex items-start gap-2"><pre className="flex-1 whitespace-pre-wrap text-12.5 text-slate-800 bg-white rounded px-3 py-2 ring-1 ring-slate-200 font-sans">{p.text}</pre><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this text to paste where it goes." onClick={() => copy(p.text, id)} /></div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">{go(p, k)}<Act tone="slate" busy={busy === id} tip={p.planned ? 'Remove it from the plan for this keyword.' : 'Plan: mark this as something you will do for this keyword.'} onClick={() => plan(k, p.key, !p.planned)}>{p.planned ? 'Remove from plan' : 'Plan it'}</Act></div>
-                    </div>
-                  </li>); })}
+                {k.purposes.map(p => {
+                  const id = `${k.id}-${p.key}`; return (
+                    <li key={p.key} className={`px-4 py-3 grid grid-cols-1 md:grid-cols-[130px_1fr] gap-x-4 gap-y-1.5 ring-1 ring-inset ${PURPOSE_TONE(p)}`}>
+                      <div><div className="text-12.5 font-semibold text-slate-900">{p.label}</div>{p.used ? <Badge tone="green">Already used</Badge> : p.planned ? <Badge tone="blue">Planned</Badge> : <span className="text-11.5 text-slate-400">Not yet</span>}</div>
+                      <div className="min-w-0">
+                        <div className="text-13 font-semibold text-slate-800">{p.headline}</div>
+                        <div className="mt-1 flex items-start gap-2"><pre className="flex-1 whitespace-pre-wrap text-12.5 text-slate-800 bg-white rounded px-3 py-2 ring-1 ring-slate-200 font-sans">{p.text}</pre><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this text to paste where it goes." onClick={() => copy(p.text, id)} /></div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">{go(p, k)}<Act tone="slate" busy={busy === id} tip={p.planned ? 'Remove it from the plan for this keyword.' : 'Plan: mark this as something you will do for this keyword.'} onClick={() => plan(k, p.key, !p.planned)}>{p.planned ? 'Remove from plan' : 'Plan it'}</Act></div>
+                      </div>
+                    </li>);
+                })}
               </ul>
             </section>))}
           {!d.keywords.length && <p className="text-13 text-slate-500">None of the selected keywords were found.</p>}
@@ -241,12 +243,14 @@ export function PageOverview({ b, target, onClose }) {
                   <span className="ml-auto flex flex-wrap gap-1">{[['title', 'Title'], ['heading', 'Heading'], ['description', 'Description'], ['intro', 'First paragraph'], ['subheading', 'Sections']].map(([key, label]) => <Badge key={key} tone={k.used[key] ? 'green' : 'gray'}>{k.used[key] ? '✓ ' : ''}{label}</Badge>)}</span></div>
                 {k.warning && <p className="mb-2 text-12.5 text-amber-900 bg-amber-50 rounded px-3 py-1.5">⚠ {k.warning}</p>}
                 {k.to_add.length === 0 ? <p className="text-12.5 text-emerald-700 inline-flex items-center gap-1"><Check size={14} />Already in the places that matter on this page.</p> : (
-                  <ul className="space-y-2">{k.to_add.map(a => { const id = `${k.id}-${a.place}`; return (
-                    <li key={a.place} className="rounded-md bg-white ring-1 ring-slate-200 px-3 py-2">
-                      <div className="text-12.5 text-slate-800"><b>{a.current ? 'Replace' : 'Add'} {ADD_AT[a.place] || a.place}.</b> <span className="text-slate-500">{a.why}</span></div>
-                      {a.current && <div className="mt-1.5 grid grid-cols-[60px_1fr] gap-2 items-start"><span className="text-11.5 font-semibold uppercase tracking-wide text-red-500 pt-1.5">Now</span><div className="text-12.5 text-slate-600 bg-red-50/50 rounded px-2.5 py-1.5 ring-1 ring-red-100 line-through decoration-red-300"><Highlight text={a.current} focus={k.words} /></div></div>}
-                      {a.example && <div className="mt-1.5 grid grid-cols-[60px_1fr] gap-2 items-start"><span className="text-11.5 font-semibold uppercase tracking-wide text-emerald-600 pt-1.5">{a.current ? 'Change to' : 'Add'}</span><div className="flex items-start gap-2"><div className="flex-1 text-12.5 text-slate-900 bg-emerald-50/60 rounded px-2.5 py-1.5 ring-1 ring-emerald-100"><Highlight text={a.example} focus={k.words} /></div><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this text to paste on the page." onClick={() => copy(a.example, id)} /></div></div>}
-                    </li>); })}</ul>)}
+                  <ul className="space-y-2">{k.to_add.map(a => {
+                    const id = `${k.id}-${a.place}`; return (
+                      <li key={a.place} className="rounded-md bg-white ring-1 ring-slate-200 px-3 py-2">
+                        <div className="text-12.5 text-slate-800"><b>{a.current ? 'Replace' : 'Add'} {ADD_AT[a.place] || a.place}.</b> <span className="text-slate-500">{a.why}</span></div>
+                        {a.current && <div className="mt-1.5 grid grid-cols-[60px_1fr] gap-2 items-start"><span className="text-11.5 font-semibold uppercase tracking-wide text-red-500 pt-1.5">Now</span><div className="text-12.5 text-slate-600 bg-red-50/50 rounded px-2.5 py-1.5 ring-1 ring-red-100 line-through decoration-red-300"><Highlight text={a.current} focus={k.words} /></div></div>}
+                        {a.example && <div className="mt-1.5 grid grid-cols-[60px_1fr] gap-2 items-start"><span className="text-11.5 font-semibold uppercase tracking-wide text-emerald-600 pt-1.5">{a.current ? 'Change to' : 'Add'}</span><div className="flex items-start gap-2"><div className="flex-1 text-12.5 text-slate-900 bg-emerald-50/60 rounded px-2.5 py-1.5 ring-1 ring-emerald-100"><Highlight text={a.example} focus={k.words} /></div><Act icon={copied === id ? Check : Copy} tone="slate" tip="Copy: copy this text to paste on the page." onClick={() => copy(a.example, id)} /></div></div>}
+                      </li>);
+                  })}</ul>)}
               </div>))}
           </div>
           <div className="flex flex-wrap items-center gap-3 rounded-lg bg-indigo-50/60 ring-1 ring-indigo-100 px-4 py-2.5"><span className="text-12.5 text-slate-700">A document for your developer with this page and these keywords only:</span><BriefButtons b={b} page={res.url} focus={target?.focus} size="sm" /></div>

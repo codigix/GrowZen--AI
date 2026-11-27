@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Image as ImageIcon, AlertTriangle, CheckCircle2, Trash2, Loader2, HardDrive, Info } from 'lucide-react';
 import { Button } from './SeoUi';
 import { api, useApi } from './seoApi';
-import { featuredOf, featuredSrc } from './FeaturedImageField';
+import { featuredOf, featuredSrc, keywordAlt } from './FeaturedImageField';
 import ContentImageUploader from './ContentImageUploader';
 import SiteBlogImages from './SiteBlogImages';
 import SmartImagePlanner from './SmartImagePlanner';
@@ -73,6 +73,45 @@ export function removeImage(html, raw) {
   let out = String(html || '').replace(/<img\b[^>]*>/gi, (tag) => (srcOf(tag) === raw ? '' : tag));
   out = out.replace(/<figure\b[^>]*>(?:(?!<img\b|<\/figure>)[\s\S])*<\/figure>/gi, (fig) => (/<(img|video|iframe|svg|picture)\b/i.test(fig) ? fig : ''));
   return out;
+}
+
+/** Sets the alt attribute of every <img> with this src (added when the tag has none). Everything else is untouched. */
+export function setImageAlt(html, raw, alt) {
+  const esc = String(alt).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(html || '').replace(/<img\b[^>]*>/gi, (tag) => {
+    if (srcOf(tag) !== raw) return tag;
+    return /\balt\s*=\s*(["'])[\s\S]*?\1/i.test(tag) ? tag.replace(/\balt\s*=\s*(["'])[\s\S]*?\1/i, `alt="${esc}"`) : tag.replace(/^<img\b/i, `<img alt="${esc}"`);
+  });
+}
+
+/** ALT box of one article image: shows the ALT in the draft (emptied, it goes back to the primary keyword ALT "wedding-dress-1").
+ * Typing changes the draft; "Save" stores it in the article at once. */
+function AltInput({ value, fallback, savedValue, onChange, onSave }) {
+  const [v, setV] = useState(value || fallback);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setV(value || fallback); }, [value, fallback]);
+  const next = () => v.trim() || fallback;
+  const commit = () => {
+    if (!v.trim()) setV(fallback);
+    if (next() !== (value || '').trim()) onChange(next());
+  };
+  const save = async () => {
+    const alt = next();
+    setV(alt);
+    setBusy(true);
+    try { await onSave(alt); } finally { setBusy(false); }
+  };
+  const saved = next() === (savedValue || '').trim();
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <span className="text-[11px] font-semibold text-slate-600 shrink-0">ALT</span>
+      <input className="flex-1 min-w-0 h-7 px-2 rounded-md bg-white ring-1 ring-inset ring-slate-200 text-[12px] text-slate-900" value={v} maxLength={255} placeholder={fallback}
+        onChange={e => setV(e.target.value)} onBlur={commit} onKeyDown={e => e.key === 'Enter' && save()} aria-label="ALT text" />
+      {saved
+        ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 shrink-0"><CheckCircle2 size={11} /> Saved</span>
+        : <Button size="sm" busy={busy} onMouseDown={e => e.preventDefault()} onClick={save}>Save</Button>}
+    </div>
+  );
 }
 
 /** Size of an image on another server: HEAD first, then a GET; null when that server does not allow the browser to read it. */
@@ -186,6 +225,7 @@ export default function BlogImageAnalysis({ b, article, featured, onFeaturedChan
   const pending = rows.some(r => r.pending);
   const dataBytes = sum(bodyRows.filter(r => r.src.startsWith('data:')));
   const dirty = draft !== (saved || '');
+  const savedAlts = useMemo(() => new Map(bodyImages(saved || '').map(im => [im.raw, im.alt])), [saved]); // ALT of each image in the saved article
 
   // ---- remove (two clicks)
   const [confirm, setConfirm] = useState('');
@@ -296,6 +336,16 @@ export default function BlogImageAnalysis({ b, article, featured, onFeaturedChan
                   <div className={`inline-flex items-center gap-1 ${toneCls[r.status.tone]}`}>
                     {r.status.tone === 'ok' ? <CheckCircle2 size={11} /> : r.status.tone === 'bad' ? <AlertTriangle size={11} /> : null}{r.status.text}
                   </div>
+                  {r.kind !== 'Featured' && (
+                    <AltInput value={r.alt} fallback={keywordAlt(article.keyword, bodyRows.indexOf(r) + 1)} savedValue={savedAlts.get(r.raw)}
+                      onChange={(alt) => onDraftChange(setImageAlt(draft, r.raw, alt))}
+                      onSave={(alt) => {
+                        const next = setImageAlt(draft, r.raw, alt);
+                        onDraftChange(next);
+                        if (!onInsertSave) { toast('ALT text changed. Click "Save changes" to keep it.'); return Promise.resolve(); }
+                        return onInsertSave(next).then(() => toast('ALT text saved.')).catch(e => toast(e.message || String(e)));
+                      }} />
+                  )}
                 </div>
                 <Button size="sm" icon={Trash2} busy={busy === r.key} disabled={Boolean(busy)} onClick={() => remove(r)}>
                   {confirm === r.key ? 'Click again to remove' : 'Remove'}

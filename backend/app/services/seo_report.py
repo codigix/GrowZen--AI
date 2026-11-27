@@ -118,6 +118,20 @@ def python_checks(*, title: str, meta: str, slug: str, body: str, primary: str, 
         intro = intro.replace(svc._text(h1m.group(1)), "", 1).strip()
     out.append(_c(g, "intro_len", "Introduction of at least 500 characters", "pass" if len(intro) >= 500 else "warning" if intro else "fail", f"{len(intro)} characters"))
     out.append(_c(g, "intro_kw", "Primary keyword in the introduction", "pass" if svc._has(intro, primary) else "fail"))
+    # SEO title and H1 consistent: the same text, or a Blog title (H1) with the same focus (both hold the primary keyword and share the topic)
+    h1_text = svc._text(h1m.group(1)) if h1m else ""
+    if not h1_text:
+        out.append(_c(g, "h1_title", "SEO title and H1 are consistent", "fail", "No H1 heading."))
+    else:
+        from .seo_workflow.stages import _overlap
+        same = h1_text.strip().lower() == (title or "").strip().lower()
+        focus = svc._has(h1_text, primary) and svc._has(title or "", primary)
+        out.append(_c(g, "h1_title", "SEO title and H1 are consistent",
+                      "pass" if same or (focus and _overlap(h1_text, title or "") >= 0.4) else "warning" if focus else "fail",
+                      "The H1 is the SEO title." if same else f"H1: “{h1_text}” · SEO title: “{title}”"))
+    main_ok = svc.required_sections(body)["main_sections"]
+    out.append(_c(g, "main_h2", "Required main H2 sections with content", "pass" if main_ok else "fail",
+                  "At least two main H2 sections with paragraphs." if main_ok else "Fewer than two main H2 sections with content."))
 
     wh_h, wh_html = _section(visible, r"^(what|why|how|when|where)\b.*\?\s*$")
     if wh_h:
@@ -127,18 +141,24 @@ def python_checks(*, title: str, meta: str, slug: str, body: str, primary: str, 
     else:
         out.append(_c(g, "wh", "WH question section", "fail", "No H2 that is a What/Why/How/When/Where question."))
         out.append(_c(g, "wh_len", "WH answer at most 750 characters", "na"))
-    act_h, _ = _section(visible, svc.ACTION_RE.pattern)
+    act_h, act_html = _section(visible, svc.ACTION_RE.pattern)
     out.append(_c(g, "act", "\"Don't wait\" section", "pass" if act_h else "fail", act_h or "Missing."))
-    why_h, why_html = _section(visible, r"why choose|what to look for")  # neutral criteria when the business does not fit the topic
+    n_steps = len(re.findall(r"<li\b", act_html, re.I))
+    out.append(_c(g, "act_steps", "\"Don't wait\" has 3 to 4 actionable steps", "na" if not act_h else "pass" if 3 <= n_steps <= 4 else "fail", f"{n_steps} steps" if act_h else ""))
+    why_h, why_html = _section(visible, r"^why choose|^what to look for")  # neutral criteria when the business does not fit the topic
     n_reasons = len(re.findall(r"<li\b", why_html, re.I))
-    out.append(_c(g, "why", "\"Why choose\" / evaluation criteria section with 5 reasons", "pass" if why_h and n_reasons == 5 else "warning" if why_h else "fail",
-                  f"{n_reasons} reasons" if why_h else ""))
+    out.append(_c(g, "why", "\"Why choose\" / evaluation criteria section with exactly 5 reasons", "pass" if why_h and n_reasons == 5 else "fail",
+                  f"{why_h}: {n_reasons} reasons" if why_h else "Missing."))
     faq_h, faq_html = _section(visible, r"frequently asked|faq")
     n_faq = len(re.findall(r"<h3\b", faq_html, re.I))
-    out.append(_c(g, "faq", "FAQ section with 5 questions",
-                  "fail" if not faq_h or n_faq < 3 else "pass" if n_faq == 5 else "warning", f"{n_faq} questions" if faq_h else "No FAQ section."))
+    out.append(_c(g, "faq", "FAQ section with exactly 5 questions",
+                  "pass" if faq_h and n_faq == 5 else "fail", f"{n_faq} questions" if faq_h else "No FAQ section."))
     cta = bool(re.search(r"<h2\b[^>]*>[^<]*(contact|get started|ready to|talk to|book|call)", visible, re.I))
-    out.append(_c(g, "cta", "Call to action", "pass" if cta else "fail"))
+    own_contacts = [x for x in (getattr(b, "phone", None), getattr(b, "website", None), getattr(b, "booking_url", None)) if x]
+    has_contact = any(c in raw for c in own_contacts)
+    out.append(_c(g, "cta", "Call to action with verified contact details",
+                  "fail" if not cta else "pass" if has_contact or not own_contacts else "fail",
+                  "" if cta and (has_contact or not own_contacts) else "No call to action." if not cta else "The CTA has none of the profile's contact details (phone, website, booking link)."))
 
     # Keywords
     g = "Keywords"
@@ -159,10 +179,11 @@ def python_checks(*, title: str, meta: str, slug: str, body: str, primary: str, 
     g = "Readability"
     paras = [svc._text(m.group(2)) for m in svc._P_RE.finditer(visible)]
     paras = [p for p in paras if len(p.split()) >= 12]  # leave out one-line labels such as "Your next steps"
-    long_w = sum(1 for p in paras if len(p.split()) > 75)
-    long_s = sum(1 for p in paras if _sentences(p) > 4)
-    out.append(_c(g, "chunks", "Paragraphs are chunks of 2 to 4 sentences", "pass" if not (long_w or long_s) else "warning",
-                  f"{len(paras)} paragraphs; {long_w} over 75 words, {long_s} over 4 sentences"))
+    # the blog template: body paragraphs are full chunks of at least 500 characters; only very long ones (190+ words, 8+ sentences) are flagged
+    long_w = sum(1 for p in paras if len(p.split()) > 190)
+    long_s = sum(1 for p in paras if _sentences(p) > 8)
+    out.append(_c(g, "chunks", "Paragraphs are readable chunks (500+ characters, not overly long)", "pass" if not (long_w or long_s) else "warning",
+                  f"{len(paras)} paragraphs; {long_w} over 190 words, {long_s} over 8 sentences"))
     lists = len(re.findall(r"<(ul|ol)\b", visible, re.I))
     out.append(_c(g, "lists", "Scannable lists", "pass" if lists >= 2 else "warning", f"{lists} lists"))
 
@@ -267,7 +288,9 @@ def _own_pages(db, a, b) -> list[dict]:
 
 def ai_review(*, title: str, meta: str, body: str, primary: str, secondary: list[str], brand: str, b, pages: list[dict]) -> dict:
     text = svc._text(svc._SCHEMA_RE.sub("\n", body or ""))[:40000]
+    from .seo_workflow.master_prompt import template_block
     prompt = "\n".join([
+        *template_block(brand),  # the blog template the article was written to: judge it against this
         "You review ONE blog article for SEO, AEO, GEO, SXO and E-E-A-T. Be strict and honest: do not mark something as pass unless the article earns it.",
         "You have NO web access: never claim to have researched competitors, search volumes or rankings.",
         f'Primary keyword: "{primary}". Secondary keywords: {json.dumps(secondary)}. Business: {brand}.',
@@ -325,6 +348,29 @@ def ai_review(*, title: str, meta: str, body: str, primary: str, secondary: list
 
 # ── the whole report ─────────────────────────────────────────────────────────
 
+def _is_live(a) -> bool:
+    return bool((a.wp_post_id or a.wp_url) and a.wp_status != "deleted") or bool(a.react_post_id and a.react_status != "deleted")
+
+
+def _slug_clash(db, a) -> str | None:
+    """Another blog of this business already uses this article's address (its set slug, or the end of its live post URL). A live post keeps its
+    address and is not checked."""
+    from sqlalchemy import select
+    from ..models import Article
+    if _is_live(a):
+        return None
+    s = (svc.explicit_slug(a) or "").lower()
+    if not s:
+        return None
+    for o in db.scalars(select(Article).where(Article.business_id == a.business_id, Article.id != a.id)):
+        used = {(o.slug or "").lower()}
+        if _is_live(o):
+            used |= {(urlparse(u or "").path.rstrip("/").rsplit("/", 1)[-1] or "").lower() for u in (o.wp_url, o.react_url)}
+        if s in used:
+            return f"The URL slug /{s}/ is already used by “{o.title or o.keyword}”."
+    return None
+
+
 def build(db, a, b, *, with_ai: bool, previous: dict | None = None) -> dict:
     """The checklist for the article as it is saved now. with_ai=False keeps the last AI review (marked stale when the text changed since)."""
     brand = svc.brand_of(b)
@@ -341,6 +387,21 @@ def build(db, a, b, *, with_ai: bool, previous: dict | None = None) -> dict:
         except Exception as exc:  # noqa: BLE001 - the measurable checks are still worth showing
             log.warning("AI review failed for article %s: %s", a.id, exc)
             ai_error = str(exc)[:300]
+    # URL slug: free (no other blog of this business uses it); a live post keeps its address and is not checked
+    try:
+        clash = _slug_clash(db, a) if db is not None and getattr(a, "id", None) else None
+        checks.insert(5, _c("Metadata", "slug_free", "URL slug is available", "fail" if clash else "pass", clash or f"/{svc.explicit_slug(a) or svc.slugify(a.keyword)}/"))
+    except Exception:  # noqa: BLE001 - the availability check must never break the report
+        log.warning("Slug check failed for article %s", getattr(a, "id", None), exc_info=True)
+    # Business relevance: "Why choose <business>" only when the business really offers the topic (decided when the article was written)
+    why_h = next((c["detail"].split(":")[0] for c in checks if c["id"] == "why" and c["detail"]), "")
+    relevant = (a.stats or {}).get("business_relevant")
+    if relevant is False:
+        checks.append(_c("Business", "relevance", "Business relevance is honest", "fail" if why_h.lower().startswith("why choose") else "pass",
+                         "The business does not offer this topic, but the article has a “Why Choose” section." if why_h.lower().startswith("why choose")
+                         else "The business does not offer this topic: neutral informational heading, the business is not presented as the provider."))
+    elif relevant is True:
+        checks.append(_c("Business", "relevance", "Business relevance is honest", "pass", "The business offers what the article is about."))
     stale = bool(ai) and ai.get("body_hash") != body_hash(body)
     n = len(ai.get("supporting_queries") or []) if ai else 0
     checks.append(_c("Research", "supporting", "5 to 10 supporting search queries", "na" if not ai else "pass" if 5 <= n <= 10 else "warning",
@@ -351,7 +412,48 @@ def build(db, a, b, *, with_ai: bool, previous: dict | None = None) -> dict:
     else:
         checks.append(_c("AI review", "ai", "Qualitative review (intent, writing, facts, E-E-A-T…)", "na", ai_error or "Not run yet: click Run AI review."))
     summary = {s: sum(1 for c in checks if c["status"] == s) for s in STATUSES}
-    return {"checked_at": _now(), "checks": checks, "summary": summary, "ai": ai, "ai_stale": stale, "ai_error": ai_error, "research_note": RESEARCH_NOTE}
+    blocking = blocking_issues(checks, ai_stale=stale)
+    return {"checked_at": _now(), "checks": checks, "summary": summary, "ai": ai, "ai_stale": stale, "ai_error": ai_error, "research_note": RESEARCH_NOTE,
+            "blocking": blocking, "ready": not blocking}
+
+
+# Mandatory requirements: a "fail" here keeps the article from being marked ready to publish. Each has the correction to make.
+MANDATORY_FIX = {
+    "title_len": "Shorten the SEO title to at most 60 characters (Meta title stage → Run again, or edit the SEO title).",
+    "title_kw": "Put the exact primary keyword into the SEO title.",
+    "meta_len": "Write a meta description of 120 to 160 characters (Meta description stage → Run again, or edit it).",
+    "meta_kw": "Put the exact primary keyword into the meta description.",
+    "slug_free": "Change the web address (slug) in the editor to one no other blog uses, e.g. add -guide or -tips.",
+    "h1": "Add one H1 heading: the Blog title at the top of the article.",
+    "h1_title": "Make the Blog title (H1) about the same thing as the SEO title, with the primary keyword in both.",
+    "main_h2": "Regenerate the article (or add at least two main H2 sections with paragraphs).",
+    "intro_kw": "Use the primary keyword in the first paragraph of the introduction.",
+    "wh": "Add an H2 that is a What/Why/How/When/Where question, with a direct answer.",
+    "wh_len": "Shorten the WH answer to at most 750 characters.",
+    "act": "Add the \"Don't Wait to Seek Help\" section.",
+    "act_steps": "Give the \"Don't Wait\" section 3 to 4 short, actionable next steps.",
+    "why": "The \"Why Choose\" section needs exactly 5 reasons taken from the business profile (or 5 neutral criteria when the business does not offer the topic).",
+    "faq": "The FAQ section needs exactly 5 relevant questions with direct answers (FAQ → Regenerate).",
+    "cta": "End with a call to action that uses the business's real phone, website or booking link from the profile.",
+    "placeholders": "Replace the placeholder with the real detail from the business profile, or remove it.",
+    "contacts": "Remove phone numbers that are not the business's own (the profile's phone number only).",
+    "relevance": "Change the \"Why Choose\" heading to a neutral one (e.g. \"What to Look For When Choosing …\") and do not present the business as the provider.",
+    "schema": "Save the article again to rebuild the JSON-LD block.",
+    # the AI review: only a clear "fail" blocks (a warning is advice)
+    "factual_accuracy": "Correct or remove the statements the review marked as wrong (see \"Claims to verify\").",
+    "promotion": "Tone down the promotion: mention the business only where it is relevant to the topic.",
+}
+
+
+def blocking_issues(checks: list[dict], ai_stale: bool = False) -> list[dict]:
+    """The mandatory requirements that fail, each with the correction to make (empty = ready to publish)."""
+    out = []
+    for c in checks:
+        if c["status"] == "fail" and c["id"] in MANDATORY_FIX:
+            if c["group"] == "AI review" and ai_stale:
+                continue  # an AI verdict about an older version of the text does not block
+            out.append({"id": c["id"], "label": c["label"], "detail": c["detail"], "fix": MANDATORY_FIX[c["id"]]})
+    return out
 
 
 def save(db, a, report: dict) -> None:

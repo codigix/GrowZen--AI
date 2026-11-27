@@ -68,7 +68,8 @@ def find_listing(places: list[dict], b: Business) -> tuple[int | None, dict | No
 def targeting(b: Business) -> dict:
     """Where Google is asked from: the project's Position Tracking campaign (location, language, device), else its own area (market.py)."""
     cfg = b.track_config or {}
-    return {"location": cfg.get("location") or intel.default_location(b), "language": cfg.get("language") or "en", "device": cfg.get("device") or "desktop",
+    from . import report_filter  # noqa: PLC0415
+    return {"location": report_filter.current().location or cfg.get("location") or intel.default_location(b), "language": cfg.get("language") or "en", "device": cfg.get("device") or "desktop",
             "country": market.serp_country(b)}
 
 
@@ -136,3 +137,34 @@ def history(db: Session, b: Business, days: int = 90) -> dict[str, list[dict]]:
     for r in db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.day >= since).order_by(KeywordRankLog.day)):
         out.setdefault(r.keyword, []).append({"day": r.day.isoformat(), "rank": r.rank})
     return out
+
+
+# Share of searches that click the result at a position (a published average click curve): visibility and estimated traffic are worked out from it, so they are estimates, not measurements
+CTR = {1: 0.28, 2: 0.15, 3: 0.11, 4: 0.08, 5: 0.07, 6: 0.05, 7: 0.04, 8: 0.03, 9: 0.03, 10: 0.025}
+
+
+def _ctr(rank: float | None) -> float:
+    if not rank:
+        return 0.0
+    r = round(rank)
+    return CTR.get(r, 0.015 if r <= 20 else 0.005 if r <= 50 else 0.0)
+
+
+def one(db: Session, b: Business, keyword: str, days: int = 365) -> dict:
+    """One tracked keyword: its stored position history (Search Console), a summary, and visibility / estimated traffic from the click curve above."""
+    kw = " ".join(keyword.lower().split())
+    k = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
+    since = date.fromordinal(date.today().toordinal() - max(7, min(days, 730)))
+    logs = list(db.scalars(select(KeywordRankLog).where(KeywordRankLog.business_id == b.id, KeywordRankLog.keyword == kw, KeywordRankLog.day >= since).order_by(KeywordRankLog.day)))
+    vol = k.volume if k else None
+    series = [{"day": r.day.isoformat(), "rank": r.rank, "position": r.position, "clicks": r.clicks if hasattr(r, "clicks") else None, "impressions": r.impressions if hasattr(r, "impressions") else None,
+               "visibility": round(_ctr(r.rank) * 100, 1), "traffic": round(_ctr(r.rank) * vol) if vol else None, "url": r.url, "maps_rank": r.maps_rank} for r in logs]
+    ranks = [s["rank"] for s in series if s["rank"]]
+    cur = series[-1] if series else None
+    prev = next((s for s in reversed(series[:-1]) if s["rank"]), None)
+    last_url = next((s["url"] for s in reversed(series) if s["url"]), None)
+    return {"keyword": kw, "tracked": bool(k), "volume": vol, "cpc": k.cpc if k else None, "difficulty": k.difficulty if k else None, "intent": k.intent if k else None,
+            "series": series, "location": logs[-1].location if logs else None, "last_update": logs[-1].checked_at.isoformat() if logs and logs[-1].checked_at else None, "url": last_url,
+            "summary": {"current": cur["rank"] if cur else None, "previous": prev["rank"] if prev else None, "best": min(ranks) if ranks else None, "worst": max(ranks) if ranks else None,
+                        "average": round(sum(ranks) / len(ranks), 1) if ranks else None, "checks": len(series)},
+            "visibility": cur["visibility"] if cur else None, "traffic": cur["traffic"] if cur else None}

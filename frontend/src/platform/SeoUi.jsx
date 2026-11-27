@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import ReportFilterBar from './ReportFilterBar';
 import { StepBar } from './JourneyBar';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -53,6 +54,20 @@ export const useBusinesses = () => {
 
 // Selected business in current browser
 const KEY = 'seoBusinessId';
+// A request said the selected project does not exist any more: forget it, reload the account's project list and let the page fall back to the first project it owns.
+// Once per missing project, so a project that stays missing cannot start a loop.
+const healed = new Set();
+if (typeof window !== 'undefined') {
+  window.addEventListener('seo:project-missing', async (e) => {
+    const id = Number(e.detail);
+    if (!id || healed.has(id)) return;
+    healed.add(id);
+    try { if (Number(localStorage.getItem(KEY)) === id) localStorage.removeItem(KEY); } catch (err) { /* private window */ }
+    await refreshBusinesses();
+    window.dispatchEvent(new Event('seo-business'));
+  });
+}
+
 export const useSeoBusiness = () => {
   const { list } = useBusinesses();
   const read = () => { try { return Number(localStorage.getItem(KEY)) || null; } catch (e) { return null; } };
@@ -298,11 +313,7 @@ export const SeoShell = ({ title, subtitle, actions, children, hideSwitcher = fa
         <div className="h-full px-6 flex items-center justify-between gap-4">
           <div className="min-w-0" />
           <div className="flex items-center gap-2.5">
-            <div className="h-9 px-3 rounded bg-topbar-field border border-dashed border-white/10 flex items-center gap-2 text-12 font-medium text-topbar-item hover:text-white cursor-pointer transition-colors">
-              <Calendar size={13} />
-              <span>Last 30 Days</span>
-              <ChevronDown size={13} />
-            </div>
+            <ReportFilterBar business={business} />
             <NotificationBell />
             {actions}
             {!hideSwitcher && business && list?.length > 0 && (

@@ -83,7 +83,12 @@ const toolkit = (name) => lazy(() => import('./platform/SeoToolkit').then(m => (
 const DomainOverviewPage = toolkit('DomainOverviewPage');
 const KeywordOverviewPage = toolkit('KeywordOverviewPage');
 const PrepareKeywordsPage = lazy(() => import('./platform/PrepareKeywords').then(m => ({ default: m.PrepareKeywordsPage })));
-const CompetitorKeywordsPage = lazy(() => import('./platform/CompetitorKeywords').then(m => ({ default: m.CompetitorKeywordsPage })));
+const KeywordMagicTool2Page = lazy(() => import('./platform/KeywordMagicTool2').then(m => ({ default: m.KeywordMagicTool2Page })));
+/** A moved page: the address it had, with its ?q= and other choices kept. */
+const KeepSearch = ({ to }) => { const { search } = useLocation(); const [path, own = ''] = to.split('?'); const p = new URLSearchParams(own); new URLSearchParams(search).forEach((v, k) => p.set(k, v)); return <Navigate to={`${path}?${p}`} replace />; };
+const KeywordStrategyBuilderPage = lazy(() => import('./platform/KeywordStrategyBuilder').then(m => ({ default: m.KeywordStrategyBuilderPage })));
+const SavedKeywordsPage = lazy(() => import('./platform/SavedKeywords').then(m => ({ default: m.SavedKeywordsPage })));
+const KeywordHubPage = lazy(() => import('./platform/KeywordHub').then(m => ({ default: m.KeywordHubPage })));
 const KeywordMagicToolPage = lazy(() => import('./platform/KeywordMagicTool').then(m => ({ default: m.KeywordMagicToolPage })));
 const PageRankingsPage = lazy(() => import('./platform/PageRankings').then(m => ({ default: m.PageRankingsPage })));
 
@@ -188,17 +193,21 @@ export default function App() {
         <Route path="ai-questions" element={<AiQuestionsPage />} />
         <Route path="feature/:slug" element={<FeaturePage />} />
         <Route path="domain-overview" element={<DomainOverviewPage />} />
-        <Route path="keyword-management/magic" element={<KeywordMagicToolPage />} />
+        <Route path="keyword-management/magic" element={<KeywordHubPage />} />
+        <Route path="keyword-management/tracked" element={<SavedKeywordsPage />} />
+        <Route path="keyword-management/strategy" element={<KeywordStrategyBuilderPage />} />
+        {['ai', 'discover', 'planner', 'explorer'].map(t => <Route key={t} path={`keyword-management/${t}`} element={<KeepSearch to="/keyword-management/workspace" />} />)}
+        <Route path="keyword-management/magic2" element={<KeywordMagicTool2Page />} />
         <Route path="keyword-management/prepare" element={<PrepareKeywordsPage />} />
-        <Route path="competitor-keywords" element={<CompetitorKeywordsPage />} />
-        <Route path="keyword-overview/ideas" element={<KeywordMagicToolPage />} />
+        <Route path="competitor-keywords" element={<Navigate to="/competitor-finder?tab=keywords" replace />} />
+        <Route path="keyword-overview/ideas" element={<KeepSearch to="/keyword-management/magic?tab=ideas" />} />
         <Route path="organic-rankings" element={<OrganicRankingsPage />} />
         <Route path="organic-rankings/page" element={<PageRankingsPage />} />
         <Route path="organic-rankings/:tab" element={<OrganicRankingsPage />} />
         <Route path="top-pages" element={<TopPagesPage />} />
         <Route path="keyword-gap" element={<Navigate to="/competitor-finder?tab=gap" replace />} />
         <Route path="compare-domains" element={<Navigate to="/competitor-finder?tab=compare" replace />} />
-        <Route path="keyword-overview" element={<KeywordOverviewPage />} />
+        <Route path="keyword-overview" element={<KeepSearch to="/keyword-management/magic" />} />
         
         <Route path="ai-content-generation" element={<ContentStudioPage />} />
         <Route path="ai-content-generation/:tab" element={<ContentStudioPage />} />

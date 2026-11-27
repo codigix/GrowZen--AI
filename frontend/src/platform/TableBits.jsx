@@ -52,6 +52,15 @@ export function Act({ tip, icon: Icon, tone = 'slate', busy = false, children, d
   );
 }
 
+/** Same site, whichever way it is spelled (www, https, a path). */
+export const sameSite = (a, b) => { const n = (d) => String(d || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, ''); return Boolean(a) && n(a) === n(b); };
+
+/** Shown when a table was opened from one competitor: says so, and lets people go back to every competitor. */
+export function FocusBar({ name, what, onAll }) {
+  if (!name) return null;
+  return <div className="rounded-lg bg-indigo-50 ring-1 ring-indigo-200 px-3 py-2 text-13 text-indigo-900 flex flex-wrap items-center gap-2">Showing only <b>{name}</b>{what ? `: ${what}` : ''}. Every other competitor is hidden.<button type="button" onClick={onAll} className="ml-auto font-semibold underline cursor-pointer">Show all competitors</button></div>;
+}
+
 /** The actions every keyword row has: check its numbers, open the page that ranks for it, write about it. */
 export function KeywordActs({ keyword, url }) {
   const q = encodeURIComponent(keyword || '');

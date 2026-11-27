@@ -3,6 +3,7 @@ import { MapPin, Plus, X, Play, ArrowUp, ArrowDown, Loader2, Trophy, Target, Sea
 import { Card, Button, Badge, ErrorNote, useAction, SkList } from './SeoUi';
 import DataTable from './DataTable';
 import { api, useApi, fmtDateTime } from './seoApi';
+import PlacePicker from './PlacePicker';
 
 const MAX_KW = 12;
 const tone = (r) => (r == null ? 'bg-slate-100 text-slate-400' : r <= 3 ? 'bg-emerald-100 text-emerald-800' : r <= 10 ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800');
@@ -20,28 +21,17 @@ function RankChip({ cell }) {
   );
 }
 
-/** Add an area: type a suburb or region, pick it from the list the map service gives (it carries the pin). */
+/** Add an area: the shared place panel (search Google Maps or click the map). The chosen place goes to the grid with its pin. */
 function AddArea({ b, onAdd, busy }) {
-  const [q, setQ] = useState('');
-  const [list, setList] = useState([]);
-  const [err, setErr] = useState('');
-  const search = async (v) => {
-    setQ(v); setErr('');
-    if (v.trim().length < 2) { setList([]); return; }
-    try { const r = await api(`/discover/areas?q=${encodeURIComponent(v.trim())}&country=${encodeURIComponent(b.country || 'IN')}&near=${encodeURIComponent(b.city || '')}`); setList(r.results || []); } catch (e) { setErr(e.message || 'The map service did not answer.'); }
-  };
   return (
-    <div className="relative">
-      <div className="flex items-center gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={e => search(e.target.value)} placeholder="Add an area, e.g. Hinjewadi" className="h-9 w-64 pl-9 pr-3 text-13 rounded-lg border border-slate-300 bg-white" aria-label="Add an area" /></div>
-        {busy && <Loader2 size={14} className="animate-spin text-slate-400" />}
-      </div>
-      {list.length > 0 && (
-        <ul className="absolute z-20 mt-1 w-80 max-h-60 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg divide-y divide-slate-100">
-          {list.map(x => <li key={`${x.label}${x.lat}`}><button type="button" onClick={() => { onAdd({ name: x.label, lat: x.lat, lng: x.lng }); setQ(''); setList([]); }} className="w-full text-left px-3 py-2 text-13 hover:bg-indigo-50 cursor-pointer"><MapPin size={12} className="inline mr-1.5 text-slate-400" />{x.label}</button></li>)}
-        </ul>)}
-      {err && <p className="text-12 text-rose-600 mt-1">{err}</p>}
+    <div className="flex items-center gap-2">
+      <PlacePicker b={b} width={280} placeholder="Add an area, e.g. Hinjewadi" canSave={false} places={[]} onChange={async (name, pin) => {
+        if (!name) return;
+        let p = pin;
+        if (p?.lat == null) { const r = await api(`/businesses/${b.id}/keyword-workspace/area-pin?label=${encodeURIComponent(name)}&country=${encodeURIComponent(b.country || 'IN')}`).catch(() => null); p = r?.pin; }
+        onAdd({ name, lat: p?.lat ?? null, lng: p?.lng ?? null });
+      }} />
+      {busy && <Loader2 size={14} className="animate-spin text-slate-400" />}
     </div>
   );
 }
@@ -119,15 +109,17 @@ export default function AreaRanks({ b }) {
 
       {d && areas.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-          {areas.map(a => { const s = stat(a); return (
-            <button key={a.id} type="button" onClick={() => setOpenArea(openArea === a.id ? null : a.id)} className={`text-left rounded-xl bg-white ring-1 p-3 cursor-pointer min-w-0 ${openArea === a.id ? 'ring-2 ring-indigo-500' : 'ring-slate-200 hover:ring-indigo-300'}`}>
-              <div className="text-12.5 font-semibold text-slate-900 truncate flex items-center gap-1"><MapPin size={12} className="text-indigo-500 shrink-0" />{a.name}</div>
-              {s.measured ? (
-                <div className="mt-1.5 flex items-end justify-between gap-2">
-                  <div><div className="text-22 leading-none font-bold tabular-nums text-slate-900">{s.avg ?? '—'}</div><div className="text-11 text-slate-500">average position</div></div>
-                  <div className="text-right text-11.5 text-slate-600"><div className="flex items-center gap-1 justify-end"><Trophy size={11} className="text-emerald-600" />{s.top3} in top 3</div><div className="flex items-center gap-1 justify-end"><Target size={11} className="text-indigo-500" />{s.found} of {s.measured} found</div></div>
-                </div>) : <div className="mt-1.5 text-12 text-slate-400">Not measured yet</div>}
-            </button>); })}
+          {areas.map(a => {
+            const s = stat(a); return (
+              <button key={a.id} type="button" onClick={() => setOpenArea(openArea === a.id ? null : a.id)} className={`text-left rounded-xl bg-white ring-1 p-3 cursor-pointer min-w-0 ${openArea === a.id ? 'ring-2 ring-indigo-500' : 'ring-slate-200 hover:ring-indigo-300'}`}>
+                <div className="text-12.5 font-semibold text-slate-900 truncate flex items-center gap-1"><MapPin size={12} className="text-indigo-500 shrink-0" />{a.name}</div>
+                {s.measured ? (
+                  <div className="mt-1.5 flex items-end justify-between gap-2">
+                    <div><div className="text-22 leading-none font-bold tabular-nums text-slate-900">{s.avg ?? '—'}</div><div className="text-11 text-slate-500">average position</div></div>
+                    <div className="text-right text-11.5 text-slate-600"><div className="flex items-center gap-1 justify-end"><Trophy size={11} className="text-emerald-600" />{s.top3} in top 3</div><div className="flex items-center gap-1 justify-end"><Target size={11} className="text-indigo-500" />{s.found} of {s.measured} found</div></div>
+                  </div>) : <div className="mt-1.5 text-12 text-slate-400">Not measured yet</div>}
+              </button>);
+          })}
         </div>)}
 
       {d && areas.length > 0 && keywordsShown.length > 0 && (
@@ -135,8 +127,10 @@ export default function AreaRanks({ b }) {
           <DataTable bare rows={keywordsShown.map(k => ({ keyword: k }))} rowKey={r => r.keyword} pageSize={15} sizes={[15, 30, 60]} exportName={`area-ranks-${b.name}`} label="keywords" searchPlaceholder="Search keywords" minWidth={Math.max(640, 200 + areas.length * 110)} columnsMenu={false} headClass="bg-slate-100 text-slate-700"
             columns={[
               { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2 font-medium text-slate-900 min-w-[200px]', cell: r => r.keyword },
-              ...areas.map(a => ({ id: `a${a.id}`, header: a.name, right: true, first: 'asc', value: r => { const c = cell[`${a.id}|${r.keyword}`]; return c?.now ? (c.now.rank ?? 99) : null; }, className: 'px-3 py-2 text-right', csv: true,
-                cell: r => <RankChip cell={cell[`${a.id}|${r.keyword}`]} /> })),
+              ...areas.map(a => ({
+                id: `a${a.id}`, header: a.name, right: true, first: 'asc', value: r => { const c = cell[`${a.id}|${r.keyword}`]; return c?.now ? (c.now.rank ?? 99) : null; }, className: 'px-3 py-2 ', csv: true,
+                cell: r => <RankChip cell={cell[`${a.id}|${r.keyword}`]} />
+              })),
             ]} />
         </Card>)}
 
@@ -146,8 +140,8 @@ export default function AreaRanks({ b }) {
           <DataTable bare rows={keywordsShown.map(k => ({ keyword: k, c: cell[`${detail.id}|${k}`] })).filter(r => r.c)} rowKey={r => r.keyword} pageSize={15} sizes={[15, 30]} exportName={`area-${detail.name}-${b.name}`} label="keywords" columnsMenu={false} headClass="bg-slate-100 text-slate-700" empty="Nothing measured here yet."
             columns={[
               { id: 'keyword', header: 'Keyword', value: r => r.keyword, className: 'px-3 py-2 font-medium text-slate-900', cell: r => r.keyword },
-              { id: 'rank', header: 'Position', right: true, first: 'asc', value: r => r.c.now.rank ?? 99, className: 'px-3 py-2 text-right', cell: r => <RankChip cell={r.c} /> },
-              { id: 'before', header: 'Before', right: true, value: r => (r.c.before ? (r.c.before.rank ?? 99) : null), className: 'px-3 py-2 text-right tabular-nums text-slate-500', cell: r => (r.c.before ? (r.c.before.rank ?? '—') : '—') },
+              { id: 'rank', header: 'Position', right: true, first: 'asc', value: r => r.c.now.rank ?? 99, className: 'px-3 py-2 ', cell: r => <RankChip cell={r.c} /> },
+              { id: 'before', header: 'Before', right: true, value: r => (r.c.before ? (r.c.before.rank ?? 99) : null), className: 'px-3 py-2  tabular-nums text-slate-500', cell: r => (r.c.before ? (r.c.before.rank ?? '—') : '—') },
               { id: 'top', header: 'Shown ahead of you', value: r => (r.c.now.top || []).join(', '), className: 'px-3 py-2 text-12.5 text-slate-700', cell: r => ((r.c.now.top || []).length ? (r.c.now.top || []).join(' · ') : <Badge tone="green">Nobody listed first</Badge>) },
               { id: 'at', header: 'Measured', first: 'desc', value: r => Date.parse(r.c.now.at) || null, className: 'px-3 py-2 whitespace-nowrap text-12 text-slate-500', cell: r => fmtDateTime(r.c.now.at) },
             ]} />

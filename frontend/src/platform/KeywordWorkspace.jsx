@@ -5,6 +5,8 @@ import { ArrowDown, ArrowRight, ArrowUp, CalendarDays, Check, CheckCircle2, Chev
 import { Card, Button, Badge, ErrorNote, Modal, SkList, useAction, useToast } from './SeoUi';
 import { api, useApi } from './seoApi';
 import { Act, Head } from './TableBits';
+import PlacePicker from './PlacePicker';
+import Select from '../components/Select';
 
 const TAG_HELP = { gap: 'Competitors use it, you do not', win: 'You already rank in the top 3', almost: 'You are on page 2 of Google', shared: 'You and a competitor both use it', yours: 'Only your own places mention it', idea: 'Suggested by Google or AI' };
 // one plain line for what kind of opportunity it is, and under it where it was found
@@ -25,18 +27,18 @@ function Origin({ i }) {
 const SRC_SHORT = { website: 'Website', search_console: 'Search Console', profile: 'Profile', competitors: 'Competitor', google_ideas: 'Google', planner: 'Planner', area: 'Area', brief: 'Summary', ai: 'AI' };
 const n0 = (v) => (v == null ? '—' : v.toLocaleString('en-US'));
 const PAGE = 50;
-/** A filter as a pill: grey while it is off ("Searches"), indigo with its choice once it is on ("Searches: 500+"). The real <select> sits invisibly over it, so it works with the keyboard and on a phone. */
+/** A filter as a pill: grey while it is off ("Searches"), indigo with its choice once it is on ("Searches: 500+"). The real <Select> sits invisibly over it, so it works with the keyboard and on a phone. */
 function Pill({ label, value, onChange, options }) {
   const on = value !== '';
   const cur = options.find(o => o[0] === value);
   return (
-    <label className={`relative inline-flex items-center h-8 rounded-full text-12.5 font-medium cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-indigo-400 ${on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>
+    <label className={`relative inline-flex items-center h-9 rounded text-12.5 font-medium cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-indigo-400 ${on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>
       <span className="pl-3 pointer-events-none">{label}{on ? ':' : ''}</span>
       <span className="pl-1 pr-7 pointer-events-none font-semibold">{on ? (cur?.[2] || cur?.[1]) : ''}</span>
       <ChevronDown size={13} className="absolute right-2.5 pointer-events-none opacity-70" />
-      <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="absolute inset-0 w-full opacity-0 cursor-pointer">
+      <Select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="absolute inset-0 w-full opacity-0 cursor-pointer">
         <option value="">Any</option>{options.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -50,7 +52,7 @@ function IndexCell({ i }) {
   const has = g.views != null;
   const perf = has ? `${SHORT(g.views)} views · ${g.clicks ?? 0} click${g.clicks === 1 ? '' : 's'}` : '';
   const tip = [i.index != null ? `Index value ${i.index} out of 100: ${IDX_WORD(i.index)} competition (Google Keyword Planner)` : 'No index value from Google for this keyword',
-    has ? `Search Console, last 90 days: ${g.views} views, ${g.clicks ?? 0} clicks${g.ctr != null ? `, click rate ${g.ctr}%` : ''}${g.position != null ? `, average position ${Math.round(g.position * 10) / 10}` : ''}` : 'No Search Console data: your site has not shown for this keyword'].join('\n');
+  has ? `Search Console, last 90 days: ${g.views} views, ${g.clicks ?? 0} clicks${g.ctr != null ? `, click rate ${g.ctr}%` : ''}${g.position != null ? `, average position ${Math.round(g.position * 10) / 10}` : ''}` : 'No Search Console data: your site has not shown for this keyword'].join('\n');
   return (
     <div className="inline-flex flex-col items-end gap-0.5" title={tip}>
       {i.index == null ? <span className="text-slate-300">—</span> : <span className="inline-flex items-center gap-1.5"><span className="tabular-nums font-semibold" style={{ color: IDX_COLOR(i.index) }}>{i.index}</span><span className="text-11.5 text-slate-500">{IDX_WORD(i.index)}</span></span>}
@@ -79,7 +81,7 @@ function KdChip({ v, detail }) {
 
 /** Where your site stands on Google for a keyword: the average position as a whole place, and which page of Google that is. */
 const BANDS = [['top3', 'Top 3', (n) => n <= 3, 'bg-emerald-100 text-emerald-800'], ['page1', 'Page 1', (n) => n > 3 && n <= 10, 'bg-green-50 text-green-800'], ['page2', 'Page 2', (n) => n > 10 && n <= 20, 'bg-amber-50 text-amber-800'],
-  ['page3', 'Page 3+', (n) => n > 20, 'bg-slate-100 text-slate-600']];
+['page3', 'Page 3+', (n) => n > 20, 'bg-slate-100 text-slate-600']];
 const bandOf = (rank) => (rank == null ? null : BANDS.find(b => b[2](Math.max(1, Math.round(rank)))) || null);
 const FIRST = { keyword: 'asc', rank: 'asc', difficulty: 'asc' }; // the first click on these puts the best first: A to Z, position 1 first, easiest first
 
@@ -111,7 +113,7 @@ function CollectModal({ d, open, onClose, onDone }) {
   const [info, setInfo] = useState('');
   const [busy, error, run] = useAction();
   const kinds = d.sources.map(s => s.kind);
-  const on = chosen || kinds;
+  const on = chosen || kinds.filter(k => k !== 'ai'); // AI suggestions cost a request, so they are read only when you tick them
   const toggle = (k) => setChosen(on.includes(k) ? on.filter(x => x !== k) : [...on, k]);
   const go = () => run('go', async () => {
     setProgress(Object.fromEntries(on.map(k => [k, 'running'])));
@@ -138,7 +140,7 @@ function CollectModal({ d, open, onClose, onDone }) {
             <li key={s.kind} className="px-3 py-2.5 flex items-center gap-3">
               <input type="checkbox" aria-label={s.label} checked={on.includes(s.kind)} onChange={() => toggle(s.kind)} disabled={busy === 'go'} className="w-4 h-4 accent-indigo-600" />
               <div className="min-w-0 flex-1">
-                <div className="text-13 font-semibold text-slate-900">{s.label}</div>
+                <div className="text-13 font-semibold text-slate-900">{s.label}{s.kind === 'ai' && <span className="ml-2 text-11 font-medium text-slate-500">on request</span>}</div>
                 <div className="text-12 text-slate-500">{s.count ? `${s.count} in the list` : 'Not collected yet'}</div>
               </div>
               {p === 'running' ? <span className="text-12 text-indigo-700 inline-flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />Reading…</span>
@@ -207,14 +209,36 @@ export default function KeywordWorkspace({ b, onUse }) {
   useEffect(() => {
     if (!d?.items?.length || indexAsked.current === wordsKey) return;
     indexAsked.current = wordsKey;
-    api(`/businesses/${b.id}/keyword-workspace/search-console`, { method: 'POST', timeout: 120000 }).then(res => { if (res.performance) r.reload(true); }).catch(() => {});
+    api(`/businesses/${b.id}/keyword-workspace/search-console`, { method: 'POST', timeout: 120000 }).then(res => { if (res.performance) r.reload(true); }).catch(() => { });
   }, [wordsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // the last 12 months of searches are asked of Google Ads by themselves for the keywords that have none (one request for hundreds)
   useEffect(() => {
     if (!d?.items?.length || !d.items.some(i => i.trend == null) || trendsAsked.current === wordsKey) return;
     trendsAsked.current = wordsKey;
-    api(`/businesses/${b.id}/keyword-workspace/trends`, { method: 'POST', timeout: 120000 }).then(res => { if (res.filled) r.reload(true); }).catch(() => {});
+    api(`/businesses/${b.id}/keyword-workspace/trends`, { method: 'POST', timeout: 120000 }).then(res => { if (res.filled) r.reload(true); }).catch(() => { });
   }, [wordsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Only keywords that belong to this project stay in the list: the ones not checked yet are checked against the business by themselves (another company's brand, another service or place is set aside with the reason)
+  const [fit, setFit] = useState({ busy: false, hidden: 0 });
+  const fitAsked = useRef('');
+  useEffect(() => {
+    const left = d?.unchecked || 0;
+    if (!left || !d?.fit_check || fitAsked.current === `${b.id}|${left}`) return undefined;
+    fitAsked.current = `${b.id}|${left}`;
+    let live = true;
+    (async () => {
+      setFit(f => ({ ...f, busy: true }));
+      let hidden = 0;
+      try {
+        for (let round = 0; round < 8; round += 1) {
+          const out = await api(`/businesses/${b.id}/keyword-workspace/relevance`, { method: 'POST', timeout: 180000 });
+          hidden += out.hidden || 0;
+          if (!live || !out.checked || !out.remaining) break;
+        }
+      } catch { /* the list stays as it is */ }
+      if (live) { setFit({ busy: false, hidden }); r.reload(true); }
+    })();
+    return () => { live = false; };
+  }, [d?.unchecked, b.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // searches per month for the chosen time: the 12-month figure is Google's own average; 6 and 3 are the average of those last months; or one month
   const searchesIn = (m) => {
     if (period === '12') return m.volume;
@@ -296,7 +320,8 @@ export default function KeywordWorkspace({ b, onUse }) {
     setQ(plannerQ.trim()); setLimit(PAGE); r.reload(true);
     toast(`Google gave ${res.found} ideas: ${res.added} new added${res.left_out ? `, ${res.left_out} left out as not about your business` : ''}`);
   });
-  const pick = (list) => act('pick', list, `${list.length} keyword${list.length === 1 ? '' : 's'} saved to your list`);
+  // Picking opens Prepare Keywords, so every saved keyword is worded the way customers search it and has a role and a priority before it reaches My Keywords
+  const pick = (list) => { const names = rows.filter(i => list.includes(i.id)).map(i => i.keyword).slice(0, 12); if (names.length) navigate(`/keyword-management/prepare?k=${names.map(encodeURIComponent).join('|')}`); };
   const go = (v) => { setView(v); setLimit(PAGE); setSel(new Set()); };
   const empty = d.totals.all === 0;
   const sourcesWith = d.sources.filter(s => s.count);
@@ -304,6 +329,9 @@ export default function KeywordWorkspace({ b, onUse }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 pb-20">
       <ErrorNote>{error}</ErrorNote>
+      {fit.busy && <div className="flex items-center gap-2 rounded-lg bg-indigo-50 ring-1 ring-indigo-200 px-3 py-2 text-13 text-indigo-900"><Loader2 size={14} className="animate-spin" />Checking which keywords belong to {b.name || 'this project'}…</div>}
+      {!fit.busy && fit.hidden > 0 && <div className="rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3 py-2 text-13 text-slate-700">{fit.hidden} keyword{fit.hidden === 1 ? '' : 's'} did not belong to this project (another company's brand, service or place) and {fit.hidden === 1 ? 'was' : 'were'} put under Set aside, with the reason. You can put any back.</div>}
+      {!fit.busy && (d.unchecked || 0) > 0 && !d.fit_check && <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-13 text-amber-900">{d.unchecked} keyword{d.unchecked === 1 ? ' has' : 's have'} not been checked against this project, because no AI is set up for the relevance check. Unrelated keywords may show here.</div>}
 
       {/* What is in the list, the one thing to do first, and the way out of the page; the views of the list are the tabs under it */}
       <div className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm">
@@ -319,14 +347,14 @@ export default function KeywordWorkspace({ b, onUse }) {
           </div>
         </div>
         {!empty && (
-      <div role="tablist" aria-label="Which keywords" className="flex overflow-x-auto px-2 border-t border-slate-200">
-        <View on={view === 'open'} onClick={() => go('open')} count={d.totals.open}>To look at</View>
-        <View on={view === 'suggested'} onClick={() => go('suggested')} count={d.totals.suggested || 0} tone="indigo"><Sparkles size={13} className="text-amber-500" />Suggested</View>
-        <View on={view === 'gap'} onClick={() => go('gap')} count={count('gap')} tone="red">Gaps</View>
-        <View on={view === 'almost'} onClick={() => go('almost')} count={count('almost')} tone="amber">Almost there</View>
-        <View on={view === 'picked'} onClick={() => go('picked')} count={d.totals.picked} tone="green">Picked</View>
-        {d.totals.dismissed > 0 && <View on={view === 'dismissed'} onClick={() => go('dismissed')} count={d.totals.dismissed}>Set aside</View>}
-      </div>
+          <div role="tablist" aria-label="Which keywords" className="flex overflow-x-auto px-2 border-t border-slate-200">
+            <View on={view === 'open'} onClick={() => go('open')} count={d.totals.open}>To look at</View>
+            <View on={view === 'suggested'} onClick={() => go('suggested')} count={d.totals.suggested || 0} tone="indigo"><Sparkles size={13} className="text-amber-500" />Suggested</View>
+            <View on={view === 'gap'} onClick={() => go('gap')} count={count('gap')} tone="red">Gaps</View>
+            <View on={view === 'almost'} onClick={() => go('almost')} count={count('almost')} tone="amber">Almost there</View>
+            <View on={view === 'picked'} onClick={() => go('picked')} count={d.totals.picked} tone="green">Picked</View>
+            {d.totals.dismissed > 0 && <View on={view === 'dismissed'} onClick={() => go('dismissed')} count={d.totals.dismissed}>Set aside</View>}
+          </div>
         )}
       </div>
 
@@ -341,46 +369,43 @@ export default function KeywordWorkspace({ b, onUse }) {
 
           <Card pad={false}>
             <div className="border-b border-slate-100">
-              {/* find: search the list, search the Keyword Planner for new ones, pick the best */}
-              <div className="px-4 pt-3 pb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                <label className="relative flex-1 min-w-[220px] max-w-sm"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Search your keywords" aria-label="Search keywords" className="h-9 w-full pl-9 pr-8 text-13 rounded-lg ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                  {q && <button type="button" onClick={() => setQ('')} aria-label="Clear the search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><X size={13} /></button>}</label>
-                <div className="flex h-9 rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
-                  <input value={plannerQ} onChange={e => setPlannerQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchPlanner(); }} placeholder="Find new keywords in Google Keyword Planner" aria-label="Search the Keyword Planner" className="w-64 xl:w-80 px-3 text-13 outline-none bg-white" />
-                  <button type="button" disabled={plannerQ.trim().length < 2 || busy === 'planner'} onClick={searchPlanner} className="px-3 inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
-                    {busy === 'planner' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}Find</button>
+              {/* row 1: find. Search the list, search the Keyword Planner for new ones, pick the best */}
+              <div className="px-4 pt-4 pb-3 flex flex-wrap items-center gap-3">
+                <label className="relative flex-1 min-w-[240px] max-w-md">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Search your keywords" aria-label="Search keywords" className="h-10 w-full pl-9 pr-8 text-13 rounded-lg bg-white ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-slate-400" />
+                  {q && <button type="button" onClick={() => setQ('')} aria-label="Clear the search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><X size={13} /></button>}
+                </label>
+                <div className="flex items-stretch h-10 flex-1 min-w-[300px] max-w-xl rounded-lg bg-white ring-1 ring-inset ring-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                  <Sparkles size={15} className="self-center ml-3 text-indigo-500 shrink-0" />
+                  <input value={plannerQ} onChange={e => setPlannerQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') searchPlanner(); }} placeholder="Find new keywords in Google Keyword Planner" aria-label="Search the Keyword Planner" className="flex-1 min-w-0 px-2.5 text-13 outline-none bg-transparent placeholder:text-slate-400" />
+                  <button type="button" disabled={plannerQ.trim().length < 2 || busy === 'planner'} onClick={searchPlanner} className="px-4 inline-flex items-center gap-1.5 text-13 font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer transition-colors">
+                    {busy === 'planner' ? <Loader2 size={14} className="animate-spin" /> : null}Find</button>
                 </div>
-                {view === 'open' || view === 'suggested' ? (
-                  suggestedAll.length > 0 && <Button size="sm" className="ml-auto" icon={Star} busy={busy === 'pick'} onClick={() => pick(suggestedAll.map(i => i.id))} title="The best-looking keywords: searches, ease, gaps and how many places agree">Pick {suggestedAll.length} suggested</Button>
-                ) : null}
+                {(view === 'open' || view === 'suggested') && suggestedAll.length > 0 && (
+                  <Button className="ml-auto h-10" icon={Star} busy={busy === 'pick'} onClick={() => pick(suggestedAll.map(i => i.id))} title="The best-looking keywords: searches, ease, gaps and how many places agree">Pick {suggestedAll.length} suggested</Button>
+                )}
               </div>
-              {/* the figures are for this place and this time */}
-              <div className="px-4 pb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                <label className="relative inline-flex items-center"><MapPin size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-                  <select value={place} onChange={e => setPlace(e.target.value)} aria-label="Location" className="h-8 appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-8 pr-7 text-12.5 font-medium text-slate-800 cursor-pointer hover:bg-slate-50">
-                    {places.map((x, n) => <option key={x.name} value={n === 0 ? '' : x.name}>{x.name}{x.kind === 'Country' ? '' : ` (${x.kind.toLowerCase()})`}</option>)}</select>
-                  <ChevronDown size={13} className="absolute right-2.5 text-slate-400 pointer-events-none" /></label>
-                <label className="relative inline-flex items-center"><CalendarDays size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-                  <select value={period} onChange={e => setPeriod(e.target.value)} aria-label="Time" className="h-8 appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-8 pr-7 text-12.5 font-medium text-slate-800 cursor-pointer hover:bg-slate-50">
-                    <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select>
-                  <ChevronDown size={13} className="absolute right-2.5 text-slate-400 pointer-events-none" /></label>
-                {figBusy && <span className="text-12 text-slate-500 inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Asking Google Ads…</span>}
-                {!figBusy && figError && <span className="text-12 text-amber-700" title={figError}>{String(figError).slice(0, 80)}</span>}
-              </div>
-              {/* filters: each is a pill, indigo once it is on */}
-              <div className="px-4 pb-3 flex flex-wrap items-center gap-2">
-                <span className="text-11.5 font-semibold uppercase tracking-wide text-slate-400 mr-1">Filters</span>
+              {/* row 2: the figures are for this place and this time, then the filters */}
+              <div className="px-4 pb-4 flex flex-wrap items-center gap-x-3 gap-y-2.5">
+                <PlacePicker b={b} value={place} places={places} onChange={setPlace} onSaved={() => placesApi.reload(true)} />
+                <label className="relative inline-flex items-center"><CalendarDays size={14} className="absolute left-3 text-slate-400 pointer-events-none z-10" />
+                  <Select value={period} onChange={e => setPeriod(e.target.value)} aria-label="Time" className="h-9 w-[170px] appearance-none rounded-lg ring-1 ring-inset ring-slate-300 bg-white pl-9 pr-8 text-13 font-medium text-slate-800 cursor-pointer hover:bg-slate-50 text-left">
+                    <option value="12">Last 12 months</option><option value="6">Last 6 months</option><option value="3">Last 3 months</option>{[...monthChoices].reverse().map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</Select>
+                </label>
+                <span className="hidden lg:block h-6 w-px bg-slate-200" aria-hidden="true" />
+                <span className="text-11.5 font-semibold uppercase tracking-wide text-slate-400">Filters</span>
                 <Pill label="Searches" value={fMin} onChange={setFMin} options={[['100', '100+ a month', '100+'], ['500', '500+ a month', '500+'], ['1000', '1,000+ a month', '1,000+'], ['5000', '5,000+ a month', '5,000+']]} />
                 <Pill label="Difficulty" value={fKd} onChange={setFKd} options={[['easy', 'Easy (under 30)', 'Easy'], ['medium', 'Medium (30 to 49)', 'Medium'], ['hard', 'Challenging (50 to 69)', 'Challenging'], ['very', 'Very hard (70+)', 'Very hard']]} />
                 <Pill label="Trend" value={fTrend} onChange={setFTrend} options={[['up', 'Rising', 'Rising'], ['steady', 'Steady', 'Steady'], ['down', 'Falling', 'Falling']]} />
                 <Pill label="Intent" value={fIntent} onChange={setFIntent} options={[['informational', 'Informational'], ['commercial', 'Commercial'], ['transactional', 'Transactional'], ['local', 'Local'], ['navigational', 'Navigational']]} />
                 <Pill label="Search Console" value={fIndex} onChange={setFIndex} options={[['data', 'Has data', 'Has data'], ['none', 'No data', 'No data']]} />
-                {(fMin || fKd || fTrend || fIntent || fIndex) && (
-                  <>
-                    <button type="button" onClick={() => { setFMin(''); setFKd(''); setFTrend(''); setFIntent(''); setFIndex(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear filters</button>
-                    <span className="text-12 text-slate-500 ml-auto tabular-nums">Showing {rows.length} of {d.items.length}</span>
-                  </>
-                )}
+                {(fMin || fKd || fTrend || fIntent || fIndex) && <button type="button" onClick={() => { setFMin(''); setFKd(''); setFTrend(''); setFIntent(''); setFIndex(''); }} className="text-12.5 font-semibold text-indigo-700 hover:underline inline-flex items-center gap-1 cursor-pointer"><X size={12} />Clear filters</button>}
+                <span className="ml-auto text-12.5 text-slate-500 tabular-nums inline-flex items-center gap-2">
+                  {figBusy && <span className="inline-flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Asking Google Ads…</span>}
+                  {!figBusy && figError && <span className="text-amber-700" title={figError}>{String(figError).slice(0, 60)}</span>}
+                  <span>Showing <b className="text-slate-800">{rows.length}</b> of {d.items.length}</span>
+                </span>
               </div>
             </div>
 
@@ -398,7 +423,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                       <SortTh id="index" sort={sort} setSort={setSort} right what="The keyword's index value: Google's competition index, 0 to 100 (higher means more advertisers compete for it). Under it, how the keyword performs in Google Search Console: views, clicks and average position in the last 90 days." why="A high index means a crowded, costly keyword; many views and few clicks mean the title needs work." from="Google Keyword Planner (index value) and Google Search Console (views, clicks, position).">Index</SortTh>
                       <th className="px-3 py-2 text-left"><Head what="Where it stands: Competitors only (a gap: they use it, you do not), You and competitors, Only you, a New idea from Google or AI, a Top 3 win, or Almost (page 2). Under it, the places it was found." why="Start with the competitors-only gaps and the page-2 keywords." from="comparing your own places (website, profile, Search Console) with the competitor sites, Google and AI. Hover for the detail.">Where it stands</Head></th>
                       <SortTh id="rank" sort={sort} setSort={setSort} right what="Your average position on Google for it, last 90 days." why="Shows where you already show up." from="Google Search Console. Blank when Google has not shown your site for it.">Your rank</SortTh>
-                      <th className="px-3 py-2 text-right"><Head right what="Things you can do with this keyword right here." why="Pick saves it to your list; Set aside hides it; Check opens its numbers.">Actions</Head></th>
+                      <th className="px-3 py-2 "><Head right what="Things you can do with this keyword right here." why="Pick saves it to your list; Set aside hides it; Check opens its numbers.">Actions</Head></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -428,7 +453,7 @@ export default function KeywordWorkspace({ b, onUse }) {
                         </td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <span className="inline-flex gap-1.5">
-                            {!i.picked && show !== 'dismissed' && <Act icon={Check} tone="green" tip="Pick: save this keyword to your list (My Keywords) so you can give it a page and track it." onClick={() => pick([i.id])} />}
+                            {!i.picked && show !== 'dismissed' && <Act icon={Check} tone="green" tip="Pick and prepare: word it the way customers search (near me, in your areas), set primary or secondary and a priority, then save it to My Keywords." onClick={() => pick([i.id])} />}
                             {show === 'dismissed' ? <Act icon={Undo2} tone="slate" tip="Put back: return it to the list to look at." onClick={() => act('restore', [i.id], 'Put back in the list')} />
                               : !i.picked && <Act icon={EyeOff} tone="amber" tip="Set aside: hide it from this list. It stays under Set aside if you change your mind." onClick={() => act('dismiss', [i.id], 'Set aside')} />}
                             <Link to={`/keyword-overview?q=${encodeURIComponent(i.keyword)}`}><Act icon={Search} tone="sky" tip="Check: open its searches per month, cost and related ideas." /></Link>
@@ -456,8 +481,7 @@ export default function KeywordWorkspace({ b, onUse }) {
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-32px)]">
           <div role="toolbar" aria-label="Selected keywords" className="bg-slate-900 text-white rounded-xl shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-3">
             <span className="text-13 font-semibold">{ids.length} selected</span>
-            <Button size="sm" icon={ArrowRight} onClick={() => navigate(`/keyword-management/prepare?k=${shown.filter(i => sel.has(i.id)).slice(0, 12).map(i => encodeURIComponent(i.keyword)).join('|')}`)}>Prepare</Button>
-            {view !== 'picked' && <Button size="sm" variant="primary" icon={CheckCircle2} busy={busy === 'pick'} onClick={() => pick(ids)}>Pick</Button>}
+            {view !== 'picked' && <Button size="sm" variant="primary" icon={ArrowRight} onClick={() => pick(ids)}>Pick and prepare</Button>}
 
             {view === 'dismissed' ? <Button size="sm" icon={Undo2} onClick={() => act('restore', ids, 'Put back in the list')}>Put back</Button>
               : <Button size="sm" icon={EyeOff} busy={busy === 'dismiss'} onClick={() => act('dismiss', ids, `${ids.length} set aside`)}>Set aside</Button>}

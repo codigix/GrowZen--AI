@@ -125,6 +125,29 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)  # JSON compresses ~10x: f
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], max_age=30)
 security_headers.install(app, settings)  # security headers + cross-site request check (outside CORS)
 
+
+class _ReportFilterMiddleware:
+    """Keeps the period, country and location chosen in the page header (rf_* query parameters) for the whole request, including its worker thread."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and b"rf_" in scope.get("query_string", b""):
+            from urllib.parse import parse_qsl  # noqa: PLC0415
+
+            from .services import report_filter  # noqa: PLC0415
+            token = report_filter.set_current(report_filter.parse(dict(parse_qsl(scope["query_string"].decode("latin-1")))))
+            try:
+                await self.inner(scope, receive, send)
+            finally:
+                report_filter.reset(token)
+            return
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(_ReportFilterMiddleware)
+
 for r in (system, auth, businesses, profile, gbp_manage, growth, seo, assistant, leads, intake, connections, discover, agent, copilot, website, lighthouse, keyword_trends, keyword_planner, articles, site_integration, react_site, html_site, competitors, competitor_audits, competitor_research, backlinks, workplan, tools, project_access):
     app.include_router(r.router, prefix=settings.api_prefix)
 

@@ -10,6 +10,14 @@ import { api, useApi, usePoll, fmt, fmtDateTime } from './seoApi';
 import { ComparisonResult } from './CompetitorAuditCompare';
 import CompetitorPagesTab from './CompetitorPagesTab';
 import MyCompetitors from './MyCompetitors';
+import { MapsTable, Pos as RankPos, RankingsTable } from './CompetitorTables';
+import { AnalysisStats, AutoControls, AutoNotices, BacklinkTab, CompetitorsPanel, TopPagesTab, TrafficTab, useAnalysis, useAutoAnalysis, useRatings } from './CompetitorAnalysis';
+import PlacePicker from './PlacePicker';
+import Select from '../components/Select';
+import { CompetitorKeywordsTab, KeywordGapTab } from './CompetitorKeywordTabs';
+import ResearchTab from './CompetitorResearch';
+import CompetitorMaps from './CompetitorMaps';
+import MorePanel from './MorePanel';
 import { Act, Head } from './TableBits';
 import { usePager, Pager, useSorted, SortTh, downloadCsv, downloadFile } from './DataTable';
 
@@ -42,7 +50,7 @@ const MAX_KEYWORDS = 10;
 const isRunning = (r) => r && (r.status === 'queued' || r.status === 'running');
 const running = (s) => s === 'queued' || s === 'running';
 const baseSite = (d) => String(d || '').replace(/^(www|in|en|m)\./, '');
-const hostOf = (u) => { try { return baseSite(new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname); } catch (e) { return ''; } };
+const hostOf = (u) => { if (!u) return ''; try { return baseSite(new URL(/^https?:\/\//.test(u) ? u : `https://${u}`).hostname); } catch (e) { return ''; } };
 const AUDIT_LABEL = { queued: 'Queued…', running: 'Auditing…', done: 'Audited', failed: 'Failed' };
 // Compare always works: it reads what the competitor has (website, Google listing, or both) and compares each with yours.
 const compareHint = (c) => c?.website ? 'Compare its website and its Google listing with yours' : 'No website: compare its Google listing with yours';
@@ -151,7 +159,7 @@ function SetupForm({ b, defaults, onStart, busy, error, setupInfo, hasRun }) {
         </div>
       </Field>
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
-        <Field label="Search from" hint="City Google searches from"><input className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Pune, India" /></Field>
+        <Field label="Search from" hint="Competitors are found for this place: search any place or click the map"><PlacePicker b={b} value={location} onChange={(v) => setLocation(v)} width={300} canSave={false} places={[{ name: defaults.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} /></Field>
         <Button variant="primary" icon={Play} busy={busy} disabled={!keywords.length || !setupInfo.google_results} onClick={() => onStart(keywords, location)}>{hasRun ? 'Run research again' : 'Research competitors'}</Button>
       </div>
       <p className="text-11.5 text-slate-500">About a minute. Makes {keywords.length} Google Places request{keywords.length === 1 ? '' : 's'}. Competitors found on Google Maps are also registered for site audits.</p>
@@ -222,127 +230,106 @@ function AddCompetitorForm({ onAdd, busy, error }) {
   );
 }
 
-export function CompetitorsTable({ rows, r, strategy, setStrategy, auditMap, ourAudit, onAuditOur, hasSite, onDetail, onAudit, onCompare, comparing, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose }) {
+export function CompetitorsTable({ rows, r, onDetail, onKeywords, onGap, onFindMaps, findBusy, onAddManual, addBusy, addError, onChoose, placeName }) {
   const isChosen = (c) => Boolean(c.reg) && c.reg.selected !== false;
   const chosenCount = rows.filter(isChosen).length;
   const [view, setView] = useState('all'); // all | chosen | others
+  const [scope, setScope] = useState('near'); // near: only the businesses around the place searched | all: also the ones found further away or only online
+  const [open, setOpen] = useState(() => new Set());
+  const radius = r.radius_m || 5000;
+  const isNear = (c) => isChosen(c) || (c.maps ? (c.maps.distance_m == null || c.maps.distance_m <= radius) : false);
   const [adding, setAdding] = useState(false);
-  const ordered = [...rows].sort((x, y) => Number(isChosen(y)) - Number(isChosen(x))); // chosen competitors on top (the order inside each group is kept)
+  const near = rows.filter(isNear);
+  const pool = scope === 'near' ? near : rows;
+  const ordered = [...pool].sort((x, y) => Number(isChosen(y)) - Number(isChosen(x))); // chosen competitors on top (the order inside each group is kept)
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
   const shown = (view === 'chosen' ? ordered.filter(isChosen) : view === 'others' ? ordered.filter(c => !isChosen(c)) : ordered).filter(c => !needle || `${c.name} ${c.host}`.toLowerCase().includes(needle));
-  const compVal = (c, k) => (k === 'choose' ? Number(isChosen(c)) : k === 'name' ? c.name : k === 'match' ? c.maps?.relevance?.score : k === 'vis' ? (c.profile ? c.profile.visibility : c.maps?.visibility) : k === 'p1' ? (c.profile ? Object.keys(c.profile.positions).length : c.maps?.appearances) : k === 'best' ? (c.profile?.local ? c.profile.local.best : c.maps?.best) : k === 'audit' ? (!c.reg ? 'Not audited' : (AUDIT_LABEL[auditMap[c.reg.id]?.status] || auditMap[c.reg.id]?.status || 'Not audited')) : undefined);
+  const compVal = (c, k) => (k === 'choose' ? Number(isChosen(c)) : k === 'name' ? c.name : k === 'dist' ? (c.maps?.distance_m ?? null) : k === 'match' ? c.maps?.relevance?.score : k === 'vis' ? (c.profile ? c.profile.visibility : c.maps?.visibility) : k === 'p1' ? (c.profile ? Object.keys(c.profile.positions).length : c.maps?.appearances) : k === 'best' ? (c.profile?.local ? c.profile.local.best : c.maps?.best) : k === 'audit' ? (!c.reg ? 'Not audited' : (AUDIT_LABEL[auditMap[c.reg.id]?.status] || auditMap[c.reg.id]?.status || 'Not audited')) : undefined);
   const { sorted, sort, onSort } = useSorted(shown, compVal);
   const pager = usePager(sorted, { size: 25, resetKey: `${view}|${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <Card pad={false}>
       <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <div className="text-13 font-semibold text-slate-900 whitespace-nowrap">{rows.length} found <span className="font-normal text-slate-500">· {chosenCount} chosen</span></div>
+        <div className="text-13 font-semibold text-slate-900 whitespace-nowrap">{pool.length} {scope === 'near' ? 'near ' + (placeName || 'this place') : 'found'} <span className="font-normal text-slate-500">· {chosenCount} chosen</span></div>
+        <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Where">
+          {[['near', `Within ${radius >= 1000 ? `${Math.round(radius / 100) / 10} km` : `${radius} m`} (${near.length})`], ['all', `Everywhere (${rows.length})`]].map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={scope === id} onClick={() => setScope(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${scope === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>{label}</button>
+          ))}
+        </div>
         <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" role="tablist" aria-label="Show">
-          {[['all', `All ${rows.length}`], ['chosen', `Chosen ${chosenCount}`], ['others', `Not chosen ${rows.length - chosenCount}`]].map(([id, label]) => (
+          {[['all', `All ${pool.length}`], ['chosen', `Chosen ${chosenCount}`], ['others', `Not chosen ${pool.length - chosenCount}`]].map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)} className={`h-7 px-2.5 text-11.5 font-semibold rounded-md cursor-pointer ${view === id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
           ))}
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5">
-          <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-lg" title="Which PageSpeed test is used for the site audits">
-            {[['mobile', Smartphone], ['desktop', Monitor]].map(([s, I]) => (
-              <button key={s} type="button" onClick={() => setStrategy(s)} className={`h-7 px-2.5 flex items-center gap-1 text-11.5 font-semibold rounded-md cursor-pointer transition-colors ${strategy === s ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500'}`}><I size={12} />{s}</button>
-            ))}
-          </div>
-          <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 pl-2.5 pr-0.5 py-0.5" title="Your own site's audit, used for every website comparison">
-            <span className="text-12 text-slate-600 inline-flex items-center gap-1.5 whitespace-nowrap">{ourAudit && running(ourAudit.status) && <Loader2 size={12} className="animate-spin" />}Your site <b className={ourAudit?.status === 'done' ? 'text-emerald-700' : 'text-slate-500'}>{ourAudit ? AUDIT_LABEL[ourAudit.status] || '—' : 'not audited'}</b></span>
-            <Button size="sm" variant="ghost" icon={RotateCcw} disabled={!hasSite || running(ourAudit?.status)} onClick={onAuditOur} title="Audit your own website again">{ourAudit ? 'Re-audit' : 'Audit'}</Button>
-          </span>
           <Button size="sm" variant="secondary" icon={MapPin} busy={findBusy} onClick={onFindMaps} title="Find more competitors on Google Maps">Find more</Button>
           <Button size="sm" variant="secondary" icon={Plus} onClick={() => setAdding(v => !v)} aria-expanded={adding} title="Add a competitor by its website">{adding ? 'Hide form' : 'Add'}</Button>
         </div>
       </div>
       {adding && <AddCompetitorForm onAdd={onAddManual} busy={addBusy} error={addError} />}
       <Table pager={pager} exportCsv={() => downloadCsv(`competitors-${slugOf(r.business?.name)}`, ['Chosen', 'Competitor', 'Website', 'Match score', 'Match', 'Google visibility (%)', 'Keywords on page 1 or Maps result lists', 'Best Maps position', 'Rating', 'Reviews', 'Site audit'],
-        sorted.map(c => { const a = auditMap[c.reg?.id]; const loc = c.profile?.local || c.maps; return [isChosen(c) ? 'yes' : 'no', c.name, c.website || c.host || '', c.maps?.relevance?.score ?? '', c.maps?.relevance?.label_text || '', c.profile ? c.profile.visibility : (c.maps?.visibility ?? ''), c.profile ? Object.keys(c.profile.positions).length : (c.maps?.appearances ?? ''), loc?.best ?? '', loc?.rating ?? c.reg?.rating ?? '', loc?.reviews ?? c.reg?.reviews ?? '', !c.reg ? 'Not audited' : a ? `${AUDIT_LABEL[a.status] || a.status}${a.listing && a.score != null ? ` (${a.score}/100)` : ''}` : 'Not audited']; }))} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search competitors" /> : null} head={<>
-        <Th id="choose" sort={sort} onSort={onSort} first="desc" c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
-        <Th id="name" sort={sort} onSort={onSort}><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
-        <Th id="match" sort={sort} onSort={onSort} first="desc"><Head what="How well it matches your business on similar services, area, keywords, Google presence, intent and authority." from="the competitor research (Google Maps data and AI).">Match</Head></Th>
-        <Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="The share of Google clicks it could expect for your keywords, based on where it ranks." from="the competitor research (Google results). Your own figure comes from Search Console.">Google visibility</Head></Th>
-        <Th id="p1" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="How many of your researched keywords it shows on page 1 of Google for." from="the competitor research.">Page-1 keywords</Head></Th>
-        <Th id="best" sort={sort} onSort={onSort} c="text-center"><Head what="Its best position in the Google Maps results and its rating." from="Google Maps (Places).">Maps</Head></Th>
-        <Th id="audit" sort={sort} onSort={onSort}><Head what="Whether its website has been audited (speed and a page crawl)." why="Needed before you can compare it with your site." from="the site audit run from this page.">Site audit</Head></Th>
-        <Th c="text-right"><Head right what="Audit runs the site audit on its website. Compare shows it side by side with yours." from="the audits of its site and yours.">Actions</Head></Th></>}>
+        sorted.map(c => { const loc = c.profile?.local || c.maps; return [isChosen(c) ? 'yes' : 'no', c.name, c.website || c.host || '', c.maps?.relevance?.score ?? '', c.maps?.relevance?.label_text || '', c.profile ? c.profile.visibility : (c.maps?.visibility ?? ''), c.profile ? Object.keys(c.profile.positions).length : (c.maps?.appearances ?? ''), loc?.best ?? '', loc?.rating ?? c.reg?.rating ?? '', loc?.reviews ?? c.reg?.reviews ?? '', !c.reg ? 'Not audited' : a ? `${AUDIT_LABEL[a.status] || a.status}${a.listing && a.score != null ? ` (${a.score}/100)` : ''}` : 'Not audited']; }))} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search competitors" /> : null} head={<>
+          <Th id="choose" sort={sort} onSort={onSort} first="desc" c="text-center"><Head what="Tick the competitors that really compete with you (3 to 5)." why="Only the chosen ones are watched and used by Competitor Watch, the keyword workspace and the backlink gap.">Choose</Head></Th>
+          <Th id="name" sort={sort} onSort={onSort}><Head what="A business that ranks for your keywords on Google Maps or Google." why="Click the name for its full profile." from="Google Maps (Places) results and the competitors you added.">Competitor</Head></Th>
+          <Th id="match" sort={sort} onSort={onSort} first="desc"><Head what="How well it matches your business on similar services, area, keywords, Google presence, intent and authority." from="the competitor research (Google Maps data and AI).">Match</Head></Th>
+          <Th id="dist" sort={sort} onSort={onSort} c="text-right"><Head right what="How far its Google Maps pin is from the place you are searching." from="Google Maps (Places).">Distance</Head></Th>
+          <Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="The share of Google clicks it could expect for your keywords, based on where it ranks." from="the competitor research (Google results). Your own figure comes from Search Console.">Google visibility</Head></Th>
+          <Th id="p1" sort={sort} onSort={onSort} first="desc" c="text-right"><Head right what="How many of your researched keywords it shows on page 1 of Google for." from="the competitor research.">Page-1 keywords</Head></Th>
+          <Th id="best" sort={sort} onSort={onSort} c="text-center"><Head what="Its best position in the Google Maps results and its rating." from="Google Maps (Places).">Maps</Head></Th>
+          <Th c="text-right"><Head right what="Open the keywords this competitor ranks for, and where you stand against it." from="the competitor keywords and the keyword gap.">Keywords</Head></Th></>}>
         {pager.rows.map(c => {
-          const a = auditMap[c.reg?.id];
           return (
-            <tr key={c.host} className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
-              <td className="px-3 py-2.5 text-center"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
+            <React.Fragment key={c.host}><tr className={isChosen(c) ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'}>
+              <td className="px-3 py-2.5"><input type="checkbox" aria-label={`Choose ${c.name}`} checked={isChosen(c)} onChange={() => onChoose({ ...(c.reg || {}), id: c.reg?.id, name: c.name, website: c.website, maps: c.maps }, !isChosen(c))} className="w-4 h-4 cursor-pointer accent-indigo-600" /></td>
               <td className="px-3 py-2.5 min-w-[200px]">
                 <button type="button" onClick={() => onDetail(c)} className="text-left cursor-pointer group max-w-[280px]">
                   <span className="block font-semibold text-slate-900 group-hover:text-indigo-700 truncate">{c.name}</span>
                   <span className="block text-12 text-slate-500 truncate">{c.host}</span>
                 </button>
               </td>
-              <td className="px-3 py-2.5">{c.maps?.relevance ? <MatchCell rel={c.maps.relevance} /> : <span className="text-slate-400 text-12" title="Added by hand, or found before the match rating existed">—</span>}</td>
-              <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{c.profile ? `${c.profile.visibility}%` : c.maps ? `${c.maps.visibility}%` : '—'}</td>
-              <td className="px-3 py-2.5 text-right tabular-nums">{c.profile ? `${Object.keys(c.profile.positions).length}/${r.keywords.length}` : c.maps ? `${c.maps.appearances}/${r.keywords.length} Maps` : '—'}</td>
-              <td className="px-3 py-2.5 text-center">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : c.maps ? <span className="inline-flex items-center gap-1.5"><Pos value={c.maps.best} maps /><Stars rating={c.maps.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
-              <td className="px-3 py-2.5 whitespace-nowrap text-12.5">
-                {!c.reg ? <span className="text-slate-400" title={c.website ? 'Press Audit: it is saved as a competitor and its site is audited' : 'No website: Audit reads its Google Maps listing instead'}>Not audited{!c.website && c.maps ? ' · no website' : ''}</span>
-                  : a ? <span className={`inline-flex items-center gap-1.5 ${a.status === 'failed' ? 'text-red-600' : a.status === 'done' ? 'text-emerald-700' : 'text-slate-500'}`}>{running(a.status) && <Loader2 size={12} className="animate-spin" />}{AUDIT_LABEL[a.status] || a.status}{a.listing && a.score != null ? ` · ${a.score}/100` : ''}{a.listing && <span className="font-normal text-slate-400" title="No website: read from its Google Maps listing">Google listing</span>}</span>
-                    : <span className="text-slate-400">Not audited</span>}
-              </td>
+              <td className="px-3 py-2.5">{c.maps?.relevance ? <button type="button" aria-expanded={open.has(c.host)} onClick={() => setOpen(s => { const n = new Set(s); n.has(c.host) ? n.delete(c.host) : n.add(c.host); return n; })} title="Show how the match is made" className="text-left cursor-pointer"><MatchCell rel={c.maps.relevance} /></button> : <span className="text-slate-400 text-12" title="Added by hand, or found before the match rating existed">—</span>}</td>
+              <td className="px-3 py-2.5  tabular-nums text-slate-600">{c.maps?.distance_m == null ? <span className="text-slate-300">—</span> : c.maps.distance_m < 1000 ? `${c.maps.distance_m} m` : `${(c.maps.distance_m / 1000).toFixed(1)} km`}</td>
+              <td className="px-3 py-2.5  tabular-nums font-semibold">{c.profile ? `${c.profile.visibility}%` : c.maps ? `${c.maps.visibility}%` : '—'}</td>
+              <td className="px-3 py-2.5  tabular-nums">{c.profile ? `${Object.keys(c.profile.positions).length}/${r.keywords.length}` : c.maps ? `${c.maps.appearances}/${r.keywords.length} Maps` : '—'}</td>
+              <td className="px-3 py-2.5">{c.profile?.local ? <span className="inline-flex items-center gap-1.5"><Pos value={c.profile.local.best} maps /><Stars rating={c.profile.local.rating} /></span> : c.maps ? <span className="inline-flex items-center gap-1.5"><Pos value={c.maps.best} maps /><Stars rating={c.maps.rating} /></span> : (c.reg?.rating ? <Stars rating={c.reg.rating} reviews={c.reg.reviews} /> : <span className="text-slate-400">—</span>)}</td>
               <td className="px-3 py-2.5 text-right whitespace-nowrap">
                 <div className="inline-flex gap-1.5">
-                  <Act icon={Gauge} tone="teal" disabled={(!c.website && !c.maps) || running(a?.status)} onClick={() => onAudit(c.reg || c)} tip={c.reg ? `${a ? 'Re-audit' : 'Audit'}: run PageSpeed and a page crawl on their site.` : 'Audit: save it as a competitor first (choose it), then audit its site.'} />
-                  <Act icon={ShieldCheck} tone="indigo" busy={comparing === (c.reg?.id ?? `new:${c.name}`)} onClick={() => onCompare(c.reg || c)} tip={`Compare: ${compareHint(c)}`} />
+                  <Button size="sm" onClick={() => onKeywords(c)} title="Its keywords and where it ranks">Keywords</Button>
+                  <Button size="sm" variant="ghost" onClick={() => onGap(c)} title="The keyword gap between you and it">Gap</Button>
                 </div>
               </td>
             </tr>
+              {open.has(c.host) && c.maps?.relevance && <tr className="bg-slate-50/80"><td /><td colSpan={8} className="px-4 py-3"><div className="text-12.5 text-slate-700 mb-2"><b>{c.maps.relevance.label_text}</b> · score {c.maps.relevance.score}{c.maps.relevance.reason ? ` · ${c.maps.relevance.reason}` : ''}</div><FactorBars rel={c.maps.relevance} /></td></tr>}
+            </React.Fragment>
           );
         })}
-        {!shown.length && <tr><td colSpan={8} className="px-5 py-10 text-center text-13 text-slate-500">{rows.length ? (view === 'chosen' ? 'None chosen yet: tick the competitors that really compete with you.' : 'Nothing here.') : 'No competitors yet.'}</td></tr>}
+        {!shown.length && <tr><td colSpan={9} className="px-5 py-10 text-center text-13 text-slate-500">{rows.length ? (view === 'chosen' ? 'None chosen yet: tick the competitors that really compete with you.' : 'Nothing here.') : 'No competitors yet.'}</td></tr>}
       </Table>
     </Card>
   );
 }
 
 function KeywordsTab({ r, onKeyword, onIdeas }) {
-  const cols = r.profiles.slice(0, 3);
-  const [q, setQ] = useState('');
-  const needle = q.trim().toLowerCase();
-  const kwRows = r.serps.filter(x => !needle || x.keyword.toLowerCase().includes(needle));
-  const kwVal = (x, k) => (k === 'kw' ? x.keyword : k === 'g' ? x.you_organic : k === 'm' ? x.you_local : k === 'top' ? x.organic[0]?.domain : k.startsWith('c:') ? cols.find(p => p.domain === k.slice(2))?.positions?.[x.keyword] : undefined);
-  const { sorted, sort, onSort } = useSorted(kwRows, kwVal);
-  const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
-    <Card pad={false}>
-      <div className="px-5 py-3 border-b border-slate-200 flex items-center gap-3">
-        <div className="text-13 font-semibold text-slate-900">{r.keywords.length} keywords <span className="font-normal text-slate-500">· click a row for the full Google and Maps results</span></div>
-        <Button size="sm" className="ml-auto" icon={Lightbulb} onClick={onIdeas}>Keyword ideas ({r.ideas.competitor_keywords.length + r.ideas.questions.length + r.ideas.related.length})</Button>
-      </div>
-      <Table pager={pager} exportCsv={() => downloadCsv(`competitor-keywords-${slugOf(r.business?.name)}`, ['Keyword', 'You: Google position', 'You: Maps position', ...cols.map(p => `${p.domain}: Google position`), '#1 on Google'],
-        sorted.map(x => [x.keyword, x.you_organic ?? '', x.you_local ?? '', ...cols.map(p => p.positions?.[x.keyword] ?? ''), x.organic[0]?.domain || '']))} bar={r.serps.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search keywords" /> : null} head={<><Th id="kw" sort={sort} onSort={onSort}>Keyword</Th><Th id="g" sort={sort} onSort={onSort} c="text-center">You · Google</Th><Th id="m" sort={sort} onSort={onSort} c="text-center">You · Maps</Th>{cols.map(p => <Th key={p.domain} id={`c:${p.domain}`} sort={sort} onSort={onSort} c="text-center" cls="normal-case max-w-[120px] truncate">{p.domain}</Th>)}<Th id="top" sort={sort} onSort={onSort}>#1 on Google</Th></>}>
-        {pager.rows.map(s => (
-          <tr key={s.keyword} className={`cursor-pointer hover:bg-slate-50 ${!s.you_organic ? 'bg-rose-50/30' : ''}`} onClick={() => onKeyword(s)}>
-            <td className="px-4 py-2.5 font-semibold text-slate-900">{s.keyword}</td>
-            <td className="px-4 py-2.5 text-center"><Pos value={s.you_organic} /></td>
-            <td className="px-4 py-2.5 text-center"><Pos value={s.you_local} maps /></td>
-            {cols.map(p => <td key={p.domain} className="px-4 py-2.5 text-center"><Pos value={p.positions?.[s.keyword]} /></td>)}
-            <td className="px-4 py-2.5 text-slate-600 truncate max-w-[200px]">{s.organic[0]?.domain || '—'}</td>
-          </tr>
-        ))}
-      </Table>
-      <div className="px-5 py-2.5 border-t border-slate-200 flex flex-wrap gap-3 text-11.5 text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><Pos value={1} /> top 3</span><span className="inline-flex items-center gap-1.5"><Pos value={7} /> page 1</span><span className="inline-flex items-center gap-1.5"><Pos /> not in the results</span>
-      </div>
-    </Card>
+    <div className="space-y-2">
+      <p className="text-12.5 text-slate-500">Your {r.keywords.length} researched keywords: where you and the main competitors rank on Google. Click a keyword for the full Google and Maps results.</p>
+      <RankingsTable r={r} onKeyword={onKeyword} onIdeas={onIdeas} />
+      <div className="flex flex-wrap gap-3 text-11.5 text-slate-500"><span className="inline-flex items-center gap-1.5"><Pos value={1} /> top 3</span><span className="inline-flex items-center gap-1.5"><Pos value={7} /> page 1</span><span className="inline-flex items-center gap-1.5"><Pos /> not in the results</span></div>
+    </div>
   );
 }
 
 const CRITERIA = [
-  ['services', 'Similar services', 'Very high', 'Do they sell what you sell (a clothes rental is not a clothes shop)'],
-  ['area', 'Target area', 'Very high', 'The same customers: distance from your pin'],
-  ['keywords', 'Keyword overlap', 'Very high', 'Do they appear for the same searches'],
-  ['serp', 'Google presence', 'Very high', 'How high they rank on Google Maps for those searches'],
-  ['intent', 'Search intent', 'High', 'Would a customer be happy with either (rent versus buy)'],
-  ['authority', 'Domain authority', 'Medium', 'Strength of their website: never decides relevance alone']
+  ['services', 'Product relevance', 'Very high', 'Do they sell what you sell (a clothes rental is not a clothes shop)'],
+  ['area', 'Location relevance', 'Very high', 'The same customers: how near they are to the place searched'],
+  ['keywords', 'Keyword overlap', 'High', 'The share of your searches they show up for'],
+  ['serp', 'SERP overlap', 'High', 'How high they rank on the same results pages (Google Maps)'],
+  ['category', 'Category relevance', 'High', 'Their Google category against your categories'],
+  ['intent', 'Search intent match', 'High', 'Would a customer be happy with either (rent versus buy)'],
+  ['page', 'Top-page relevance', 'Medium', 'What their home page says against your services and searches'],
+  ['opportunity', 'Missing keyword opportunity', 'Medium', 'Searches they rank for that you do not (needs their keywords read)'],
+  ['traffic', 'Organic traffic strength', 'Medium', 'Estimated organic visits from their keywords, else the strength of their site']
 ];
 const MATCH_TONE = { direct: 'green', related: 'amber', unrelated: 'gray' };
 
@@ -365,6 +352,22 @@ function HowChosen({ r }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The nine factors of a match, each as a bar; a factor that could not be measured says so. */
+function FactorBars({ rel }) {
+  const f = rel?.factors || {};
+  return (
+    <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
+      {CRITERIA.map(([k, label, level, hint]) => (
+        <div key={k} title={hint}>
+          <div className="flex items-center justify-between text-12"><span className="text-slate-700">{label}</span><span className="tabular-nums font-semibold text-slate-900">{f[k] != null ? f[k] : <span className="font-normal text-slate-400">not measured</span>}</span></div>
+          <div className="mt-0.5 h-1.5 rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full rounded-full ${f[k] == null ? '' : f[k] >= 65 ? 'bg-emerald-500' : f[k] >= 40 ? 'bg-amber-400' : 'bg-slate-400'}`} style={{ width: `${f[k] ?? 0}%` }} /></div>
+        </div>
+      ))}
+      {rel?.traffic_from && <div className="sm:col-span-2 xl:col-span-3 text-11.5 text-slate-500">Organic traffic strength is from {rel.traffic_from === 'keywords' ? "this competitor's kept keyword read" : "the strength of its website (read its keywords for a better figure)"}.</div>}
     </div>
   );
 }
@@ -420,8 +423,9 @@ export function ListingComparison({ c, bid }) {
     if (!pick.length || !bid) return;
     setSaving(true); setSaveError('');
     try {
-      await api(`/businesses/${bid}/keywords`, { method: 'POST', body: pick.map(k => ({ keyword: k, source: { kind: 'competitor_compare', label: `${c.competitor.name} Google listing`, side: 'competitor', from: c.competitor.name, pages: [], searches: null, at: new Date().toISOString().slice(0, 10) } })) });
+      const res = await api(`/businesses/${bid}/keywords`, { method: 'POST', body: pick.map(k => ({ keyword: k, source: { kind: 'competitor_compare', label: `${c.competitor.name} Google listing`, side: 'competitor', from: c.competitor.name, pages: [], searches: null, at: new Date().toISOString().slice(0, 10) } })) });
       setAdded(a => [...a, ...pick]); setPick([]);
+      if (res?.existing?.length) setSaveError(`${res.existing.length} of them were already in My keywords, so they were not saved twice${res.updated ? `; ${res.updated} got this competitor as a new source` : ''}.`);
     } catch (e) { setSaveError(e.message || 'The keywords could not be added.'); } finally { setSaving(false); }
   };
   const Chips = ({ items, tone, empty }) => (items && items.length ? <div className="flex flex-wrap gap-1.5">{items.map(x => <span key={x} className={`px-2.5 py-1 rounded-full text-12.5 border ${tone === 'rose' ? 'bg-rose-50 text-rose-800 border-rose-200' : tone === 'green' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>{x}</span>)}</div> : <p className="text-13 text-slate-500">{empty}</p>);
@@ -506,8 +510,8 @@ export function MapsAudit({ r, kit }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1"><span className="text-13.5 font-semibold text-slate-900">Audit and compare</span> <span className="text-12 text-slate-500">· {`${sites.length} Maps competitor${sites.length === 1 ? '' : 's'} · ${done.length} audited${busy ? ` · ${busy} running now` : ''}`}</span></div>
         <div className="flex flex-wrap gap-2">
-<Button size="sm" variant="primary" icon={Gauge} busy={busy > 0} disabled={!sites.length || busy > 0} onClick={kit.onAuditAll} title="Audits each competitor (its website, or its Google listing when it has none) and your own website">Audit your site and all {sites.length}</Button>
-        <Button size="sm" icon={ShieldCheck} busy={sc?.loading} disabled={!done.length || kit.ourAudit?.status !== 'done' || busy > 0} onClick={kit.onScorecard} title="Compares the website audits with yours. A competitor with no website is compared on its own row">Compare all side by side</Button>
+          <Button size="sm" variant="primary" icon={Gauge} busy={busy > 0} disabled={!sites.length || busy > 0} onClick={kit.onAuditAll} title="Audits each competitor (its website, or its Google listing when it has none) and your own website">Audit your site and all {sites.length}</Button>
+          <Button size="sm" icon={ShieldCheck} busy={sc?.loading} disabled={!done.length || kit.ourAudit?.status !== 'done' || busy > 0} onClick={kit.onScorecard} title="Compares the website audits with yours. A competitor with no website is compared on its own row">Compare all side by side</Button>
         </div>
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1.5 text-11.5">
@@ -548,44 +552,12 @@ export function MapsTab({ r, kit }) {
   const pager = usePager(sorted, { size: 25, resetKey: `${needle}|${sort?.key}|${sort?.dir}` });
   return (
     <div className="space-y-4">
-    <HowChosen r={r} />
-    {kit && <MapsAudit r={r} kit={kit} />}
-    {r.local_competitors.length === 0 && <Card><p className="text-13 text-slate-600">No real competitor was found on Google Maps for these searches. {r.other_places?.length ? 'The businesses that came up sell something different: see the list below.' : ''}</p></Card>}
-    <Card pad={false}>
-      {nearOnly && <p className="px-4 py-2.5 border-b border-slate-100 text-12.5 text-slate-600">Only businesses within about 4 km of {r.business.name} are counted: the ones its customers can actually choose between.</p>}
-      <Table pager={pager} exportCsv={() => downloadCsv(`google-maps-competitors-${slugOf(r.business?.name)}`, ['Business', 'Category', 'Match score', 'Match', 'Why it matches', 'Distance (metres)', 'Visibility (%)', 'Best Maps position', 'Keywords it appears for', 'Rating', 'Reviews', 'Website'],
-        sorted.map(e => [e.name, e.category || '', e.mine ? '' : (e.relevance?.score ?? ''), e.mine ? 'You' : (e.relevance?.label_text || ''), e.relevance?.reason || '', e.distance_m ?? '', e.visibility ?? '', Number.isFinite(e.best) ? e.best : '', e.appearances ?? '', e.rating ?? '', e.reviews ?? '', e.website || '']))} bar={rows.length > 10 ? <SearchBar q={q} setQ={setQ} placeholder="Search businesses" /> : null} head={<><Th id="name" sort={sort} onSort={onSort}>Business</Th><Th id="match" sort={sort} onSort={onSort} first="desc">Match</Th>{kit && <Th id="audit" sort={sort} onSort={onSort}>Site audit</Th>}<Th id="dist" sort={sort} onSort={onSort} c="text-right">Distance</Th><Th id="vis" sort={sort} onSort={onSort} first="desc" c="text-right">Visibility</Th><Th id="best" sort={sort} onSort={onSort} c="text-center">Best</Th><Th id="res" sort={sort} onSort={onSort} first="desc" c="text-right">In results</Th><Th id="rating" sort={sort} onSort={onSort} first="desc">Rating</Th><Th id="rev" sort={sort} onSort={onSort} first="desc" cls="w-44">Reviews</Th><Th id="site" sort={sort} onSort={onSort}>Website</Th></>}>
-        {pager.rows.map(e => (
-          <tr key={e.name} className={e.mine ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}>
-            <td className="px-4 py-2.5"><div className={`font-medium ${e.mine ? 'text-emerald-800' : 'text-slate-900'}`}>{e.name}</div>{e.category && <div className="text-12 text-slate-500">{e.category}</div>}{e.relevance?.reason && <div className="text-11.5 text-slate-400 max-w-[320px]">{e.relevance.reason}</div>}</td>
-            <td className="px-4 py-2.5">{e.mine ? <Badge tone="green">You</Badge> : <MatchCell rel={e.relevance} />}</td>
-            {kit && <td className="px-4 py-2.5">{e.mine ? <span className="text-slate-400">—</span> : (() => {
-              const reg = kit.registered.find(c => (e.website ? hostOf(c.website) === (e.domain || hostOf(e.website)) : (c.place_id && c.place_id === e.cid) || (!c.website && c.name === e.name)));
-              const a = reg && kit.auditMap[reg.id];
-              if (!reg) return <span className="flex gap-1.5"><Button size="sm" icon={Gauge} onClick={() => kit.onAudit(e)} title={e.website ? 'Saves it as a competitor and audits its site and its Google listing' : 'No website: reads its Google listing and works out its services and keywords'}>Audit</Button>
-                <Button size="sm" icon={ShieldCheck} busy={kit.comparing === `new:${e.name}`} onClick={() => kit.onCompare(e)} title={compareHint(e)}>Compare</Button></span>;
-              return (
-                <div className="flex flex-col gap-1 min-w-[120px]">
-                  <span className={`text-12 font-semibold ${a?.status === 'done' ? 'text-emerald-700' : a?.status === 'failed' ? 'text-red-600' : running(a?.status) ? 'text-indigo-600' : 'text-slate-400'}`}>{a ? (SCORE_WORD[a.status] || a.status) + (a.listing && a.score != null ? ` · ${a.score}/100` : '') : 'Not audited'}{a?.listing ? <span className="font-normal text-slate-400"> · Google listing</span> : null}</span>
-                  <span className="flex gap-1.5">
-                    <Button size="sm" icon={Gauge} disabled={running(a?.status)} onClick={() => kit.onAudit(reg)}>{a ? 'Re-audit' : 'Audit'}</Button>
-                    <Button size="sm" icon={ShieldCheck} busy={kit.comparing === reg.id} onClick={() => kit.onCompare(reg)} title={compareHint(reg)}>Compare</Button>
-                  </span>
-                </div>
-              );
-            })()}</td>}
-            <td className="px-4 py-2.5 text-right tabular-nums text-slate-600" title="Straight-line distance from your business">{e.mine ? '' : e.distance_m == null ? '—' : e.distance_m < 1000 ? `${e.distance_m} m` : `${(e.distance_m / 1000).toFixed(1)} km`}</td>
-            <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{e.visibility}%</td>
-            <td className="px-4 py-2.5 text-center"><Pos value={Number.isFinite(e.best) ? e.best : null} maps /></td>
-            <td className="px-4 py-2.5 text-right tabular-nums">{e.appearances}/{r.keywords.length}</td>
-            <td className="px-4 py-2.5"><Stars rating={e.rating} /></td>
-            <td className="px-4 py-2.5"><div className="flex items-center gap-2" title={`${fmt(e.reviews)} reviews`}><span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className={`block h-full rounded-full ${e.mine ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${((e.reviews || 0) / maxReviews) * 100}%` }} /></span><span className="w-12 text-right tabular-nums text-slate-700">{fmt(e.reviews)}</span></div></td>
-            <td className="px-4 py-2.5">{e.website ? <a href={e.website} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1"><Globe size={12} />{e.domain || 'site'}</a> : <span className="text-slate-400">{e.mine ? '' : 'None'}</span>}</td>
-          </tr>
-        ))}
-      </Table>
-    </Card>
-    <OtherPlaces r={r} />
+      <HowChosen r={r} />
+      {kit && <MapsAudit r={r} kit={kit} />}
+      {r.local_competitors.length === 0 && <Card><p className="text-13 text-slate-600">No real competitor was found on Google Maps for these searches. {r.other_places?.length ? 'The businesses that came up sell something different: see the list below.' : ''}</p></Card>}
+      {nearOnly && <p className="text-12.5 text-slate-600">Only businesses within about {Math.round((r.radius_m || 4000) / 100) / 10} km of {r.center?.chosen ? 'the chosen place' : r.business.name} are counted: the ones its customers can actually choose between.</p>}
+      <MapsTable r={r} />
+      <OtherPlaces r={r} />
     </div>
   );
 }
@@ -687,9 +659,9 @@ function LiveResults({ progress }) {
                 return (
                   <tr key={d.domain} className="animate-in fade-in duration-300">
                     <td className="px-4 py-2 font-medium text-slate-900">{d.domain}{d.type === 'directory' && <span className="ml-2"><Badge tone="violet">Listing</Badge></span>}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-semibold">{d.visibility}%</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{d.keywords_top10}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{d.keywords_top3}</td>
+                    <td className="px-4 py-2  tabular-nums font-semibold">{d.visibility}%</td>
+                    <td className="px-4 py-2  tabular-nums">{d.keywords_top10}</td>
+                    <td className="px-4 py-2  tabular-nums">{d.keywords_top3}</td>
                     <td className="px-4 py-2 text-12 text-slate-500">{site ? (site.scanned ? `${site.services?.length || 0} services · ${fmt(site.avg_words)} words` : 'unreadable') : d.type === 'business' ? <Loader2 size={12} className="animate-spin text-slate-400" /> : ''}</td>
                   </tr>
                 );
@@ -730,8 +702,6 @@ function ProfileModal({ c, r, onClose, onAudit, onCompare, auditMap }) {
       footer={c && <>
         {c.website && <a href={c.website} target="_blank" rel="noreferrer" className="mr-auto inline-flex items-center gap-1 text-12.5 font-semibold text-indigo-700 hover:underline"><ExternalLink size={13} /> Visit site</a>}
         {p && <Button icon={Download} onClick={() => downloadFile(`competitor-profile-${slugOf(c.name)}-${today()}.md`, [`# Competitor profile: ${c.name}`, '', c.website || c.host || '', '', `- Google visibility: ${p.visibility}%`, `- Keywords on page 1: ${Object.keys(p.positions).length} of ${r.keywords.length}`, p.local ? `- Google Maps: best position #${p.local.best}, rating ${p.local.rating ?? 'n/a'} (${p.local.reviews ?? 0} reviews)` : '- Google Maps: not in the results', site.scanned ? `- Words per page: ${site.avg_words}` : '- Its site could not be read', '', '## Their strategy', '', ...p.strategy.map(x => `- ${x}`), '', '## Rankings', '', ...r.keywords.map(k => `- ${k}: ${p.positions[k] ? `#${p.positions[k]}` : 'not in the results'}`), '', '## Service pages', '', ...((site.services || []).length ? site.services.map(x => `- ${x}`) : ['- None found.']), '', '## Listed or linked on', '', ...(p.link_sources.length ? p.link_sources.map(x => `- ${baseSite(x.domain)}: ${x.url}`) : ['- None found.']), ''].join('\n'), 'text/markdown')}>Download profile</Button>}
-        <Button icon={Gauge} disabled={running(a?.status)} onClick={() => onAudit(c.reg || c)}>{a ? 'Re-audit' : 'Audit'}</Button>
-        <Button variant="primary" icon={ShieldCheck} title={compareHint(c)} onClick={() => { onClose(); onCompare(c.reg || c); }}>Compare with my business</Button>
       </>}>
       {c && !p && <p className="text-13 text-slate-600">This business was found on Google Maps but did not appear in the research results, so there is no ranking data yet. Run the research again to include it.</p>}
       {c && p && (
@@ -855,8 +825,18 @@ function Research({ b }) {
   const [state, setState] = useState(null); // { run, defaults, setup }
   const [loadError, setLoadError] = useState('');
   const [params] = useSearchParams();
-  const [tab, setTab] = useState(() => (['overview', 'competitors', 'pages', 'compare', 'gap', 'keywords', 'maps', 'links', 'plan'].includes(params.get('tab')) ? params.get('tab') : 'overview'));
+  const [tab, setTab] = useState(() => (['competitors', 'gap', 'keywords', 'traffic', 'pages', 'backlinks', 'maps', 'research'].includes(params.get('tab')) ? params.get('tab') : ['overview', 'rankings'].includes(params.get('tab')) ? 'research' : 'competitors'));
+  const [focus, setFocus] = useState({ host: '', band: '' }); // the competitor (and ranking band) a table cell sent you to
+  const goTo = (t, host = '', band = '') => { setFocus({ host, band }); setTab(t); };
   const [settings, setSettings] = useState(false);
+  const [place, setPlace] = useState(''); // where competitors are found: '' = the project's own area
+  const [radiusKm, setRadiusKm] = useState('5'); // how far around the place a competitor may be
+  const optKey = `discovery.${b.id}`;
+  const [opts, setOptsState] = useState(() => { try { return { category: '', services: '', seeds: '', country: '', language: 'en', ...(JSON.parse(localStorage.getItem(optKey)) || {}) }; } catch { return { category: '', services: '', seeds: '', country: '', language: 'en' }; } }); // what to look for: business type, services, seed keywords, country, language
+  const setOpts = (patch) => setOptsState(o => { const n = { ...o, ...patch }; try { localStorage.setItem(optKey, JSON.stringify(n)); } catch { /* not remembered */ } return n; });
+  const listOf = (t) => [...new Set(String(t || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean))];
+  const [scope, setScope] = useState('near'); // near: the businesses around the place | all: also the ones further away or only online
+  const [researchView, setResearchView] = useState('overview');
   const [detail, setDetail] = useState(null);
   const [serp, setSerp] = useState(null);
   const [ideas, setIdeas] = useState(false);
@@ -922,23 +902,36 @@ function Research({ b }) {
     try { const r = await api('/website-audits', { method: 'POST', body: { url: b.website, business_id: b.id, strategy } }); setOurAudit({ id: r.id, status: 'queued' }); } catch { /* shown when Compare fails */ }
   };
 
-  // Google Maps finder: registers competitors that have a website, then audits our site and each of them.
+  // Google Maps finder: registers the competitors that have a website. Nothing about their sites is audited.
   const findOnMaps = () => runMaps('maps', async () => {
-    const type = b.primaryCategory || (state?.defaults?.keywords?.[0] || '').split(' in ')[0] || 'business';
-    const where = [b.area, b.city].filter(Boolean).join(', ') || state?.defaults?.location || '';
-    const r = await api('/competitors', { method: 'POST', body: { business_type: type, location: where, business_id: b.id, top_n: 10 } });
+    const type = opts.category.trim() || b.primaryCategory || (state?.defaults?.keywords?.[0] || '').split(' in ')[0] || 'business';
+    const where = place || [b.area, b.city].filter(Boolean).join(', ') || state?.defaults?.location || '';
+    const r = await api('/competitors', { method: 'POST', body: { business_type: type, location: where, business_id: b.id, top_n: 15, services: listOf(opts.services).slice(0, 3), country: opts.country || undefined, language: opts.language || undefined, radius_km: Number(radiusKm) || undefined } });
     const list = await loadRegistered();
-    toast(`${r.registered?.length || 0} competitors with a website registered for audits.`);
-    auditOurSite();
-    (r.registered || list).filter(c => c.website && !running(auditMap[c.id]?.status) && auditMap[c.id]?.status !== 'done').forEach(auditCompetitor);
+    setLastFind({ n: r.registered?.length || 0, at: new Date().toISOString() });
+    toast(`${r.registered?.length || 0} competitor${r.registered?.length === 1 ? '' : 's'} with a website found or updated on Google Maps (${r.requests} Google request${r.requests === 1 ? '' : 's'}).`);
     return r;
   });
+
+  // Choosing another place or distance, or changing what is asked for (category, services, country, language), finds the competitors again by itself once you stop changing it: nothing to press.
+  const [lastFind, setLastFind] = useState(null); // {n, at}
+  const findKey = useRef(null);
+  const findRef = useRef(null);
+  findRef.current = findOnMaps;
+  const optKeyNow = `${place}|${radiusKm}|${opts.category.trim()}|${opts.services.trim()}|${opts.country}|${opts.language}`;
+  const [pendingApply, setPendingApply] = useState(false);
+  useEffect(() => {
+    if (findKey.current === null) { findKey.current = optKeyNow; return undefined; }
+    if (findKey.current === optKeyNow) { setPendingApply(false); return undefined; }
+    setPendingApply(true);
+    const t = setTimeout(() => { findKey.current = optKeyNow; setPendingApply(false); findRef.current?.().catch(() => { }); }, 1300);
+    return () => clearTimeout(t);
+  }, [optKeyNow]);
 
   const addManual = (url, name) => runAdd('add', async () => {
     const c = await api('/competitors/manual', { method: 'POST', body: { business_id: b.id, url, name } });
     await loadRegistered();
-    if (!running(auditMap[c.id]?.status)) auditCompetitor(c);
-    toast(`${c.name} added. Auditing its site…`);
+    toast(`${c.name} added as a competitor.`);
     return c;
   });
 
@@ -1030,7 +1023,7 @@ function Research({ b }) {
   };
 
   const start = (keywords, location) => run('start', async () => {
-    const r = await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords, location } });
+    const r = await api(`/businesses/${b.id}/competitor-research`, { method: 'POST', body: { keywords, location: place || location, radius_km: Number(radiusKm) } });
     setState(s => ({ ...s, run: r }));
     setSettings(false);
     if (!registered.length) findOnMaps().catch(() => { }); // the first run also registers the Maps competitors for audits
@@ -1113,6 +1106,24 @@ function Research({ b }) {
     return [...byHost.values()].sort((x, y) => rank(y) - rank(x));
   }, [result, registered]);
 
+  const rating = useRatings(b, place || state?.defaults?.location || '', registered.map(c => c.id));
+  const tableRows = useMemo(() => rows.map(c => {
+    const r = c.reg ? rating.by_id?.[String(c.reg.id)] : null;
+    const maps = (c.maps || c.reg || r) ? { ...(c.maps || {}), address: r?.address || c.maps?.address || c.reg?.address, distance_m: r?.distance_m ?? c.maps?.distance_m, relevance: r?.relevance || c.maps?.relevance } : undefined;
+    return { ...c, maps, key: c.host, host: /^maps:/.test(c.host) ? '' : c.host };
+  }), [rows, rating.by_id]);
+  const isChosenRow = (c) => Boolean(c.reg) && c.reg.selected !== false;
+  const radius = Number(radiusKm) * 1000 || 5000; // the distance chosen next to the place
+  const isNearRow = (c) => isChosenRow(c) || (c.maps ? (c.maps.distance_m == null || c.maps.distance_m <= radius) : false);
+  const nearRows = useMemo(() => tableRows.filter(isNearRow), [tableRows, radius]); // eslint-disable-line react-hooks/exhaustive-deps
+  const poolRows = scope === 'near' ? nearRows : tableRows;
+  const chosenPool = useMemo(() => tableRows.filter(c => isChosenRow(c) && c.host), [tableRows]); // the tabs after Competitors use only the chosen ones
+  const analysis = useAnalysis(b, tableRows.map(c => c.host).filter(Boolean));
+  const statusOf = (c) => analysis.metrics[c.host]?.status || 'pending';
+  // the competitors around the place that are not analyzed yet are analyzed by themselves
+  const pendingHosts = poolRows.filter(c => c.host && statusOf(c) !== 'analyzed').map(c => c.host);
+  const auto = useAutoAnalysis(b, analysis, pendingHosts);
+
   if (!state) return loadError ? <ErrorNote>{loadError}</ErrorNote> : <div className="space-y-4"><SkCard title="Competitor research" subtitle="Who ranks for your keywords on Google and Maps"><Sk h="h-9" w="w-2/3" /></SkCard><SkCard title="Competitors found" pad={false}><SkTable headers={["Competitor", "Type", "Keywords", "Best position"]} rows={6} bare /></SkCard></div>;
   const p = current?.result?.progress;
   const s = result?.summary;
@@ -1122,122 +1133,131 @@ function Research({ b }) {
       {toastNode}
 
 
-      {/* One compact bar: status, settings, run */}
-      <div className={`ai-glass-card rounded px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 ${result || isRunning(current) ? '' : 'hidden'}`}>
-        <div className="min-w-0 flex-1">
-          {isRunning(current) ? (
-            <div className="flex items-center gap-3">
-              <Loader2 size={16} className="animate-spin text-indigo-600 shrink-0" />
-              <div className="flex-1 min-w-0"><div className="text-13 font-semibold text-slate-900">Researching competitors… <span className="font-normal text-slate-500 truncate">{p?.step || 'Starting'}</span></div>
-                <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${p ? Math.round((p.done / p.total) * 100) : 4}%` }} /></div></div>
-            </div>
-          ) : result ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-12.5 text-slate-600">
-              <span title={`${result.keywords.length} keywords · ${result.ideas?.competitor_keywords?.length || 0} competitor keywords · ${result.gaps?.keywords?.length || 0} gaps`}><b className="text-slate-900">Researched {fmtDateTime(result.analysed_at)}</b> · {result.location || 'India'} · {result.keywords.length} keyword{result.keywords.length === 1 ? '' : 's'}</span>
-              <span title={s.keywords_ranked ? 'from Google Search Console' : 'link Search Console to see it'}>Google <b className={`tabular-nums ${s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'}`}>{s.keywords_ranked ? `${s.visibility}%` : '—'}</b> · {s.keywords_ranked}/{s.keywords_total} keywords</span>
-              <span title={`in Maps for ${s.local_ranked} of ${s.keywords_total}`}>Maps <b className="text-slate-900 tabular-nums">{s.local_visibility}%</b></span>
-              <span title={s.local_leader ? `Maps leader: ${s.local_leader.name}` : ''}>Competitors <b className="text-slate-900 tabular-nums">{s.competitors}</b>{s.local_leader ? <span className="text-slate-400"> · leader {s.local_leader.name}</span> : null}</span>
-            </div>
-          ) : <div className="text-13 text-slate-600">Research who outranks you on Google and Maps, then find keywords from it.</div>}
+      {/* Two slim rows keep the table on the screen: what to search and run, then the numbers and the automatic analysis. The rest is under "More". */}
+      <div className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm">
+        <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="inline-flex items-center gap-1.5 text-13 font-semibold text-slate-800"><MapPin size={15} className="text-indigo-500" />Find competitors in</span>
+          <PlacePicker b={b} value={place} onChange={(v) => setPlace(v)} width={220} canSave={false} places={[{ name: state?.defaults?.location || [b.area, b.city].filter(Boolean).join(', ') || 'Project area', kind: 'project area' }, ...(b.target_areas || []).map(n => ({ name: n, kind: 'area' }))]} />
+          <label className="inline-flex items-center gap-1.5 text-12.5 text-slate-600">within
+            <Select value={radiusKm} onChange={e => setRadiusKm(e.target.value)} aria-label="Distance around the place" className="h-9 w-24 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left">{['2', '5', '10', '20', '30'].map(k => <option key={k} value={k}>{k} km</option>)}</Select></label>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button icon={MapPin} busy={mapsBusy === 'maps'} disabled={isRunning(current)} onClick={findOnMaps} title="Looks up the businesses Google Maps shows for your type of business around this place. Pressing it again refreshes them.">Find on Google Maps</Button>
+            <Button variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup?.google_results} onClick={() => start(listOf(opts.seeds).length ? listOf(opts.seeds) : defaults.keywords, place || defaults.location)} title="Reads Google's results for your keywords, searched from this place">{result ? 'Run research again' : 'Research this place'}</Button>
+            <MorePanel label="More">
+              <div className="space-y-5">
+                <section>
+                  <h3 className="text-14 font-semibold text-slate-900">Last research</h3>
+                  {result ? <>
+                    <p className="text-12.5 text-slate-500 mt-0.5">{fmtDateTime(result.analysed_at)} · {result.location || 'India'} · {result.keywords.length} keyword{result.keywords.length === 1 ? '' : 's'}</p>
+                    <div className="mt-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+                      {[
+                        ['Google visibility', s.keywords_ranked ? `${s.visibility}%` : '—', s.keywords_ranked ? `${s.keywords_ranked} of ${s.keywords_total} keywords shown` : 'Link Search Console to see it', s.keywords_ranked ? (s.visibility >= (s.leader?.visibility || 0) ? 'text-emerald-600' : 'text-amber-600') : 'text-slate-400'],
+                        ['Maps visibility', `${s.local_visibility}%`, `In Maps for ${s.local_ranked} of ${s.keywords_total} searches`, 'text-slate-900'],
+                        ['Competitors in this research', s.competitors, s.local_leader ? `Leader: ${s.local_leader.name}` : 'found', 'text-slate-900'],
+                      ].map(([l, v, sub, cls]) => <div key={l} className="rounded-xl bg-slate-50 px-3.5 py-2.5 min-w-0"><div className="text-12 font-medium text-slate-500">{l}</div><div className={`text-22 font-bold tabular-nums leading-tight ${cls}`}>{v}</div><div className="text-12 text-slate-500 truncate" title={sub}>{sub}</div></div>)}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>
+                      <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-${slugOf(b.name)}-${today()}.md`, researchMd(result), 'text/markdown')}>Download the report</Button>
+                    </div>
+                  </> : <p className="text-13 text-slate-600 mt-1">No research has been run yet. Press “Research this place” to find who outranks you on Google and Maps, then see their keywords and the gap.</p>}
+                </section>
+                <section className="border-t border-slate-100 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-14 font-semibold text-slate-900">Discovery options</h3>
+                    <span className={`inline-flex items-center gap-1.5 text-12 rounded-full px-2.5 py-0.5 ${mapsBusy === 'maps' ? 'bg-indigo-50 text-indigo-700' : pendingApply ? 'bg-amber-50 text-amber-700' : lastFind ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`} aria-live="polite">
+                      {mapsBusy === 'maps' ? <><Loader2 size={12} className="animate-spin" />Applying…</> : pendingApply ? 'Applies when you stop typing' : lastFind ? `Applied: ${lastFind.n} competitor${lastFind.n === 1 ? '' : 's'} found` : 'Applies by itself when you change them'}
+                    </span>
+                  </div>
+                  <p className="text-12.5 text-slate-500 mt-0.5">What Google Maps is asked for and from where. Changing the category, services, country or language searches again by itself; nothing to press. The seed keywords are used when you run the research.</p>
+                  <div className="mt-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                    <label className="block text-12.5 text-slate-600">Business category<input value={opts.category} onChange={e => setOpts({ category: e.target.value })} placeholder={b.primaryCategory || 'e.g. clothing rental'} className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">What Google Maps is asked for. Empty = the project's category.</span></label>
+                    <label className="block text-12.5 text-slate-600">Primary services (up to 3, comma separated)<input value={opts.services} onChange={e => setOpts({ services: e.target.value })} placeholder="e.g. saree rental, lehenga rental" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">Each one is searched too: one extra Google request each.</span></label>
+                    <label className="block text-12.5 text-slate-600">Seed keywords for the research run<input value={opts.seeds} onChange={e => setOpts({ seeds: e.target.value })} placeholder={(defaults.keywords || []).slice(0, 2).join(', ') || 'comma separated'} className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 px-2.5 text-13" /><span className="text-11.5 text-slate-400">Empty = the project's keywords.</span></label>
+                    <label className="block text-12.5 text-slate-600">Country
+                      <Select value={opts.country} onChange={e => setOpts({ country: e.target.value })} aria-label="Country" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left"><option value="">Project's country</option>{Object.entries({ IN: 'India', US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia', AE: 'United Arab Emirates', DE: 'Germany', FR: 'France', SG: 'Singapore' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></label>
+                    <label className="block text-12.5 text-slate-600">Language of the Google results
+                      <Select value={opts.language} onChange={e => setOpts({ language: e.target.value })} aria-label="Language" className="mt-1 h-9 w-full rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2.5 text-13 text-left">{Object.entries({ en: 'English', hi: 'Hindi', mr: 'Marathi', gu: 'Gujarati', ta: 'Tamil', te: 'Telugu', bn: 'Bengali', es: 'Spanish', fr: 'French', de: 'German', ar: 'Arabic' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></label>
+                  </div>
+                  <p className="mt-2 text-11.5 text-slate-500">Distance (above) limits the Maps search to that circle. Maps discovery finds local businesses; whether one is a competitor for organic search is for you to judge: mark it Direct or Indirect in the table. Saved on this device for this project.</p>
+                </section>
+              </div>
+            </MorePanel>
+          </div>
         </div>
-        {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-${slugOf(b.name)}-${today()}.md`, researchMd(result), 'text/markdown')}>Download research</Button>}
-        {result && <Button size="sm" icon={Download} onClick={() => downloadFile(`competitor-research-data-${slugOf(b.name)}-${today()}.json`, JSON.stringify(result, null, 2), 'application/json')}>Download data (JSON)</Button>}
-        {result && <Button size="sm" icon={Settings2} onClick={() => setSettings(true)}>Keywords & settings</Button>}
-        {result && <Button size="sm" variant="primary" icon={Play} busy={busy === 'start' || isRunning(current)} disabled={!state.setup.google_results} onClick={() => start(defaults.keywords, defaults.location)}>Run again</Button>}
-        {result && <Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button>}
+        <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/60 rounded-b-xl flex flex-wrap items-center gap-x-6 gap-y-2">
+          <AnalysisStats rows={poolRows} status={statusOf} isChosen={isChosenRow} metrics={analysis.metrics} />
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            <Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors<span className="ml-1.5 px-1.5 rounded-full bg-indigo-50 text-indigo-700 text-12 font-semibold tabular-nums">{chosenTotal}</span></Button>
+            <AutoControls auto={auto} />
+          </div>
+        </div>
       </div>
+      {!isRunning(current) && result && place && result.location && !String(result.location).toLowerCase().includes(String(place).split(',')[0].toLowerCase()) && (
+        <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-1.5 text-12.5 text-amber-900">The last research is for {result.location}. Press “Run research again” to read {place.split(',')[0]}.</div>
+      )}
+      <AutoNotices auto={auto} />
       {current?.status === 'failed' && <ErrorNote>{current.error || 'The research failed.'}</ErrorNote>}
       {isRunning(current) && <LiveResults progress={p} />}
 
-      {!result && !isRunning(current) && <div className="flex justify-end -mb-2"><Button size="sm" icon={Users} onClick={() => setPanel(true)} title="Add, choose and remove competitors">My competitors · <b className="tabular-nums">{chosenTotal}</b> chosen</Button></div>}
       <div className="grid gap-5 items-start">
-      <div className="min-w-0 space-y-3">
-      {!result && !isRunning(current) && <Card title="Research your competitors" subtitle="Add the searches your customers type, then run it. The Maps competitors are registered for site audits at the same time."><SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start'} error={error} setupInfo={state.setup} hasRun={false} /></Card>}
+        <div className="min-w-0 space-y-3">
+          {!result && !isRunning(current) && <Card title="Research your competitors" subtitle="Add the searches your customers type, then run it. The Maps competitors are registered for site audits at the same time."><SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start'} error={error} setupInfo={state.setup} hasRun={false} /></Card>}
 
-      {result && (
-        <div className={isRunning(current) ? 'space-y-3 opacity-60 pointer-events-none select-none' : 'space-y-3'} aria-busy={isRunning(current)}>
-          <div>
-            <Tabs value={tab} onChange={setTab} tabs={[
-              { id: 'overview', label: 'Overview' },
-              { id: 'competitors', label: 'All competitors', count: rows.length },
-              { id: 'pages', label: 'Traffic and pages' },
-              { id: 'gap', label: 'Keyword gap' },
-              { id: 'keywords', label: 'Keywords', count: result.keywords.length },
-              { id: 'compare', label: 'Side by side' },
-              { id: 'maps', label: 'Google Maps', count: result.local_competitors.length },
-              { id: 'links', label: 'Listings' },
-              { id: 'plan', label: 'Action plan', count: result.actions.length }
-            ]} />
-            {tab === 'overview' && <Overview r={result} goto={setTab} />}
-            {tab === 'competitors' && <>
-              <MapsAudit r={result} kit={mapsKit} />
-              <CompetitorsTable rows={rows} r={result} strategy={strategy} setStrategy={setStrategy} auditMap={auditMap} ourAudit={ourAudit} onAuditOur={auditOurSite} hasSite={Boolean(b.website)}
-                onDetail={setDetail} onAudit={auditRow} onCompare={doCompare} comparing={comparing} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'}
-                onAddManual={addManual} addBusy={addBusy === 'add'} addError={addError} onChoose={chooseCompetitor} />
-              <ErrorNote>{mapsError}</ErrorNote>
-            </>}
-            {tab === 'pages' && <CompetitorPagesTab b={b} />}
-            {tab === 'compare' && <CompareDomains b={b} result={result} />}
-            {tab === 'gap' && <KeywordGap b={b} result={result} />}
-            {tab === 'keywords' && <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
-            {tab === 'maps' && <MapsTab r={result} kit={mapsKit} />}
-            {tab === 'links' && <ListingsTab r={result} setupInfo={state.setup} />}
-            {tab === 'plan' && <PlanTab r={result} />}
-          </div>
+          {(result || registered.length > 0) && (
+            <div className={isRunning(current) ? 'space-y-3 opacity-60 pointer-events-none select-none' : 'space-y-3'} aria-busy={isRunning(current)}>
+              <div>
+                <Tabs value={tab} onChange={(t) => goTo(t)} tabs={[
+                  { id: 'competitors', label: 'Competitors', count: poolRows.length },
+                  { id: 'gap', label: 'Keyword gap' },
+                  { id: 'keywords', label: 'Competitor keywords' },
+                  { id: 'traffic', label: 'Traffic comparison' },
+                  { id: 'pages', label: 'Top pages' },
+                  { id: 'backlinks', label: 'Backlink comparison' },
+                  { id: 'maps', label: 'Google Maps', count: tableRows.filter(c => c.maps).length },
+                  { id: 'research', label: 'Research' }
+                ]} />
+                {tab === 'competitors' && <>
+                  <CompetitorsPanel b={b} auto={auto} rating={rating} rows={poolRows} scope={scope} setScope={setScope} nearCount={nearRows.length} allCount={tableRows.length} radius={radius} placeName={(result?.location || place || state?.defaults?.location || '').split(',')[0]}
+                    isChosen={isChosenRow} metrics={analysis.metrics} reload={analysis.reload} onChoose={chooseCompetitor} onRemove={removeCompetitor} onAdd={addManual} onDetail={setDetail} onGo={goTo}
+                    addBusy={addBusy === 'add'} addError={addError} onFindMaps={findOnMaps} findBusy={mapsBusy === 'maps'} />
+                  <ErrorNote>{mapsError}</ErrorNote>
+                </>}
+                {['gap', 'keywords', 'traffic', 'pages', 'backlinks'].includes(tab) && chosenPool.length === 0 && (
+                  <div className="rounded-xl bg-white ring-1 ring-slate-200 px-6 py-10 text-center">
+                    <div className="mx-auto w-11 h-11 rounded-full bg-indigo-50 text-indigo-600 inline-flex items-center justify-center"><Users size={20} /></div>
+                    <h3 className="mt-3 text-15 font-semibold text-slate-900">Please select a competitor first</h3>
+                    <p className="mt-1 text-13 text-slate-600 max-w-md mx-auto">This tab shows the data of the competitors you have chosen. {tableRows.length ? 'Tick the checkbox of the competitors you want to compare yourself with on the Competitors tab.' : 'Find competitors first, then tick the ones you want.'}</p>
+                    <div className="mt-4"><Button variant="primary" onClick={() => goTo('competitors')}>Go to Competitors</Button></div>
+                  </div>
+                )}
+                {chosenPool.length > 0 && tab === 'gap' && <KeywordGapTab key={focus.host} b={b} focus={focus.host} />}
+                {chosenPool.length > 0 && tab === 'keywords' && <CompetitorKeywordsTab key={`${focus.host}|${focus.band}`} b={b} focus={focus.host} band={focus.band} />}
+                {chosenPool.length > 0 && tab === 'traffic' && <TrafficTab key={focus.host} b={b} rows={chosenPool} analysis={analysis} focus={focus.host} />}
+                {chosenPool.length > 0 && tab === 'pages' && <TopPagesTab key={focus.host} b={b} rows={chosenPool} focus={focus.host} />}
+                {chosenPool.length > 0 && tab === 'backlinks' && <BacklinkTab key={focus.host} rows={chosenPool} analysis={analysis} focus={focus.host} />}
+                {tab === 'maps' && <CompetitorMaps key={b.id} b={b} rows={tableRows} legacy={result ? <MapsTab r={result} kit={null} /> : null} />}
+                {tab === 'research' && <ResearchTab key={b.id} b={b} legacy={result ? (
+                  <div className="space-y-3">
+                    <div className="inline-flex rounded-lg ring-1 ring-inset ring-slate-300 overflow-hidden bg-white" role="group" aria-label="Research">{[['overview', 'Overview'], ['rankings', 'Rankings on your keywords']].map(([k, l]) => <button key={k} type="button" aria-pressed={researchView === k} onClick={() => setResearchView(k)} className={`h-9 px-3.5 text-13 font-medium cursor-pointer ${researchView === k ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>)}</div>
+                    {researchView === 'overview' ? <Overview r={result} goto={(id) => (id === 'keywords' ? setResearchView('rankings') : setTab(id === 'competitors' ? 'competitors' : id))} /> : <KeywordsTab r={result} onKeyword={setSerp} onIdeas={() => setIdeas(true)} />}
+                  </div>
+                ) : null} />}
+              </div>
+            </div>
+          )}
         </div>
-      )}
-      </div>
-      <Drawer open={panel} onClose={() => setPanel(false)} width="max-w-md" title="My competitors" subtitle="Choose 3 to 5 that really compete with you. Only the chosen ones are watched.">
-        <MyCompetitors list={registered} auditMap={auditMap} onAdd={addManual} onFind={findOnMaps} onAudit={auditCompetitor} onRemove={removeCompetitor} onChoose={chooseCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} findError={mapsError} running={isRunning(current)} />
-      </Drawer>
+        <Drawer open={panel} onClose={() => setPanel(false)} width="max-w-md" title="My competitors" subtitle="Choose 3 to 5 that really compete with you. Only the chosen ones are watched.">
+          <MyCompetitors list={registered} auditMap={{}} onAdd={addManual} onFind={findOnMaps} onAudit={() => { }} onRemove={removeCompetitor} onChoose={chooseCompetitor} addBusy={addBusy} addError={addError} findBusy={mapsBusy} findError={mapsError} running={isRunning(current)} />
+        </Drawer>
       </div>
 
       <Modal open={settings} onClose={() => setSettings(false)} width="max-w-2xl" title="Keywords & research settings">
         <SetupForm b={b} defaults={defaults} onStart={start} busy={busy === 'start' || isRunning(current)} error={error} setupInfo={state.setup} hasRun={Boolean(result)} />
       </Modal>
-      {result && <ProfileModal c={detail} r={result} onClose={() => setDetail(null)} onAudit={auditCompetitor} onCompare={doCompare} auditMap={auditMap} />}
+      {result && <ProfileModal c={detail} r={result} onClose={() => setDetail(null)} onAudit={() => { }} onCompare={() => { }} auditMap={{}} />}
       {result && <KeywordModal s={serp} onClose={() => setSerp(null)} />}
       {result && <IdeasModal open={ideas} r={result} onClose={() => setIdeas(false)} />}
-      <CompareModal state={compare} onClose={() => setCompare(null)} bid={b.id} />
-    </div>
-  );
-}
-
-/** What the research starts from: the business understanding (kind of business, area, the words customers search with). Without it the page asks for the summary to be built first. */
-function Basis({ b }) {
-  const r = useApi(`/businesses/${b.id}/business-brief`);
-  const [open, setOpen] = useState(false);
-  const br = r.data?.brief;
-  if (r.error || !r.data) return null;
-  if (!br) {
-    return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 flex flex-wrap items-center gap-3 text-12.5 text-amber-900">
-        <span className="flex-1 min-w-[220px]"><b>Build the business summary first:</b> competitors and keywords are found from what the business is and how customers search.</span>
-        <Link to="/website-audit" className="font-semibold underline">Open the website audit</Link>
-      </div>
-    );
-  }
-  const terms = br.customer_search_terms || [];
-  return (
-    <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-1.5">
-      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 text-left cursor-pointer">
-        <span className="text-12.5 font-bold text-indigo-900">Based on your business understanding</span>
-        {(br.business_type || br.business_model) && <span className="px-2 py-0.5 rounded bg-white ring-1 ring-indigo-200 text-12 font-bold text-slate-900 capitalize">{br.business_type || br.business_model}</span>}
-        <span className="text-12 text-indigo-800 truncate max-w-[60%]">{terms.slice(0, 3).join(' · ')}{terms.length > 3 ? ` +${terms.length - 3} more` : ''}</span>
-        <span className="ml-auto text-12 font-semibold text-indigo-700">{open ? 'Hide' : 'Details'}</span>
-      </button>
-      {open && (
-        <div className="mt-2 space-y-2 pb-1">
-          <div className="flex flex-wrap items-center gap-1.5">{terms.map(x => <span key={x} className="px-2.5 py-1 rounded-full bg-indigo-600 text-white text-12 font-semibold">{x}</span>)}</div>
-          {(br.competitors_are || br.competitors_are_not) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-12.5">
-              {br.competitors_are && <div className="rounded-lg bg-emerald-50 ring-1 ring-emerald-200 px-3 py-2 text-slate-800"><b className="text-emerald-800">Counts: </b>{br.competitors_are}</div>}
-              {br.competitors_are_not && <div className="rounded-lg bg-rose-50 ring-1 ring-rose-200 px-3 py-2 text-slate-800"><b className="text-rose-800">Does not count: </b>{br.competitors_are_not}</div>}
-            </div>
-          )}
-          <Link to="/website-audit" className="inline-block text-12.5 font-semibold text-indigo-700 hover:underline">Correct or refresh the business understanding</Link>
-        </div>
-      )}
     </div>
   );
 }
@@ -1245,7 +1265,7 @@ function Basis({ b }) {
 export default function CompetitorFinderPage() {
   return (
     <SeoShell step="competitors" title="Competitors" subtitle="Who outranks you on Google and Maps, side by side with you, the keywords you are missing, and what to do about it: one research, one place">
-      {(b) => <div className="space-y-3"><Basis key={`basis-${b.id}`} b={b} /><Research key={b.id} b={b} /></div>}
+      {(b) => <Research key={b.id} b={b} />}
     </SeoShell>
   );
 }

@@ -434,6 +434,42 @@ def suggest_titles(topic: str, primary: str, secondary: list[str], b: Business, 
     return out[:5]
 
 
+BLOG_TITLE_MAX = 90
+
+
+def suggest_blog_titles(topic: str, primary: str, seo_title: str, b: Business, avoid: list[str] | None = None) -> list[str]:
+    """Up to 5 Blog title (H1) options: the heading readers see on the page. Unlike the SEO title (max 60 characters, for Google) it can be
+    longer and more engaging, but it keeps the primary keyword and promises the same thing as the SEO title."""
+    topic = " ".join((topic or "").split()) or primary
+    primary = " ".join(primary.split())
+    avoid = [a for a in (avoid or []) if a]
+    prompt = "\n".join([
+        "You are an editor. Write 5 different Blog titles (the H1 heading readers see on the blog page) for ONE article.",
+        f"Topic: {topic}", f'Primary keyword: "{primary}"',
+        f'SEO title (shown in Google; the article delivers what it promises): "{seo_title}"' if seo_title else "",
+        "Business (use it only to judge the audience):", ai.profile_text(b)[:1200],
+        f"Do not reuse these titles: {'; '.join(avoid + ([seo_title] if seo_title else []))}",
+        f'Rules: each title is 35 to {BLOG_TITLE_MAX} characters, contains the exact phrase "{primary}", reads naturally to a person (it can be a little longer and'
+        " more descriptive than the SEO title), and promises only what the article covers. No clickbait, no years or numbers unless the topic has them.",
+        'Answer with ONE JSON object: {"titles": ["...", "...", "...", "...", "..."]}'])
+    out: list[str] = []
+    for _ in range(2):
+        d = _json(prompt, num_predict=500)
+        for t in d.get("titles") or []:
+            t = _plain(t).strip(" \"'")
+            if isinstance(t, str) and 35 <= len(t) <= BLOG_TITLE_MAX and _has(t, primary) and t not in out and t not in avoid and t != seo_title:
+                out.append(t)
+        if len(out) >= 3:
+            break
+    return out[:5]
+
+
+def blog_title_of(a) -> str:
+    """The Blog title (H1) readers see: the article's H1 heading, else its SEO title."""
+    m = re.search(r"<h1\b[^>]*>([\s\S]*?)</h1>", getattr(a, "body", None) or "", re.I)
+    return (_text(m.group(1)) if m else "") or (getattr(a, "title", None) or getattr(a, "keyword", None) or "")
+
+
 def _plain(value) -> str:
     """Text only: no tags, markdown, labels or entities."""
     t = html.unescape(str(value or ""))
@@ -799,9 +835,9 @@ def validate(title: str, meta: str, body: str, primary: str, secondary: list[str
         n_brand = len(re.findall(rf"(?<!\w){re.escape(brand)}(?!\w)", text, re.I))
         if n_brand < 2:
             w.append(f"The brand name '{brand}' appears {n_brand} time{'s' if n_brand != 1 else ''}: mention it naturally a few times.")
-    n_long = long_paragraphs(body)
+    n_long = long_paragraphs(body, limit=190)  # the template's paragraphs are 500+ characters (about 90-130 words); only far longer ones are flagged
     if n_long:
-        w.append(f"{n_long} paragraph{'s are' if n_long != 1 else ' is'} long: break {'them' if n_long != 1 else 'it'} into chunks of 2 to 4 sentences.")
+        w.append(f"{n_long} paragraph{'s are' if n_long != 1 else ' is'} very long (over 190 words): split {'them' if n_long != 1 else 'it'} into two paragraphs.")
 
     # Keywords check (a paragraph without a keyword is normal, not a failure: it is no longer listed here)
     if not _has(text, primary):
@@ -1181,11 +1217,15 @@ SKIP_HEADING = re.compile(r"(?:introduction|frequently asked questions|faqs?|con
 
 # Paragraph plan per article length for write(): (paragraphs, words per paragraph). Totals with the fixed parts
 # (WH answer, action paragraph, Why Choose, FAQs, CTA) land near the lengths shown on the page (~850 / ~2,000 / ~2,500 words).
-WRITE_PLAN = {  # chunks of 2 to 4 sentences, so the article reads in small pieces; five FAQs (the master SEO workflow)
-    "short": {"intro": (2, 60), "sub1": (3, 70), "sub2": (2, 70), "faqs": 5},
-    "standard": {"intro": (3, 70), "sub1": (8, 75), "sub2": (8, 75), "faqs": 5},
-    "long": {"intro": (4, 70), "sub1": (12, 75), "sub2": (12, 75), "faqs": 5},
+WRITE_PLAN = {  # the gold-standard blog template: approximately 500 words per section in readable chunks; five FAQs
+    # each main section: 3 paragraph chunks of ~150-170 words (~500 words total per section)
+    "short": {"intro": (3, 130), "sub1": (3, 150), "sub2": (3, 150), "extra": (2, 130), "sections": 2, "faqs": 5},
+    "standard": {"intro": (3, 140), "sub1": (3, 160), "sub2": (3, 160), "extra": (3, 150), "sections": 4, "faqs": 5},
+    "long": {"intro": (3, 150), "sub1": (3, 170), "sub2": (3, 170), "extra": (3, 160), "sections": 5, "faqs": 5},
 }
+PARA_MIN_CHARS = 500  # the template's minimum paragraph size
+INTRO_CHUNK_WORDS = 60  # the introduction: exactly 3 short, natural paragraphs of about 60 words (3-4 sentences)
+SECTION_CHUNK_WORDS = 70  # main sections: small paragraph chunks of about 70 words (3-4 sentences), ~500 words per section in total
 _SENTENCE_END = re.compile(r"[.!?…][\"'”’)\]]*$")
 
 
@@ -1293,6 +1333,34 @@ def _write_structured(prompt: str, n_groups: int, used: set | None = None) -> st
             return h
         log.warning("Structured section too thin (try %d): %r", attempt + 1, h[:160])
     return ""
+
+
+def _section_list(context: str, h2: str, section_text: str, avoid_h3: list[str]) -> str:
+    """The optional H3 + list block that closes a main section (the approved blog format: e.g. "What to Check Before Visiting a Store" with 5 checks).
+    Only when the section's subject really has types, checks, steps, options or a comparison; '' otherwise or when the answer is unusable."""
+    d = _json("\n".join([
+        context,
+        f'The section "{h2}" so far: ' + _text(section_text)[:1800],
+        "Decide whether this section is clearer for the reader with ONE short sub-section that is a list: types or categories, things to check, steps,"
+        " tips or options to compare (most practical sections are). A purely explanatory section gets none.",
+        '- "h3": a specific sub-heading (3 to 9 words), different from these: ' + json.dumps(avoid_h3[-12:]),
+        '- "lead": one sentence introducing the list.',
+        '- "items": 4 to 7 objects {"label": "2 to 4 words", "text": "one complete sentence"}; each item says something the paragraphs did not.',
+        '- "ordered": true only for steps that must be done in order.',
+        *STRUCTURE_RULES,
+        'Answer with JSON only: {"use_list": true, "h3": "...", "lead": "...", "items": [{"label": "...", "text": "..."}], "ordered": false}'
+        ' or {"use_list": false}',
+    ]), 900)
+    if not d.get("use_list"):
+        return ""
+    h3 = _item(d.get("h3")).rstrip(":")
+    items = [(_item(x.get("label")).rstrip(":"), _item(x.get("text"))) for x in (d.get("items") or []) if isinstance(x, dict)]
+    items = [(l, t) for l, t in items if l and len(t.split()) >= 4][:7]
+    if not h3 or len(items) < 3:
+        return ""
+    tag = "ol" if d.get("ordered") else "ul"
+    return "\n".join([f"<h3>{html.escape(h3, quote=False)}</h3>", _p(d.get("lead")), f"<{tag}>",
+                      *[f"<li><strong>{html.escape(l, quote=False)}:</strong> {html.escape(t, quote=False)}</li>" for l, t in items], f"</{tag}>"])
 
 
 def _write_paragraphs(prompt: str, n_paras: int, words_each: int, headings: list[str], on_chunk=None, used: set | None = None) -> str:
@@ -1540,6 +1608,255 @@ def _work_in_keywords(body: str, missing: list[str], primary: str, topic: str, b
     return "".join(out) + head[last:] + body[len(head):]
 
 
+# ── section helpers: fresh WH question, profile-backed "Why choose", CTA wording, repeated sentences, FAQ relevance ──
+
+_GENERIC_CLAIMS = re.compile(r"proven methodolog|customi[sz]ed service delivery|local market authority|transparent communication|industry[- ]leading|"
+                             r"best[- ]in[- ]class|world[- ]class|cutting[- ]edge|unmatched|second to none|years of experience|award[- ]winning|trusted by", re.I)
+
+
+def _display_case(s: str) -> str:
+    """Profile text typed in lower case reads properly in a heading: "vastrbhushan Rental" -> "Vastrbhushan Rental", "pune" -> "Pune".
+    Words that already have a capital letter (RK'z, ERP, iPhone) are kept as typed."""
+    return " ".join(w[:1].upper() + w[1:] if w.islower() and w[:1].isalpha() else w for w in (s or "").split())
+
+
+def _place(b) -> str:
+    """The business's address for the contact box: address, area and city once each ("... Wagholi Pune, Pune" repeated the city), in display case."""
+    out: list[str] = []
+    for part in (getattr(b, "address", None), getattr(b, "area", None), getattr(b, "city", None)):
+        p = " ".join(str(part or "").split()).strip(" ,")
+        if p and not re.search(r"(?<![a-z0-9])" + re.escape(p.lower()) + r"(?![a-z0-9])", ", ".join(out).lower()):
+            out.append(p)
+    return _display_case(", ".join(out))
+
+
+# FAQ questions that are templates, not questions a real reader asks about the topic
+_GENERIC_FAQ = re.compile(r"see results|results from|professional (guidance|help|advice)|expert (guidance|help)|benefit your business|business growth|"
+                          r"best way to get started|why (is|should|do) .*\b(professional|expert|agency|partner)", re.I)
+
+
+def _business_relevance(b, brand: str, primary: str, topic: str, title: str, brief: dict | None) -> tuple[str, str]:
+    """How the business relates to what a reader of THIS article is looking for: "full" (it offers exactly that), "partial" (related: e.g. a clothing
+    RENTAL business and an article about buying market clothing; the article stays an honest guide and presents the business's REAL service as an
+    alternative, never as a seller of the topic) or "none" (unrelated: neutral criteria, the business is only the publisher).
+    A deterministic word-overlap veto decides "none"; the AI decides full/partial; a brief that says "not closely related" caps it at partial."""
+    from .seo_workflow.stages import _business_fit
+    fit = _business_fit({}, primary, b)
+    if not fit["business_relevant"]:
+        return "none", fit["business_note"]
+    d = _json("\n".join([
+        f'Blog article: "{title or topic}" (primary keyword "{primary}").',
+        f"Business: {brand}. Its profile (the only facts): " + ai.profile_text(b)[:1500],
+        "Question: does this business ITSELF sell or provide exactly what a reader of this article is looking for?",
+        '- "full": yes, it offers that exact product or service (e.g. a dress rental shop and an article about renting dresses).',
+        '- "partial": related but different (e.g. it rents what the article is about buying, or offers a different service in the same field).',
+        '- "none": not related.',
+        'Answer with JSON only: {"level": "full|partial|none", "reason": "one short sentence"}']), 200)
+    level = str(d.get("level") or "").strip().lower()
+    if level == "none":
+        return "none", f"Business relevance: none. {_plain(d.get('reason'))} The business is not presented as a provider of this topic."
+    if level == "partial" or (brief and brief.get("business_relevant") is False):
+        why = _plain(d.get("reason")) or _plain((brief or {}).get("business_note"))
+        return "partial", (f"Business relevance: partial. {why} The article is an honest guide to the topic and presents the business's real service"
+                           " as an alternative; it never says the business sells or provides the topic itself.")
+    return "full", ""
+
+
+def _fitting_keywords(primary: str, secondary: list[str], title: str, topic: str) -> tuple[list[str], list[str]]:
+    """Secondary keywords that fit this article's reader and intent; the rest (e.g. "wholesale clothing market near me" in a buyer's guide) are not
+    forced into the text. Returns (fitting, left out). When the check gives no usable answer, every keyword is kept."""
+    if not secondary:
+        return [], []
+    d = _json("\n".join([
+        f'Blog article: "{title or topic}" (primary keyword "{primary}").',
+        "Which of these secondary keywords can be used naturally in this article, because a reader of it also searches for them? Related places,"
+        " markets, price angles and alternatives (e.g. renting instead of buying) fit: a section of the article can be about them."
+        " Leave out only phrases with a clearly different intent or audience (for example wholesale/B2B supply, jobs, an unrelated product).",
+        "Keywords: " + json.dumps(secondary),
+        'Answer with JSON only: {"fit": ["exact keyword", "..."]}']), 400)
+    fit = {str(k).strip().lower() for k in (d.get("fit") or []) if str(k).strip()}
+    if not fit:
+        return list(secondary), []
+    return [k for k in secondary if k.lower() in fit], [k for k in secondary if k.lower() not in fit]
+
+
+def _fresh_wh_question(wh_q: str, so_far_html: str, primary: str, title: str) -> str:
+    """The WH question must be about something the main sections have NOT explained: when it overlaps a heading already written, ask for another."""
+    from .seo_workflow.stages import _overlap, _QUESTION_FORM
+    heads = [_text(h) for h in re.findall(r"<h[23]\b[^>]*>(.*?)</h[23]>", so_far_html or "", re.S | re.I)]
+    generic = bool(re.match(r"what should you know about\b", wh_q or "", re.I))  # the fallback used when the plan failed: always replaced
+    if not generic and not any(_overlap(wh_q, h) >= 0.75 for h in heads):
+        return wh_q
+    d = _json("\n".join([
+        f'The blog article "{title}" (primary keyword "{primary}") already has these sections: ' + json.dumps(heads),
+        "Give ONE question a reader still has that none of those sections answers. It starts with What, Why, How, When or Where, is a real question"
+        ' (for example "How much does ... cost?", "What happens if ...?") and ends with "?". Plain words, at most 80 characters.',
+        'Answer with JSON only: {"question": "...?"}']), 200)
+    q = _plain(d.get("question") or "").rstrip(".!:; ")
+    q = q + ("" if q.endswith("?") else "?") if q else ""
+    if q and _QUESTION_FORM.match(q) and len(q) <= 100 and not any(_overlap(q, h) >= 0.75 for h in heads):
+        return q
+    return wh_q
+
+
+def _profile_facts(b, brand: str) -> list[str]:
+    """The verified details a "Why choose" reason may be based on: each line of the business profile (services one by one) and the real contact options."""
+    facts: list[str] = []
+    for line in ai.profile_text(b).splitlines():
+        if ":" not in line:
+            continue
+        label, value = [x.strip() for x in line.split(":", 1)]
+        if not value or label.lower() in {"business name", "write in", "tone of voice", "what the business wants from seo"}:
+            continue
+        if label.lower() == "services":
+            facts += [f"Service: {s.strip()}" for s in value.split(";") if s.strip()][:10]
+        elif label.lower() == "location":
+            facts.append(f"Location: {_place(b) or value[:300]}")  # address, area and city once each
+        else:
+            facts.append(f"{label}: {value[:300]}")
+    if getattr(b, "phone", None):
+        facts.append(f"Phone: customers can call {b.phone}")
+    if getattr(b, "website", None):
+        facts.append(f"Website: {b.website}")
+    if getattr(b, "booking_url", None):
+        facts.append("Online booking: customers can book through the booking link")
+    return list(dict.fromkeys(facts))[:24]
+
+
+def _why_reasons(b, brand: str, primary: str, topic: str, loc_str: str, angle: str = "") -> tuple[list[dict], str, str]:
+    """Exactly five "Why choose" reasons, each based on a DIFFERENT verified profile detail. The AI names the detail it used; Python checks the detail
+    exists, the reason invents no numbers and uses no generic claim ("Proven Methodology"…). Returns (reasons, intro, note for the editor)."""
+    facts = _profile_facts(b, brand)
+    got: list[dict] = []
+    used: set[int] = set()
+    if facts:
+        d = _json("\n".join([
+            f'Write the "Why choose {brand}" reasons for a blog article about "{topic}" (primary keyword "{primary}").',
+            "VERIFIED BUSINESS DETAILS (the only things you may say about the business):", *[f"F{i + 1}. {f}" for i, f in enumerate(facts)],
+            "- Up to 5 reasons. Each is based on ONE detail above (a different one each time) and says only what that detail supports, phrased for this"
+            " article's reader. Never add numbers, years, awards, clients, results or qualities the detail does not state.",
+            '- No generic claims such as "Proven Methodology", "Customized Service Delivery", "Transparent Communication" or "industry-leading".',
+            *([f"- {angle}"] if angle else []),
+            '- "intro": one plain sentence introducing the reasons.',
+            'Answer with JSON only: {"intro": "...", "reasons": [{"fact": "F3", "title": "2 to 5 words", "text": "one or two sentences"}]}']), 900)
+        for r in d.get("reasons") or []:
+            if not isinstance(r, dict):
+                continue
+            m = re.fullmatch(r"F?(\d+)", str(r.get("fact") or "").strip(), re.I)
+            i = int(m.group(1)) - 1 if m else -1
+            title, text = _plain(r.get("title")), _plain(r.get("text"))
+            fact = facts[i] if 0 <= i < len(facts) else ""
+            invented_numbers = [n for n in re.findall(r"\d[\d,.]*", f"{title} {text}") if n not in fact]
+            if fact and i not in used and title and text and not _GENERIC_CLAIMS.search(f"{title} {text}") and not invented_numbers:
+                got.append({"title": title, "text": text, "fact": fact})
+                used.add(i)
+        intro = _plain(d.get("intro"))
+    else:
+        intro = ""
+    # top up from the remaining verified details, written plainly (still only what the profile says)
+    for i, f in enumerate(facts):
+        if len(got) >= 5:
+            break
+        if i in used:
+            continue
+        label, value = [x.strip() for x in f.split(":", 1)]
+        plain = {"Service": (label.split()[0], f"{brand} offers {value}."),
+                 "Location": ("Local and easy to reach", f"{brand} is based at {value}."),
+                 "Phone": ("Talk to the team directly", f"You can call {getattr(b, 'phone', '')} to ask your questions."),
+                 "Website": ("Details online", f"Services and details are on {value}."),
+                 "Online": ("Book online", "You can book through the online booking link.")}.get(label.split()[0])
+        if plain:
+            got.append({"title": value[:40] if label == "Service" else plain[0], "text": plain[1], "fact": f})
+            used.add(i)
+    note = ""
+    if len(got) < 5:  # a thin profile: the rest are neutral criteria, never invented claims; the editor is told
+        for t, x in [("Clear explanations", f"Look for a team that explains {primary} plainly before you commit."),
+                     ("Fit for your needs", "Choose a provider that shapes its work around your situation."),
+                     ("Easy to reach", f"Make sure you can reach them easily{loc_str} when you have questions.")][: 5 - len(got)]:
+            got.append({"title": t, "text": x, "fact": ""})
+        note = (f"'Why choose' has only {sum(1 for r in got if r['fact'])} reasons backed by the business profile; the rest are neutral criteria."
+                " Add services, what makes the business different and contact options to the profile for five verified reasons.")
+    return got[:5], intro or f"Here is why readers choose {brand}:", note
+
+
+_CTA_BANNED = re.compile(r"next level|proven|specialists?|happy to help|one-stop|world[- ]class|best in|unmatched|don'?t miss|act now|hurry|guarantee|"
+                         r"\bready to\b|\bperfect\b|look no further|dream", re.I)
+
+
+def _cta_text(b, brand: str, primary: str, topic: str, title: str, avoid: str = "") -> str:
+    """One or two plain sentences inviting the reader to get in touch, written for this article: no stock promotional phrases, no repeated keyword."""
+    d = _json("\n".join([
+        f'Write the closing call-to-action text (1 or 2 sentences, at most 45 words) for the blog article "{title}" by {brand}.',
+        "Business profile (true facts only):", ai.profile_text(b)[:1200],
+        f'- Invite the reader to contact {brand} about what this article covered, in plain friendly words. Do NOT use the phrase "{primary}".',
+        '- No stock phrases ("take it to the next level", "ready to", "perfect", "proven", "specialists", "happy to help", "act now"), no numbers, no claims the'
+        " profile does not state. Mention one concrete thing the reader can do with the business (from the profile), e.g. visit, call, try on or book.",
+        *(["- Do NOT repeat these points, already made just above in the article: " + avoid[:800]] if avoid else []),
+        'Answer with JSON only: {"text": "..."}']), 200)
+    t = " ".join(_plain(d.get("text") or "").split())
+    if t and len(t.split()) <= 50 and not _CTA_BANNED.search(t) and not re.search(r"\d", t) and brand.lower() in t.lower():
+        return t
+    return f"Have a question about your own situation? Contact {brand} and talk it through with the team."
+
+
+def dedupe_sentences(body: str) -> tuple[str, int]:
+    """Remove sentences that repeat an earlier one (nearly the same words) across the introduction, the main sections, the WH answer and "Don't wait".
+    The FAQ answers, "Why choose" and the CTA are left alone (an FAQ answer has to stand on its own). Returns (body, sentences removed)."""
+    schema = "\n".join(m.group(0) for m in _SCHEMA_RE.finditer(body or ""))
+    vis = _SCHEMA_RE.sub("\n", body or "")
+    pieces = re.split(r"(<h2\b[^>]*>[\s\S]*?</h2>)", vis)
+    seen: list[set] = []
+    removed = 0
+    words = lambda s: {w[:6] for w in re.findall(r"[a-z0-9]+", s.lower()) if len(w) > 2}  # noqa: E731
+
+    def one_p(m: re.Match) -> str:
+        nonlocal removed
+        inner = m.group(2)
+        if "<" in inner:  # formatted text (links, bold labels): left as it is
+            return m.group(0)
+        keep = []
+        for s in re.split(r"(?<=[.!?])\s+", html.unescape(inner).strip()):
+            ws = words(s)
+            if len(ws) >= 6 and any(len(ws & o) / len(ws | o) >= 0.7 for o in seen):
+                removed += 1
+                continue
+            if len(ws) >= 6:
+                seen.append(ws)
+            keep.append(s)
+        return f"<p{m.group(1)}>{html.escape(' '.join(keep), quote=False)}</p>" if keep else ""
+
+    for i in range(0, len(pieces), 2):
+        head = _text(pieces[i - 1]) if i else ""
+        if i and re.search(r"frequently asked|faq|why choose|what to look for|contact|ready to get started", head, re.I):
+            continue
+        pieces[i] = _P_RE.sub(one_p, pieces[i])
+    out = "".join(pieces)
+    return out + ("\n\n" + schema if schema else ""), removed
+
+
+def _faq_relevance(items: list[tuple[str, str]], title: str) -> list[int]:
+    """Indexes of FAQ answers that do not directly answer their own question: an AI check of every pair, plus a Python check that the answer
+    shares the question's key words. Used before saving; those answers are written again."""
+    stop = {"what", "why", "how", "when", "where", "which", "who", "does", "do", "is", "are", "can", "should", "the", "a", "an", "for", "of", "to", "in", "my", "i", "you", "your", "it"}
+    bad = set()
+    for i, (q, a) in enumerate(items):
+        qw = {w[:5] for w in re.findall(r"[a-z0-9]+", q.lower()) if w not in stop and len(w) > 2}
+        aw = {w[:5] for w in re.findall(r"[a-z0-9]+", _text(a).lower())}
+        if qw and not (qw & aw):
+            bad.add(i)
+    pairs = [{"n": i, "question": q, "answer": _text(a)[:600]} for i, (q, a) in enumerate(items)]
+    d = _json("\n".join([
+        f'Check the FAQ of the blog article "{title}". For EACH pair give a verdict: "direct" is true when the answer\'s first sentence answers THIS'
+        " question itself (a definition for a 'what is' question, a time for a 'when/how early' question, a yes/no/it-depends for a yes/no question,"
+        " the items for a 'what should I check' question). It is false only when the answer talks about something else or never answers.",
+        json.dumps(pairs),
+        'Answer with JSON only: {"verdicts": [{"n": 0, "direct": true, "why": "a few words"}]}']), 600)
+    for v in d.get("verdicts") or []:  # only an explicit "direct": false counts (an unclear or missing verdict is not a failure)
+        if isinstance(v, dict) and isinstance(v.get("n"), int) and 0 <= v["n"] < len(items) and v.get("direct") is False:
+            bad.add(v["n"])
+    return sorted(bad)
+
+
 def required_sections(body: str) -> dict:
     """Which of the required parts the article HTML has (the JSON-LD block is ignored): a dict of part -> True/False, plus the FAQ count."""
     vis = _SCHEMA_RE.sub("\n", body or "")
@@ -1552,15 +1869,15 @@ def required_sections(body: str) -> dict:
     special = re.compile(r"^(what|why|how|when|where)\b.*\?$|why choose|what to look for|frequently asked|faq|contact|ready to get started|" + ACTION_RE.pattern, re.I)
     main = [(h, c) for h, c in secs if not special.search(h)]
     return {
-        "h1": bool(re.search(r"<h1\b", vis, re.I)), "intro": len(intro) >= 500, "main_sections": len(main) >= 2 and all(len(_text(c)) >= 80 for _, c in main),
+        "h1": bool(re.search(r"<h1\b", vis, re.I)), "intro": len(intro) >= 500, "main_sections": len(main) >= 2 and all(len(_text(c)) >= 350 for _, c in main),
         "wh": has(r"^(what|why|how|when|where)\b.*\?$", 60), "dont_wait": has(ACTION_RE.pattern), "why": has(r"why choose|what to look for"),
         "faqs": answered >= 5, "cta": has(r"contact|ready to get started", 40), "faq_count": answered,
-        "empty_main": [h for h, c in main if len(_text(c)) < 80],
+        "empty_main": [h for h, c in main if len(_text(c)) < 350],
     }
 
 
 def complete_article(body: str, *, title: str, primary: str, brand: str, loc_str: str, rules: list[str], all_heads: list[str], used: set,
-                     help_h: str, faq_n: int = 5) -> tuple[str, list[str], list[str]]:
+                     help_h: str, faq_n: int = 5, facts: list[str] | None = None) -> tuple[str, list[str], list[str]]:
     """The final completeness check before the article is saved. Each required part that is missing or empty is written again ON ITS OWN
     (never the whole article): a short introduction gets more chunks, an empty H2 section gets its body, a missing WH answer, "Don't wait"
     section or FAQ answer is written, and the FAQs are topped up to five. Returns (body, what was regenerated, what is still missing)."""
@@ -1589,9 +1906,10 @@ def complete_article(body: str, *, title: str, primary: str, brand: str, loc_str
         if ACTION_RE.search(h):
             action_seen = True
         if re.search(r"frequently asked|faq", h, re.I):
-            pieces[i + 1] = _complete_faqs(content, title=title, primary=primary, brand=brand, n=faq_n, fixed=fixed)
+            pieces[i + 1] = _complete_faqs(content, title=title, primary=primary, brand=brand, n=faq_n, fixed=fixed, facts=facts,
+                                           avoid=[_text(pieces[j]) for j in range(1, len(pieces), 2)])  # FAQs never repeat a section heading (e.g. the WH question)
             continue
-        if re.search(r"contact|ready to get started|why choose|what to look for", h, re.I) or len(_text(content)) >= 80:
+        if re.search(r"contact|ready to get started|why choose|what to look for", h, re.I) or len(_text(content)) >= 350:
             continue  # the CTA and "Why choose" are built by their own profile-only code (free text there could invent claims); a section with text is left
         if re.match(r"^(what|why|how|when|where)\b", h, re.I) and h.endswith("?"):
             txt = " ".join(write(f'Answer the question "{h}" in ONE direct paragraph of 3 to 4 sentences (at most 700 characters). The first sentence is the answer.', 1, 110).split())
@@ -1604,7 +1922,7 @@ def complete_article(body: str, *, title: str, primary: str, brand: str, loc_str
             txt = write(f'Write the section "{h}": empathetic, informative guidance on why timely action matters for this topic. No fear-based selling.', 2, 60)
             new = _paras(txt) if txt else ""
         else:
-            txt = write(f'Write the body of the section "{h}": practical explanations and an example; do not repeat other sections of the article.', 3, 60)
+            txt = write(f'Write the body of the section "{h}": full informative paragraphs of at least 500 characters with practical explanations and an example; do not repeat other sections of the article.', 2, 100)
             new = _paras(txt) if txt else ""
         if new:
             pieces[i + 1] = "\n" + new + "\n" + content
@@ -1622,12 +1940,16 @@ def complete_article(body: str, *, title: str, primary: str, brand: str, loc_str
     return (out + ("\n\n" + schema if schema else "")), fixed, still
 
 
-def _complete_faqs(content: str, *, title: str, primary: str, brand: str, n: int, fixed: list[str]) -> str:
+def _complete_faqs(content: str, *, title: str, primary: str, brand: str, n: int, fixed: list[str], facts: list[str] | None = None,
+                   avoid: list[str] | None = None) -> str:
     """Every FAQ question gets an answer, and there are n questions."""
     qa = re.findall(r"(<h3\b[^>]*>[\s\S]*?</h3>)\s*(<p\b[^>]*>[\s\S]*?</p>)?", content, re.I)
     items = []
     for hq, p in qa:
         q = _text(hq)
+        if _GENERIC_FAQ.search(q):  # a template question, not a reader's: replaced by a real one below
+            fixed.append(f'FAQ replaced (template question, not a real reader question): "{q}"')
+            continue
         if not p or len(_text(p)) < 20:
             a = " ".join(_trim_to_sentence(_stream_text(f'Give a clear, direct 2-3 sentence answer to the question "{q}" for readers of the article "{title}" about {primary}.'
                                                         " Plain text, complete sentences, no invented numbers.", num_predict=260)).split())
@@ -1636,20 +1958,35 @@ def _complete_faqs(content: str, *, title: str, primary: str, brand: str, n: int
                 fixed.append(f'FAQ answer: "{q}"')
         items.append((q, p))
     if len(items) < n:
-        d = _json("\n".join([f'Write {n - len(items)} more FAQ questions and answers for the blog article "{title}" (primary keyword: "{primary}").',
-                             "People-Also-Ask style, different from these questions: " + json.dumps([q for q, _ in items]),
+        d = _json("\n".join([f'Write {n - len(items) + 2} more FAQ questions and answers for the blog article "{title}" (primary keyword: "{primary}").',
+                             "Questions real readers of this topic type into Google (People-Also-Ask style), different from these questions and from the article's section headings: "
+                             + json.dumps([q for q, _ in items] + (avoid or [])),
+                             '- Never template questions such as "How long does it take to see results from ...?" or "Why is professional guidance recommended for ...?".',
                              "Each answer starts with the direct answer, 2-3 complete sentences, no invented numbers.", *STRUCTURE_RULES,
                              'Answer with JSON only: {"faqs": [{"question": "...?", "answer": "..."}]}']), 900)
-        for f in (d.get("faqs") or [])[: n - len(items)]:
-            if isinstance(f, dict) and _plain(f.get("question")) and _plain(f.get("answer")):
+        for f in d.get("faqs") or []:
+            if len(items) >= n:
+                break
+            if isinstance(f, dict) and _plain(f.get("question")) and _plain(f.get("answer")) and not _GENERIC_FAQ.search(_plain(f["question"])):
                 items.append((_plain(f["question"]), f"<p>{html.escape(_plain(f['answer']), quote=False)}</p>"))
                 fixed.append(f'FAQ added: "{_plain(f["question"])}"')
+    # Question-answer relevance check before saving: an answer that does not directly answer ITS question is written again (once)
+    items = items[:n]
+    for i in _faq_relevance(items, title):
+        q = items[i][0]
+        a = " ".join(_trim_to_sentence(_stream_text(
+            f'Answer this exact question in 2-3 sentences: "{q}". The FIRST sentence must directly answer it (a yes/no question starts with Yes, No or'
+            f" It depends). Context: the blog article \"{title}\" about {primary}. Plain text, complete sentences, no invented numbers."
+            + (f" Verified details about {brand} you may use if the question is about them: " + "; ".join(facts[:12]) if facts else ""), num_predict=260)).split())
+        if a:
+            items[i] = (q, f"<p>{html.escape(a, quote=False)}</p>")
+            fixed.append(f'FAQ answer rewritten (did not directly answer its question): "{q}"')
     lead = re.split(r"<h3\b", content, maxsplit=1, flags=re.I)[0]
     return lead + "\n".join(f"<h3>{html.escape(q, quote=False)}</h3>\n{p or ''}" for q, p in items[:n]) + "\n"
 
 
-def _brief_lines(brief: dict | None, plan: bool = False, brand: str = "") -> list[str]:
-    """The confirmed content brief, as prompt lines (empty without a brief)."""
+def _brief_lines(brief: dict | None, plan: bool = False, brand: str = "", bridge: bool = False) -> list[str]:
+    """The confirmed content brief, as prompt lines (empty without a brief). `bridge`: the business is partly related (its own rule is in write())."""
     if not brief:
         return []
     out = ["", "CONTENT BRIEF (confirmed by the editor; follow it):"]
@@ -1660,7 +1997,7 @@ def _brief_lines(brief: dict | None, plan: bool = False, brand: str = "") -> lis
         out.append("- Must cover: " + "; ".join(brief["must_cover"][:12]))
     if brief.get("entities"):
         out.append("- Entities to mention where relevant: " + ", ".join(brief["entities"][:12]))
-    if brief.get("business_relevant") is False:
+    if brief.get("business_relevant") is False and not bridge:
         out.append("- The business's services are NOT closely related to this topic: mention the business at most once in the introduction (as the publisher of"
                    " the guide), never in the body sections or FAQ answers, and never present it as a provider of this topic.")
     elif brief.get("business_note"):
@@ -1669,7 +2006,7 @@ def _brief_lines(brief: dict | None, plan: bool = False, brand: str = "") -> lis
         from .seo_workflow.master_prompt import resolve_client
         out.append(f"- Writer notes: {resolve_client(brief['instructions'], brand)}")
     if plan:
-        out.append("- Outline (use these H2 headings, in this order): " + " | ".join(s["h2"] for s in brief["outline"]))
+        out.append("- Outline (start with these H2 headings, in this order): " + " | ".join(s["h2"] for s in brief["outline"]))
         if brief.get("wh_question"):
             out.append(f'- WH question: "{brief["wh_question"]}"')
         if brief.get("faqs"):
@@ -1683,7 +2020,7 @@ def blog_brief(primary: str, brand: str, location: str = "") -> list[str]:
     return content_rules(primary, brand, location)
 
 def write(primary: str, secondary: list[str], rising: list[str], b: Business, topic: str = "", progress=lambda text, body="", title="", meta="": None, length: str = "standard",
-          title_hint: str | None = None, meta_hint: str | None = None, brief: dict | None = None) -> dict:
+          title_hint: str | None = None, meta_hint: str | None = None, brief: dict | None = None, blog_title: str | None = None) -> dict:
     """(`brief`: the content brief from the SEO workflow (seo_workflow/stages.content_brief), as the user confirmed it. When given, its
     outline, WH question, FAQs, audience and business fit drive the article; without it the article is planned here as before.)"""
     brief = brief if isinstance(brief, dict) and brief.get("outline") else None
@@ -1702,7 +2039,11 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
     """
     cfg = LENGTHS.get(length, LENGTHS["standard"])
     wp = WRITE_PLAN.get(length, WRITE_PLAN["standard"])
-    brand = brand_of(b)  # the short name readers know the business by
+    brand = _display_case(brand_of(b))  # the short name readers know the business by, in display case ("vastrbhushan Rental" -> "Vastrbhushan Rental")
+    city = _display_case(b.city or "")
+    area = _display_case(b.area or "") if b.area and len(b.area) <= 40 and (b.city or "").lower() not in (b.area or "").lower() else ""
+    # where the business is, for the writing prompts: the area and the city ("Wagholi, Pune") for local focus (the street address is only in the contact box)
+    town = ", ".join(x for x in [area, city] if x)
     notes: list[str] = []
     run = {"calls": 0, "ollama_seconds": 0.0}
     steps: list[dict] = []
@@ -1738,6 +2079,43 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
     with _ollama_lock:
         _stats.run = run
         try:
+            # ── 0a. Business relevance and keyword fit (every article, with or without research) ──
+            step("Checking business relevance and keyword fit...")
+            relevance, relevance_note = _business_relevance(b, brand, primary, topic or primary, title_hint or topic or primary, brief)
+            business_fits = relevance == "full"
+            bridge = relevance == "partial"  # related business: honest guide + its real service as an alternative ("Why Choose" on what it really offers)
+            if relevance_note:
+                notes.append(relevance_note)
+            offers = "; ".join(f.split(":", 1)[1].strip() for f in _profile_facts(b, brand) if f.startswith("Service:"))[:300] or (b.primary_category or "")
+            if bridge:
+                not_provider = [
+                    f'- {brand} is a {(b.primary_category or "local business").lower()} ({offers}). It does NOT sell or provide "{primary}" itself, but its real'
+                    f" service is a related option for the same reader (for example renting instead of buying). Write an honest, helpful guide to {primary};"
+                    f" where it genuinely helps the reader, present {brand}'s real service as an alternative: in the introduction, in one main section about"
+                    f" that alternative, in the \"Don't wait\" section and in about 2 of the 5 FAQ answers. Never say or imply that {brand} sells, stocks or"
+                    f" provides {primary}, and never invent its prices, collection, reviews or results."]
+            elif not business_fits:
+                not_provider = [f'- {brand} does NOT itself provide "{primary}" ({relevance_note}). Keep the article an informational guide: mention {brand} at most once,'
+                                " in the introduction as the publisher, never in the body sections or FAQ answers, and never present it as a seller or provider of this topic."]
+            else:
+                not_provider = []
+            fit_kws, unfit_kws = _fitting_keywords(primary, clean_secondary, title_hint or topic or primary, topic or primary)
+            if unfit_kws:
+                notes.append("Secondary keywords not forced into the text because they do not fit this article's reader: " + ", ".join(unfit_kws))
+                kws = list(fit_kws)  # the same distribution as above, over the keywords that fit
+                intro_kws = kws[:2] if len(kws) >= 2 else kws[:1]
+                rem = kws[len(intro_kws):]
+                p2_kws = rem[:2] if len(rem) >= 2 else rem[:1]
+                rem = rem[len(p2_kws):]
+                p3_kws = rem[:2] if len(rem) >= 2 else rem[:1]
+                rem = rem[len(p3_kws):]
+                p4_kws = rem[:2] if len(rem) >= 2 else rem[:1]
+                rem = rem[len(p4_kws):]
+                wh_kws = rem[:1]
+                rem = rem[len(wh_kws):]
+                help_kws = rem[:1]
+                faq_kws = rem[len(help_kws):]
+
             # ── 0. Plan Complete SEO Blueprint ──
             step("Planning 10-part SEO article structure and metadata...")
             plan_prompt = "\n".join([
@@ -1745,40 +2123,55 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 "You are an elite SEO strategist. Plan a comprehensive, high-ranking blog article.",
                 f"Topic: {topic or primary}",
                 f'Primary keyword: "{primary}"',
-                f"Secondary keywords: {json.dumps(clean_secondary) if clean_secondary else 'None'}",
-                f"Business name: {b.name} (Location: {', '.join(x for x in [b.area, b.city] if x) or 'Local'})",
+                f"Secondary keywords: {json.dumps(fit_kws) if fit_kws else 'None'}",
+                f"Business name: {brand} (Location: {town or 'Local'})",
                 "",
-                *blog_brief(primary, brand, ", ".join(x for x in [b.area, b.city] if x)),
-                "- Put the primary keyword into a subheading only where it reads naturally (at least one of the two is ideal).",
-                *_brief_lines(brief, plan=True, brand=brand),
+                *blog_brief(primary, brand, town),
+                *not_provider,
+                "- Put the primary keyword into a subheading only where it reads naturally (at least two of the main sections is ideal).",
+                *_brief_lines(brief, plan=True, brand=brand, bridge=bridge),
                 # Regenerating an existing article: its SEO title (and meta description) are fixed; plan to deliver them
                 *([f'The SEO title is fixed: "{title_hint}". Plan the article to deliver exactly what this title promises; repeat it unchanged as "title".'] if title_hint else []),
                 *([f'The meta description promises the reader: "{meta_hint}". Make sure the article covers it.'] if meta_hint else []),
+                *([f'The Blog title (the H1 readers see) is "{blog_title.strip()}": plan the sections to deliver what it promises.'] if blog_title and blog_title.strip() else []),
                 "",
                 "Answer with ONE JSON object and nothing else:",
                 "{",
                 f'  "title": "Clear, engaging SEO title under {TITLE_MAX} characters containing exact primary keyword",',
                 '  "meta": "One compelling meta description of 120-160 characters (never more than 160) containing exact primary keyword",',
-                '  "subheading_1": "First in-depth H2 subheading exploring key concepts and practical advice",',
-                '  "subheading_2": "Second H2 subheading covering advanced implementation and strategies",',
-                '  "wh_question": "One question a reader of this article would ask, starting with What, Why, How, When, or Where and ending with ?",',
+                '  "sections": [',
+                *[f'    {{"h2": "Main H2 section {i + 1}", "keyword": "the secondary keyword this section is built around, or empty"}}{"," if i < wp["sections"] - 1 else ""}'
+                  for i in range(wp["sections"])],
+                '  ],',
+                '  "wh_question": "One question a reader would ask that the main sections do NOT already cover, starting with What, Why, How, When, or Where and ending with ?",',
                 '  "help_heading": "An action-oriented H2 heading urging timely action",',
                 '  "faqs": [',
                 *[f'    {{"question": "Frequent question {i + 1}", "answer": "Clear, complete 2-3 sentence answer"}}{"," if i < wp["faqs"] - 1 else ""}' for i in range(wp["faqs"])],
                 '  ],',
                 '  "tags": ["5 to 8 relevant SEO tags"]',
                 "}",
-                f"Give exactly {wp['faqs']} FAQs. The two subheadings must cover clearly different aspects of the topic (no overlap).",
+                f"Give exactly {wp['sections']} main sections and exactly {wp['faqs']} FAQs. The main sections take the reader from understanding the topic to choosing"
+                " and deciding, each one a clearly different aspect (no overlap): e.g. what it is and the options, where to find it locally, a related place or"
+                " market, how to choose, price/value, and an alternative" + (f" (the alternative {brand} really offers)" if bridge else "") + "."
+                " Build each H2 around one secondary keyword where one fits (written naturally, in title case); main H2s are statements, not questions"
+                f"{f', and use the location ({town}) in one or two of them' if town else ''}.",
                 "FAQs: People-Also-Ask style questions built from the primary keyword, the secondary keywords, the search intent and related searches"
                 " (cost, how to choose, timelines, what to expect, differences...). No duplicates; never a question written just to fit a keyword."
                 " Each answer starts with the direct answer in 2 to 3 sentences that a search snippet or AI answer can quote; use the primary or a secondary keyword where it reads naturally"
                 + (f" (good candidates: {json.dumps(faq_kws)})" if faq_kws else "")
-                + f'; mention "{brand}" in at most ONE answer, and only where it is genuinely relevant.',
+                + (f'; mention "{brand}" naturally in most of the answers (about 3 of 5), only where it fits the question and never forced.'
+                   + " Verified business details you may use where a question is about them (never contradict or go beyond them): "
+                   + "; ".join(_profile_facts(b, brand)[:12])
+                   if business_fits else
+                   f'; mention "{brand}" in about 2 of the 5 answers, only about its real service ({offers}) as an option the reader can explore'
+                   f' (e.g. a question about renting), never as a seller of {primary}.'
+                   if bridge else f'; do not mention "{brand}" in any answer.')
+                + ' Never template questions such as "How long does it take to see results from ...?" or "Why is professional guidance recommended ...?".',
             ])
-            d_plan = _json(plan_prompt, num_predict=2000)
+            d_plan = _json(plan_prompt, num_predict=2600)
             if not d_plan.get("title"):  # unusable or cut-off JSON: one more try before falling back to defaults
                 log.warning("Article plan was not usable JSON; retrying once")
-                d_plan = _json(plan_prompt + "\n\nAnswer with ONLY the complete JSON object.", num_predict=2400)
+                d_plan = _json(plan_prompt + "\n\nAnswer with ONLY the complete JSON object.", num_predict=3000)
             raw_title = _plain(d_plan.get("title") or "")
             title = raw_title if raw_title and len(raw_title) <= TITLE_MAX else _shorten_title(raw_title, primary) if raw_title else ""
             if not title or len(title) > TITLE_MAX or not _has(title, primary):
@@ -1787,7 +2180,12 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                     title = primary.title()[:TITLE_MAX].rsplit(" ", 1)[0]
             if title_hint and title_hint.strip():
                 title = title_hint.strip()  # regenerating: the editor's SEO title is kept as the H1
-            meta = _plain(d_plan.get("meta") or f"Learn everything about {primary} with expert guidance from {brand}. Discover proven strategies, tips, and actionable insights.")
+            # The SEO title (Google, max 60) is saved as the article's title; a Blog title picked on the Title step becomes the H1 and the
+            # title every section is written for (`title` below). Without one, the H1 is the SEO title, as before.
+            seo_title = title
+            if blog_title and blog_title.strip():
+                title = " ".join(blog_title.split())[:BLOG_TITLE_MAX]
+            meta =_plain(d_plan.get("meta") or f"A practical guide to {primary}: what it is, what to check before you decide and the questions readers ask most, explained in plain words.")
             if len(meta) > META_MAX:
                 meta = fit_meta(meta)
             tags = [_plain(t) for t in d_plan.get("tags") or [] if _plain(t)][:8]
@@ -1795,8 +2193,10 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             shown_kw = re.search(re.escape(primary), title or "", re.I)  # the keyword as the title writes it ("Digital Solution", "ERP")
             kw_shown = shown_kw.group(0) if shown_kw else " ".join(w if w.isupper() else w.capitalize() for w in primary.split())
             kw_article = kw_shown if kw_shown.lower().endswith("s") else f"{'an' if kw_shown[:1].lower() in 'aeiou' else 'a'} {kw_shown}"  # "a Digital Solution", "Digital Solutions"
-            sub_1 = _plain(d_plan.get("subheading_1") or f"Key Things to Know About {kw_article}")
-            sub_2 = _plain(d_plan.get("subheading_2") or f"Advanced Techniques and Practical Implementation")
+            plan_secs = [{"h2": _plain(s.get("h2")).rstrip("?"), "h3": [], "points": [], "kw": _plain(s.get("keyword"))}
+                         for s in (d_plan.get("sections") or []) if isinstance(s, dict) and len(_plain(s.get("h2"))) >= 8][:wp["sections"]]
+            sub_1 = plan_secs[0]["h2"] if plan_secs else f"Key Things to Know About {kw_article}"
+            sub_2 = plan_secs[1]["h2"] if len(plan_secs) > 1 else "How to Choose the Right Option"
             wh_q = _plain(d_plan.get("wh_question") or "").strip()
             if not re.match(r"^(What|Why|How|When|Where)", wh_q, re.I):
                 # a reader's question about the topic; the old "...Benefit Your Business?" fallback made the answer address business owners
@@ -1808,19 +2208,21 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             help_h = _plain(d_plan.get("help_heading") or "Don't Wait to Seek the Right Help")
             if not ACTION_RE.search(help_h):  # the planned heading must read as the "Don't Wait to Take Action" section
                 help_h = f"Don't Wait: {help_h}" if len(help_h) <= 60 else "Don't Wait to Seek the Right Help"
-            plan_faqs = [f for f in (d_plan.get("faqs") or []) if isinstance(f, dict) and _plain(f.get("question"))][:wp["faqs"]] or [
-                {"question": f"What is the best way to get started with {primary}?", "answer": f"The best way to get started with {primary} is by conducting an initial assessment of your current position and defining clear goals. Partnering with a reliable service provider like {brand} ensures a smooth implementation process."},
-                {"question": f"How long does it take to see results from {primary}?", "answer": f"Results from {primary} typically become noticeable within a few weeks to months depending on consistency and strategy. Continuous optimization is key to long-term success."},
-                {"question": f"Why is professional guidance recommended for {primary}?", "answer": f"Professional guidance helps avoid common pitfalls, saves valuable time, and provides access to advanced industry tools and proven methodologies."}
-            ]
+            # Real reader questions only: template questions ("How long does it take to see results from ...?") are dropped, and when the plan gave
+            # none, the completeness check below writes five topic-specific ones (the old fixed agency-style fallback FAQs are gone).
+            plan_faqs = [f for f in (d_plan.get("faqs") or []) if isinstance(f, dict) and _plain(f.get("question"))
+                         and not _GENERIC_FAQ.search(_plain(f.get("question")))][:wp["faqs"]]
             # (Leftover secondary keywords are no longer turned into template FAQs; the plan prompt asks for natural
             # reader questions that use them only where they fit.)
 
             # The confirmed content brief decides the outline, the WH question, the FAQ questions and whether "Don't wait" fits the topic.
-            sections = [{"h2": sub_1, "h3": [], "points": []}, {"h2": sub_2, "h3": [], "points": []}]
+            sections = plan_secs if len(plan_secs) >= 2 else [{"h2": sub_1, "h3": [], "points": []}, {"h2": sub_2, "h3": [], "points": []}]
             include_help = True
             if brief:
-                sections = [s for s in brief["outline"] if isinstance(s, dict) and s.get("h2")][:4] or sections
+                from .seo_workflow.stages import _overlap as _ov
+                given = [s for s in brief["outline"] if isinstance(s, dict) and s.get("h2")][:wp["sections"]]
+                # the brief's sections first, then the plan's other sections up to the length's section count
+                sections = (given + [s for s in plan_secs if all(_ov(s["h2"], g["h2"]) < 0.6 for g in given)])[:wp["sections"]] or sections
                 sub_1 = sections[0]["h2"]
                 sub_2 = sections[1]["h2"] if len(sections) > 1 else sub_2
                 if re.match(r"^(What|Why|How|When|Where)\b", brief.get("wh_question") or "", re.I):
@@ -1838,23 +2240,34 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             # ── 2-6. Introduction, two subheadings, WH answer and action paragraph ──
             # Each part is ONE call for N complete paragraphs (sized by the chosen length), so paragraphs never end
             # mid-sentence and are never glued together from separate "expand" calls that restate each other.
-            loc_str = f" in {b.city}" if b.city else ""
+            loc_str = f" in {town}" if town else ""
             outline = [*[s["h2"] for s in sections], wh_q, *([help_h] if include_help else []), f"Why Choose {brand}?", "Frequently Asked Questions"]
             all_heads = [title, "Introduction", *outline, "Answer", "Conclusion"]
             groups = {"short": 2, "standard": 3, "long": 4}.get(length, 3)  # H3 groups (each with its own list) per main section
             used_openings: set[str] = set()  # paragraph openings so far, so later sections don't start the same way
-            location = ", ".join(x for x in [b.area, b.city] if x)
-            brief_rules = ["", *blog_brief(primary, brand, location), *_brief_lines(brief, brand=brand), ""]  # the content rules (+ the confirmed brief), also in the JSON (structured) section prompts below
+            location = town
+            brief_rules = ["", *blog_brief(primary, brand, location), *_brief_lines(brief, brand=brand, bridge=bridge), *not_provider, ""]  # the content rules (+ the confirmed brief), also in the JSON (structured) section prompts below
             rules = [
                 *brief_rules,
                 "",
                 "FORMAT OF THIS ANSWER:",
                 "- Plain-text paragraphs only, separated by ONE blank line: no headings, labels, markdown, bullets or numbering (lists are added separately).",
-                "- Each paragraph is one chunk of 2 to 4 complete sentences (about 40 to 70 words) and makes a NEW point; start each one with different words.",
+                "- Write in short, readable paragraph chunks of the size asked above (never one long block), each developing ONE"
+                " point with explanation, an example or a tip; each paragraph makes a NEW point and starts with different words. Write naturally, not formally.",
+                "- Bold primary and secondary keywords naturally (bold text only, no background highlights).",
                 "- Stay inside this part's scope; the other outline sections cover their own points.",
             ]
             outline_line = "Article outline: Introduction → " + " → ".join(outline)
-            every_kw = [primary, *clean_secondary]
+            every_kw = [primary, *fit_kws]  # (keywords that do not fit this article's reader are not pushed into the text)
+
+            def covered_note() -> list[str]:
+                """What the article already says (its headings and the opening sentence of each paragraph so far), so a later section adds new
+                information instead of explaining the same thing again."""
+                so_far = "\n".join(parts)
+                heads = [_text(h) for h in re.findall(r"<h[23]\b[^>]*>(.*?)</h[23]>", so_far, re.S | re.I)]
+                firsts = [re.split(r"(?<=[.!?])\s", _text(p))[0] for p in re.findall(r"<p\b[^>]*>(.*?)</p>", so_far, re.S | re.I)]
+                text = " | ".join(x for x in [*heads, *firsts] if x)[:3000]
+                return [f"ALREADY COVERED earlier in this article (do NOT explain these again; add only new information): {text}"] if text else []
 
             def section_hints(sec: dict) -> list[str]:
                 """The brief's H3 sub-headings and key points for one main section (nothing without a brief)."""
@@ -1866,18 +2279,22 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 return out
 
             def kw_rule(kws: list[str]) -> list[str]:
-                return [f'- Use each of these exact phrases once, naturally: {", ".join(chr(34) + k + chr(34) for k in kws)}.'] if kws else []
+                return [f'- Use these phrases where they fit this part naturally (about once each): {", ".join(chr(34) + k + chr(34) for k in kws)}.'
+                        " Skip a phrase rather than force it into a sentence where it changes the meaning or reads badly; a \"near me\" phrase is"
+                        " written naturally (e.g. \"nearby\") or left out."] if kws else []
 
             def live(label: str):
                 return lambda txt: progress(label, "\n\n".join([*parts, _paras(txt)]), title=title, meta=meta)
 
             # 2. Introduction
-            n, w = wp["intro"]
+            # the introduction: exactly 3 SHORT, natural paragraphs (3-4 sentences, ~60 words each), not long formal blocks
+            n, w = 3, INTRO_CHUNK_WORDS
             step(f"Writing Introduction ({n} paragraphs)...")
             intro_prompt = "\n".join([
                 f'You are an expert content writer for {brand}{loc_str}. Write the INTRODUCTION of the blog article "{title}".',
                 outline_line,
-                f"Write exactly {n} paragraphs of about {w} words each.",
+                f"Write exactly {n} short paragraphs of about {w} words (3 to 4 sentences) each, separated by ONE blank line.",
+                "- Write naturally, like a friendly expert talking to the reader: plain words, no formal or stiff phrasing, no filler openings.",
                 f'- The very first sentence must contain the exact phrase "{primary}".',
                 *kw_rule(intro_kws),
                 f"- Hook the reader, explain why {primary} matters to them{loc_str}, and preview what the article covers. Do not go into the details of the later sections.",
@@ -1887,16 +2304,21 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 f'You are an expert content writer for {brand}{loc_str}. Write the INTRODUCTION of the blog article "{title}".',
                 outline_line,
                 *brief_rules,
-                f'- "paragraphs": 3 chunks of 2 to 4 sentences each (about 40 to 70 words; together at least 500 characters). The very first sentence must contain the exact phrase "{primary}".',
-                f"  Start with an engaging, relevant opening; explain the topic and why it matters to the reader{loc_str}, and what they will learn. Do not go into the details of later sections.",
-                f'  Mention "{brand}" naturally in one of the chunks' + (f", and {location} only where it is relevant." if location else "."),
-                '- "learn": 3 to 5 short bullet points (6 to 12 words each) naming what the reader will learn.',
+                f'- "paragraphs": exactly {n} SHORT paragraphs, each 3 to 4 sentences (about {w} words). The very first sentence must contain the exact phrase "{primary}".',
+                "  Write naturally, like a friendly expert talking to the reader: plain words, no formal or stiff phrasing, no filler openings.",
+                f"  Start with an engaging, relevant opening; explain the topic and why it matters to the reader{loc_str}, and what the article covers, in natural prose. Do not go into the details of later sections.",
+                (f'  Mention "{brand}" naturally in one of the chunks' if business_fits else
+                 f'  In the last chunk, mention "{brand}" once as a related option it really offers ({offers}), e.g. renting for an occasion instead of buying;'
+                 f' never as a seller or provider of {primary}' if bridge else
+                 f'  Mention "{brand}" at most once, only as the publisher of this guide (never as a seller or provider of {primary})')
+                + (f", and {location} only where it is relevant." if location else "."),
+                "  Natural introductory paragraphs only: no list, no \"in this guide you will learn\" summary.",
                 *kw_rule(intro_kws),
                 *STRUCTURE_RULES,
-                'Answer with JSON only: {"paragraphs": ["...", "..."], "learn": ["...", "..."]}',
-            ]), 900)
-            intro_html = "\n".join(x for x in [*[_p(x) for x in (intro_json.get("paragraphs") if isinstance(intro_json.get("paragraphs"), list) else [])[:4]],
-                                              (f"<p><strong>What you will learn in this guide</strong></p>\n{_list_html(intro_json.get('learn'))}" if _list_html(intro_json.get("learn")) else "")] if x)
+                'Answer with JSON only: {"paragraphs": ["...", "..."]}',
+            ]), n * 260 + 400)
+            # (no "What you will learn" bullet list any more: the introduction is natural paragraphs only)
+            intro_html = "\n".join(x for x in [_p(x) for x in (intro_json.get("paragraphs") if isinstance(intro_json.get("paragraphs"), list) else [])[:3]] if x)
             if intro_html.count("<p>") >= 2 and primary.lower() in _text(intro_html).lower():
                 parts.append(intro_html)
                 intro_txt = "done"
@@ -1909,103 +2331,69 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 parts.append(_paras(intro_txt))
             progress("Introduction complete.", "\n\n".join(parts), title=title, meta=meta)
 
-            # 3. Subheading 1
-            n, w = wp["sub1"]
-            step(f"Writing Subheading 1: {sub_1} ({n} paragraphs)...")
-            parts.append(f"<h2>{html.escape(sub_1, quote=False)}</h2>")
-            progress(f"Writing: {sub_1}", "\n\n".join(parts), title=title, meta=meta)
-            sub1_prompt = "\n".join([
-                f'You are an expert content writer for {brand}{loc_str}. Write the section "{sub_1}" of the blog article "{title}" (primary keyword: "{primary}").',
-                outline_line,
-                f"Write exactly {n} paragraphs of about {w} words each, covering the core concepts and practical advice of this section,"
-                " moving from foundations to concrete, actionable guidance and common challenges.",
-                *kw_rule(p2_kws + p3_kws),
-                *rules,
-            ])
-            sub1_html = _write_structured("\n".join([
-                f'You are an expert content writer for {brand}{loc_str}. Write the section "{sub_1}" of the blog article "{title}" (primary keyword: "{primary}").',
-                outline_line,
-                *brief_rules,
-                *section_hints(sections[0]),
-                "Move from foundations to concrete, actionable guidance, practical examples and common challenges.",
-                f'- "lead": one chunk of 2 to 3 sentences that opens the section with a direct answer or definition.',
-                f'- "groups": exactly {groups} groups. Each has "heading" (a short, specific H3 sub-heading of 3 to 8 words, not a question), "text" (one chunk of 2 to 4 sentences, about 40 to 70 words, with a practical explanation or example),'
-                ' "points" (3 or 4 bullet points of 8 to 18 words, each a concrete fact or tip) and "steps" (true only when the points are an ordered process, otherwise false).',
-                '- "takeaways": 3 short bullet points (6 to 14 words) that sum up the section.',
-                *kw_rule(p2_kws + p3_kws),
-                f'- Use these keywords where they read naturally (never forced): {", ".join(chr(34) + k + chr(34) for k in every_kw)}.',
-                *STRUCTURE_RULES,
-                'Answer with JSON only: {"lead": "...", "groups": [{"heading": "...", "text": "...", "points": ["..."], "steps": false}], "takeaways": ["..."]}',
-            ]), groups, used=used_openings)
-            sub1_txt = "" if sub1_html else _write_paragraphs(sub1_prompt, n, w, all_heads, used=used_openings, on_chunk=live(f"Writing {sub_1}..."))
-            if sub1_html or sub1_txt:
-                parts.append(sub1_html or _paras(sub1_txt))
-            progress("Subheading 1 complete.", "\n\n".join(parts), title=title, meta=meta)
+            # Main sections (the approved format): an H2, full paragraphs of at least 500 characters each, then ONE H3 sub-section with a short
+            # list (types, checks, steps, options) where a list really helps the reader. The brief's sub-headings and points become what they cover.
+            def section_text(h2: str, sec: dict | None, n_p: int, w_p: int, task: str, kws: list[str]) -> str:
+                prompt = "\n".join([
+                    f'You are an expert content writer for {brand}{loc_str}. Write the section "{h2}" of the blog article "{title}" (primary keyword: "{primary}").',
+                    outline_line,
+                    f"Write exactly {n_p} short paragraphs of about {w_p} words (3 to 4 sentences) each. {task}",
+                    *([f"- Cover these points across the paragraphs: " + "; ".join([*(sec.get("h3") or [])[:4], *(sec.get("points") or [])[:6]])]
+                      if sec and (sec.get("h3") or sec.get("points")) else []),
+                    *covered_note(),
+                    *kw_rule(kws),
+                    f'- Use these keywords where they read naturally (never forced): {", ".join(chr(34) + k + chr(34) for k in every_kw)}.',
+                    *rules,
+                ])
+                return _write_paragraphs(prompt, n_p, w_p, all_heads, used=used_openings, on_chunk=live(f"Writing {h2}..."))
 
-            # 4. Subheading 2
-            n, w = wp["sub2"]
-            step(f"Writing Subheading 2: {sub_2} ({n} paragraphs)...")
-            parts.append(f"<h2>{html.escape(sub_2, quote=False)}</h2>")
-            progress(f"Writing: {sub_2}", "\n\n".join(parts), title=title, meta=meta)
-            sub2_prompt = "\n".join([
-                f'You are an expert content writer for {brand}{loc_str}. Write the section "{sub_2}" of the blog article "{title}" (primary keyword: "{primary}").',
-                outline_line,
-                f'The previous section "{sub_1}" already covered the basics; this section goes further: implementation, advanced options and long-term results.',
-                f"Write exactly {n} paragraphs of about {w} words each.",
-                *kw_rule(p4_kws),
-                *rules,
-            ])
-            sub2_html = _write_structured("\n".join([
-                f'You are an expert content writer for {brand}{loc_str}. Write the section "{sub_2}" of the blog article "{title}" (primary keyword: "{primary}").',
-                outline_line,
-                *brief_rules,
-                *(section_hints(sections[1]) if len(sections) > 1 else []),
-                f'The previous section "{sub_1}" already covered the basics; this section goes further: implementation, examples, tips, relevant entities and long-term results.',
-                f'- "lead": one chunk of 2 to 3 sentences that opens the section with a direct answer.',
-                f'- "groups": exactly {groups} groups. Each has "heading" (a short, specific H3 sub-heading of 3 to 8 words, not a question), "text" (one chunk of 2 to 4 sentences, about 40 to 70 words, with a practical explanation or example),'
-                ' "points" (3 or 4 bullet points of 8 to 18 words) and "steps" (true when the points are an ordered process such as a how-to, otherwise false); make at least one group a numbered step-by-step.',
-                '- "takeaways": 3 short bullet points (6 to 14 words) that sum up the section.',
-                *kw_rule(p4_kws),
-                f'- Use these keywords where they read naturally (never forced): {", ".join(chr(34) + k + chr(34) for k in every_kw)}.',
-                *STRUCTURE_RULES,
-                'Answer with JSON only: {"lead": "...", "groups": [{"heading": "...", "text": "...", "points": ["..."], "steps": false}], "takeaways": ["..."]}',
-            ]), groups, used=used_openings)
-            sub2_txt = "" if sub2_html else _write_paragraphs(sub2_prompt, n, w, all_heads, used=used_openings, on_chunk=live(f"Writing {sub_2}..."))
-            if sub2_html or sub2_txt:
-                parts.append(sub2_html or _paras(sub2_txt))
-            progress("Subheading 2 complete.", "\n\n".join(parts), title=title, meta=meta)
-
-            # 4b. Further main sections from the confirmed brief (its 3rd and 4th H2), in the same scannable format
-            for extra in sections[2:]:
-                h2x = extra["h2"]
-                step(f"Writing section: {h2x}...")
+            # 3-4. Every main section in turn: its paragraphs, then its optional H3 + list sub-section
+            pool = [k for k in fit_kws if k not in intro_kws]  # secondary keywords for sections that did not name their own
+            h3_used: list[str] = []
+            for si, sec in enumerate(sections):
+                h2x = sec["h2"]
+                n, w = wp["sub1" if si == 0 else "sub2" if si == 1 else "extra"]
+                # same section length (~500 words), written as SMALL chunks: ~70 words (3-4 sentences) each, so 6-7 chunks per section
+                n, w = max(n, round(n * w / SECTION_CHUNK_WORDS)), SECTION_CHUNK_WORDS
+                step(f"Writing section {si + 1} of {len(sections)}: {h2x} ({n} paragraphs)...")
                 parts.append(f"<h2>{html.escape(h2x, quote=False)}</h2>")
                 progress(f"Writing: {h2x}", "\n\n".join(parts), title=title, meta=meta)
-                extra_html = _write_structured("\n".join([
-                    f'You are an expert content writer for {brand}{loc_str}. Write the section "{h2x}" of the blog article "{title}" (primary keyword: "{primary}").',
-                    outline_line,
-                    *brief_rules,
-                    *section_hints(extra),
-                    "The earlier sections already covered their own points; do not repeat them.",
-                    f'- "lead": one chunk of 2 to 3 sentences that opens the section with a direct answer.',
-                    f'- "groups": exactly {groups} groups. Each has "heading" (a short, specific H3 sub-heading of 3 to 8 words, not a question), "text" (one chunk of 2 to 4 sentences, about 40 to 70 words, with a practical explanation or example),'
-                    ' "points" (3 or 4 bullet points of 8 to 18 words) and "steps" (true when the points are an ordered process, otherwise false).',
-                    '- "takeaways": 3 short bullet points (6 to 14 words) that sum up the section.',
-                    f'- Use these keywords where they read naturally (never forced): {", ".join(chr(34) + k + chr(34) for k in every_kw)}.',
-                    *STRUCTURE_RULES,
-                    'Answer with JSON only: {"lead": "...", "groups": [{"heading": "...", "text": "...", "points": ["..."], "steps": false}], "takeaways": ["..."]}',
-                ]), groups, used=used_openings)
-                if extra_html:
-                    parts.append(extra_html)
+                own = [k for k in fit_kws if sec.get("kw") and k.lower() == sec["kw"].lower()]
+                kws_x = own or pool[si:si + 1]
+                # about 500 words per section, written as SEPARATE natural paragraph chunks (never one long block of text)
+                chunk_rule = (f" Split the section into {n} separate SHORT paragraph chunks of about {w} words (3 to 4 sentences) each, with ONE blank line between them;"
+                              " never one long block of text."
+                              f' Each chunk naturally uses the primary keyword "{primary}" or one of the secondary keywords given below'
+                              " (spread them across the chunks, about once each; never forced).")
+                if si == 0:
+                    task = ("Chunk 1: continue elaborating on the topic, providing useful insights and background information. "
+                            "Next chunks: expand on the subtopic, adding examples and practical tips (one new point per chunk)." + chunk_rule)
+                else:
+                    task = ("Introduce the next angle or perspective of the topic; each chunk covers one new point of this angle with practical guidance or an example. "
+                            "The earlier sections already covered their own points; cover only this section's angle." + chunk_rule)
+                if bridge and re.search(r"\brent|\balternative|instead of", h2x, re.I):
+                    task += f" This is the section where {brand}'s real service ({offers}) may be mentioned once, honestly, as an option to explore."
+                x_txt = section_text(h2x, sec, n, w, task, kws_x)
+                if x_txt:
+                    # a section that still came back as one long block is cut into natural chunks of whole sentences (~w words each)
+                    parts.append(chunk_paragraphs(_paras(x_txt), max_words=w)[0])
+                    if sec.get("h3") or sec.get("points") or length in ("standard", "long"):
+                        sub = _section_list(f'Blog article "{title}" (primary keyword "{primary}"){loc_str}. Do not mention any business name in the list.',
+                                            h2x, x_txt, [*h3_used, *[s["h2"] for s in sections]])
+                        if sub:
+                            parts.append(sub)
+                            h3_used.append(_text(re.search(r"<h3>(.*?)</h3>", sub).group(1)))
                 progress(f"{h2x} complete.", "\n\n".join(parts), title=title, meta=meta)
 
-            # 5. WH Question (answer up to 750 characters, ending on a full sentence)
+            # 5. WH Question (answer up to 750 characters, ending on a full sentence): on a point the main sections have NOT explained
+            wh_q = _fresh_wh_question(wh_q, "\n".join(parts), primary, title)
             step(f"Writing WH Question: {wh_q}...")
             parts.append(f"<h2>{html.escape(wh_q, quote=False)}</h2>")
             progress(f"Writing: {wh_q}", "\n\n".join(parts), title=title, meta=meta)
             wh_prompt = "\n".join([
                 f'Answer the question "{wh_q}" for readers of an article about "{primary}".',
                 "Write ONE direct paragraph of 3 to 4 sentences (at most 700 characters). The first sentence IS the answer, so a featured snippet or AI answer can quote it.",
+                *covered_note(),
                 *kw_rule(wh_kws),
                 *rules,
             ])
@@ -2024,8 +2412,13 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 parts.append(f"<h2>{html.escape(help_h, quote=False)}</h2>")
                 progress(f"Writing: {help_h}", "\n\n".join(parts), title=title, meta=meta)
                 help_prompt = "\n".join([
-                    f'Write ONE empathetic, informative paragraph of 3 to 4 sentences for the section "{help_h}" of an article about "{primary}".',
-                    "Explain why timely action matters and connect it to the reader's real-world problem. No fear-based selling and no exaggerated claims.",
+                    f'Write ONE empathetic, informative paragraph of 4 to 6 sentences (at least {PARA_MIN_CHARS} characters) for the section "{help_h}" of an article about "{topic or primary}".'
+                    " Encourage the reader to take timely action, with empathetic language.",
+                    f"Be specific to THIS topic: the concrete problem a reader of an article about {primary} faces if they put it off, and the first sensible thing to do."
+                    " Every sentence says something different; no general 'take action today' lines, no fear-based selling and no exaggerated claims.",
+                    *([f"- End by inviting the reader to explore {brand}'s real service ({offers}) as an option and to enquire about availability; never as a seller of {primary}."]
+                      if bridge else []),
+                    *covered_note(),
                     *kw_rule(help_kws),
                     *rules,
                 ])
@@ -2033,7 +2426,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
                 if help_txt:
                     parts.append(_paras(help_txt))
                     steps_json = _json("\n".join([
-                        f'For the section "{help_h}" of an article about "{primary}", give 3 or 4 short next steps a reader can take now (8 to 16 words each), as an ordered list.',
+                        f'For the section "{help_h}" of an article about "{topic or primary}", give 3 or 4 short next steps a reader can take now (8 to 16 words each), as an ordered list.',
+                        "Each step is concrete and specific to this topic, different from the others, and not a repeat of the paragraph: " + _text(_paras(help_txt))[:600],
                         *STRUCTURE_RULES, 'Answer with JSON only: {"steps": ["...", "..."]}',
                     ]), 350)
                     next_steps = _list_html(steps_json.get("steps"), True)
@@ -2044,39 +2438,52 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             # ── 7. Why Choose [Business Name]? (H2, 3-5 reasons) ──
             # When the brief found the business is NOT related to the topic (e.g. a marketing agency writing about manufacturing ERP), this section
             # becomes neutral evaluation criteria with no business claims, so the article never presents the business as a provider it is not.
-            business_fits = not (brief and brief.get("business_relevant") is False)
+            # (business_fits was decided at the start by _business_relevance: the brief, a word-overlap veto and the AI's full/partial/none check)
             # the keyword as the title writes it ("Manufacturing ERP", not "Manufacturing Erp")
             shown = re.search(re.escape(primary), title or "", re.I)
-            why_title = f"Why Choose {brand}?" if business_fits else f"What to Look For in a {shown.group(0) if shown else primary.title()} Partner"
+            # "Why Choose Vastrabhushan for Designer Dress Rentals in Pune?": the business, what the article is about and (for a local business) the city
+            kw_head = shown.group(0) if shown else kw_shown
+            if business_fits:
+                why_title = f"Why Choose {brand} for {kw_head}" + (f" in {city}" if city and city.lower() not in kw_head.lower() else "") + "?"
+                if len(why_title) > 90:
+                    why_title = f"Why Choose {brand} for {kw_head}?"
+            elif bridge:
+                why_title = f"Why Choose {brand}?"  # about what the business really offers, not the article's topic
+            else:
+                why_title = f"Why Choose {brand}?" if brand else f"What to Look For When Choosing {kw_head}"  # template 7: Why Choose [company_clientname]?
             step(f"Writing: {why_title}...")
             h2_why = f"<h2>{html.escape(why_title, quote=False)}</h2>"
             parts.append(h2_why)
 
-            # Five reasons (the content brief): only what the business profile supports; where it says nothing, a reason is written as what a
-            # reader should look for (an evaluation criterion), never as an invented company claim.
-            why_json = _json("\n".join([
-                *_context(b), "",
-                f'Write the section "{why_title}" of a blog article about "{primary}".',
-                '- "intro": one sentence that introduces the five reasons, without exaggeration.',
-                '- "reasons": exactly 5 objects {"title": "2 to 5 words", "text": "one or two sentences"}. Cover, where they fit: experience and expertise,'
-                " customised solutions, technology and innovation, quality and reliability, customer support.",
-                *([f"- A reason may state something about {brand} ONLY if the business profile above supports it (its services, location, category, description)."
-                   " Otherwise write it as what a reader should look for in a provider (for example 'Look for a team that…'). Never invent years, awards, numbers, clients or results."]
-                  if business_fits else
-                  [f"- {brand} does NOT offer {primary}: do not mention {brand} at all. Write all five as neutral criteria a reader should look for in a {primary} provider."]),
-                *STRUCTURE_RULES,
-                'Answer with JSON only: {"intro": "...", "reasons": [{"title": "...", "text": "..."}]}',
-            ]), 900)
-            reasons = [r for r in (why_json.get("reasons") or []) if isinstance(r, dict) and _plain(r.get("title")) and _plain(r.get("text"))][:5]
-            if len(reasons) < 5:  # the model failed: evaluation criteria only, so nothing unsupported is claimed
-                reasons = [{"title": t, "text": x} for t, x in [
-                    ("Experience and expertise", f"Look for a team that understands {primary} and can explain its approach in plain language."),
-                    ("Customised solutions", "Choose a provider that shapes its work around your needs instead of a fixed, one-size-fits-all package."),
-                    ("Technology and tools", "Ask which tools and methods they use, and how those help you see progress."),
-                    ("Quality and reliability", "Check how they review their work and keep you informed about what has been done."),
-                    ("Customer support", f"Make sure you can reach them easily{loc_str} when you have questions."),
-                ]]
-            intro_line = _plain(why_json.get("intro")) or f"Here is what to consider when choosing a partner for {primary}:"
+            # Exactly five reasons, each one tied to a VERIFIED profile detail (checked in Python). No generic claims such as "Proven Methodology".
+            if business_fits or bridge:
+                reasons, intro_line, why_note = _why_reasons(
+                    b, brand, primary, topic or primary, loc_str,
+                    angle=(f'{brand} does NOT sell or provide "{primary}". Write every reason about its real service ({offers}) as an option for this'
+                           f" article's reader (e.g. renting for an occasion instead of buying), and never say it offers {primary}.") if bridge else "")
+                if why_note:
+                    notes.append(why_note)
+            else:
+                why_json = _json("\n".join([
+                    f'Write the section "{why_title}" of a blog article titled "{title}" (primary keyword "{primary}").',
+                    '- "intro": one sentence that introduces the five criteria, without exaggeration.',
+                    '- "reasons": exactly 5 objects {"title": "2 to 5 words", "text": "one or two sentences"}: practical things a reader should check'
+                    f" when choosing {primary} (a product: quality, fit, price, returns...; a service: experience, scope, support...), each one different.",
+                    "- Do not mention any business or brand name; no invented numbers.",
+                    *(["- Do NOT repeat these points, already made in the article: " + _text("\n".join(parts))[-1500:]] if parts else []),
+                    *STRUCTURE_RULES,
+                    'Answer with JSON only: {"intro": "...", "reasons": [{"title": "...", "text": "..."}]}',
+                ]), 900)
+                reasons = [r for r in (why_json.get("reasons") or []) if isinstance(r, dict) and _plain(r.get("title")) and _plain(r.get("text"))][:5]
+                if len(reasons) < 5:
+                    reasons = [{"title": t, "text": x} for t, x in [
+                        ("Quality you can check", f"Look closely at the quality of the {primary} before you decide, not only the description."),
+                        ("Fit for your needs", "Choose the option that suits your situation and how you will use it, not the most popular one."),
+                        ("Clear price and terms", "Compare what is included in the price and the terms for changes, returns or cancellations."),
+                        ("Honest reviews", "Read recent reviews from people with similar needs, and look for patterns rather than single comments."),
+                        ("Easy to reach", "Make sure the seller or provider is easy to reach when you have a question."),
+                    ]]
+                intro_line = _plain(why_json.get("intro")) or f"Here is what to check when choosing {primary}:"
             why_html = f"<p>{html.escape(intro_line, quote=False)}</p>\n<ol>\n" + "\n".join(
                 f"<li><strong>{html.escape(_plain(r['title']), quote=False)}:</strong> {html.escape(_plain(r['text']), quote=False)}</li>" for r in reasons) + "\n</ol>"
             parts.append(why_html)
@@ -2089,9 +2496,12 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             progress("Writing FAQs...", "\n\n".join(parts), title=title, meta=meta)
 
             faq_blocks = []
+            from .seo_workflow.stages import _overlap
             for item in plan_faqs:
                 q = item.get("question") if isinstance(item, dict) else str(item)
                 a = item.get("answer") if isinstance(item, dict) else ""
+                if q and _overlap(_plain(q), wh_q) >= 0.75:
+                    continue  # the WH section already answers it; the completeness check adds a different question instead
                 if q:
                     if not a or len(a) < 30:
                         ans_prompt = f'Provide a clear, authoritative 2-3 sentence answer to the question: "{q}" for readers researching {primary}.'
@@ -2106,25 +2516,33 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
 
             # ── 9. CTA - Call To Action with Verified Business Details ──
             step(f"Writing CTA for {brand}...")
-            h2_cta = f"<h2>Ready to Get Started? Contact {html.escape(brand, quote=False)} Today</h2>"
+            h2_cta = f"<h2>Contact {html.escape(brand, quote=False)}{html.escape(loc_str, quote=False)}</h2>"  # plain, not "Ready to Get Started? ... Today"
             contact_items = []
             if b.phone:
-                contact_items.append(f"<li><strong>📞 Call now:</strong> <a href=\"tel:{html.escape(b.phone, quote=True)}\">{html.escape(b.phone, quote=False)}</a></li>")
-            if b.website:
-                contact_items.append(f"<li><strong>🌐 Website:</strong> <a href=\"{html.escape(b.website, quote=True)}\" target=\"_blank\" rel=\"noopener\">{html.escape(b.website, quote=False)}</a></li>")
+                contact_items.append(f"<li><strong>📞 {'Call now' if business_fits or bridge else 'Phone'}:</strong> <a href=\"tel:{html.escape(b.phone, quote=True)}\">{html.escape(b.phone, quote=False)}</a></li>")
+            else:
+                contact_items.append('<li><strong>📞 Call Now:</strong> +91-XXXXXXXXXX <em>(Add phone number)</em></li>')
             if getattr(b, "booking_url", None):
                 contact_items.append(f"<li><strong>📅 Book an appointment:</strong> <a href=\"{html.escape(b.booking_url, quote=True)}\" target=\"_blank\" rel=\"noopener\">Book online</a></li>")
-            loc_disp = ", ".join(x for x in [b.area, b.city] if x)
+            else:
+                contact_items.append('<li><strong>📅 Book Appointment:</strong> <em>[Appointment Link]</em></li>')
+            if b.website:
+                contact_items.append(f"<li><strong>🌐 Website:</strong> <a href=\"{html.escape(b.website, quote=True)}\" target=\"_blank\" rel=\"noopener\">{html.escape(b.website, quote=False)}</a></li>")
+            loc_disp = _place(b)  # address, area and city once each, in display case
             if loc_disp:
                 contact_items.append(f"<li><strong>📍 Location:</strong> {html.escape(loc_disp, quote=False)}</li>")
+            elif town:
+                contact_items.append(f"<li><strong>📍 Location:</strong> {html.escape(town, quote=False)}</li>")
             # real contact details from the profile only (a missing one is left out: placeholders like +91-XXXXXXXXXX must never reach a live blog)
             cta_html = "\n".join([
                 h2_cta,
                 '<div class="blog-cta-box" style="padding: 20px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; margin-top: 20px;">',
-                (f'  <p>If you have questions about {html.escape(primary, quote=False)} or want advice for your situation, <strong>{html.escape(brand, quote=False)}</strong> is happy to help. Get in touch and talk it through with the team.</p>'
-                 if business_fits else  # honest: what the business really does, not the article's topic
-                 f'  <p><strong>{html.escape(brand, quote=False)}</strong> is a {html.escape((b.primary_category or "business").lower(), quote=False)}{html.escape(loc_str, quote=False)}.'
-                 f' If you are looking for a {html.escape((b.primary_category or "partner").lower(), quote=False)}, get in touch with the team.</p>'),
+                (f'  <p>{html.escape(_cta_text(b, brand, primary, topic or primary, title, avoid=" ".join(r["text"] for r in reasons)), quote=False)}</p>'
+                 if business_fits or bridge else  # honest: _cta_text invites to what the business really does (from its profile), never the topic
+                 # the business is only partly related (e.g. a rental shop and an article about buying clothes): an honest note about who
+                 # published the guide, not a sales push for something the business does not sell
+                 f'  <p>This guide was published by <strong>{html.escape(brand, quote=False)}</strong>, a {html.escape((b.primary_category or "local business").lower(), quote=False)}'
+                 f'{html.escape(loc_str, quote=False)}. We do not sell {html.escape(primary, quote=False)} ourselves, but you are welcome to get in touch if you have a question.</p>'),
                 f'  <ul>\n    {"".join(contact_items)}\n  </ul>' if contact_items else '',
                 '</div>'
             ])
@@ -2132,17 +2550,22 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             progress("CTA complete.", "\n\n".join(parts), title=title, meta=meta)
 
             draft = {
-                "title": title,
+                "title": seo_title,  # the SEO title (the H1 in the body is the Blog title when one was picked)
                 "meta": meta,
                 "tags": tags,
                 "body": "\n\n".join(x for x in parts if x)
             }
 
+            # Repeated sentences across the introduction, main sections, WH answer and "Don't wait" are removed first
+            draft["body"], n_dupes = dedupe_sentences(draft["body"])
+            if n_dupes:
+                log.info("Removed %d repeated sentence(s) from '%s'", n_dupes, primary)
+
             # Completeness check before saving: every required part is there; a missing or empty one is regenerated on its own
             step("Checking every required section is complete...")
             draft["body"], regenerated, still_missing = complete_article(
                 draft["body"], title=title, primary=primary, brand=brand, loc_str=loc_str, rules=rules, all_heads=all_heads,
-                used=used_openings, help_h=help_h, faq_n=wp["faqs"])
+                used=used_openings, help_h=help_h, faq_n=wp["faqs"], facts=_profile_facts(b, brand) if business_fits or bridge else None)
             if regenerated:
                 notes.append("Regenerated on its own because it was missing or empty: " + "; ".join(regenerated) + ". Read it before publishing.")
                 progress("Missing sections completed.", draft["body"], title=title, meta=meta)
@@ -2158,7 +2581,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
             fix_seo_fields(draft, primary)
             correct_content(draft, primary, secondary, topic)
             step("Breaking the article into short chunks...")
-            draft["body"], n_split = chunk_paragraphs(draft["body"])  # chunks of 2 to 4 sentences; matches the editor's "over 75 words is long" check
+            # the template's paragraphs are full chunks of 500+ characters: only a paragraph that runs far past that (about 190+ words) is split
+            draft["body"], n_split = chunk_paragraphs(draft["body"], max_words=175)
             # (No automatic "a keyword in every paragraph" rewrite any more: the content brief says never force a keyword in.
             # The editor still has the "Add a keyword to those paragraphs" button for paragraphs they choose to change.)
             # (No paragraphs are rewritten just to reach a brand-mention count any more; the prompts ask for natural mentions and the
@@ -2183,6 +2607,8 @@ def write(primary: str, secondary: list[str], rising: list[str], b: Business, to
         "words": len(_text(draft["body"]).split()),
         "steps": steps,
         "completeness": completeness,  # what the final check regenerated, and anything still missing
+        # does the business offer the topic: True (Why Choose), "partial" (Why Choose on its real, related service) or False (neutral criteria); checked by the SEO report
+        "business_relevant": True if business_fits else "partial" if bridge else False,
     }
     log.info("Article '%s' written in %ss, %d Ollama calls, %d words", primary, draft["stats"]["total_seconds"], run["calls"], draft["stats"]["words"])
     return draft
@@ -2217,7 +2643,8 @@ def run_article(db: Session, article_id: int) -> None:
         release_connection(db)  # the article and its business are read: no connection is held while the AI writes (each progress step takes one for its save)
         try:
             d = write(a.keyword, a.secondary_keywords or [], a.rising_keywords or [], b, a.topic or "", progress, a.length or "standard",
-                      title_hint=a.title or None, brief=wf.get("brief"))  # a title picked on the Title step is kept
+                      title_hint=a.title or None, brief=wf.get("brief"),  # a title picked on the Title step is kept
+                      blog_title=(a.stats or {}).get("blog_title") or None)  # the Blog title (H1) picked on the Title step
         except Cancelled:
             raise
         except Exception as exc:
@@ -2227,6 +2654,7 @@ def run_article(db: Session, article_id: int) -> None:
         wf_runner._record(wf, "write_article", "done", {"words": len(_text(d["body"]).split()), "used_brief": bool(wf.get("brief")),
                                                          "basis": "Written from the confirmed content brief" if wf.get("brief") else "Planned by the writer (no research brief)"})
         a.title, a.meta_description = d["title"][:255] or a.keyword.title(), d["meta"]
+        a.slug = a.slug or slugify(a.keyword)
         a.suggested_keywords, a.body, a.headings, a.warnings = d["tags"], d["body"], headings_of(d["body"]), d["warnings"]
         a.model, a.generated_at = getattr(get_settings(), "claude_model", "claude-haiku-5-5"), utcnow()
         a.stats = {**(a.stats or {}), **d["stats"], "workflow": wf}  # keep the workflow (research, brief, stage results) with the article

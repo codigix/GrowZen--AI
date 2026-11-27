@@ -5,6 +5,7 @@ import { Card, Button, Badge, Stat, ErrorNote, useAction, useToast, SkList, inpu
 import { api, useApi, usePoll } from './seoApi';
 import Tip from './Tip';
 import { downloadFile } from './DataTable';
+import Select from '../components/Select';
 
 const n0 = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
@@ -176,9 +177,9 @@ export function KeywordTopicPlanner({ b, onPick }) {
                   <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
                     {k.for_blog && <span className="ml-2 text-11 rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
                     {k.used > 0 && <span className="ml-2 text-11 rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.volume != null ? n0(k.volume) : <span className="text-slate-300">—</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>}</span>
-                  <span className="text-right tabular-nums text-slate-700">{k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>}</span>
+                  <span className=" tabular-nums text-slate-700">{k.volume != null ? n0(k.volume) : <span className="text-slate-300">—</span>}</span>
+                  <span className=" tabular-nums text-slate-700">{k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>}</span>
+                  <span className=" tabular-nums text-slate-700">{k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>}</span>
                 </button>
               );
             })}
@@ -234,16 +235,18 @@ export function ResumeCard({ articles, onOpen }) {
   return (
     <Card title="Continue where you stopped" subtitle="Every blog you generated is saved as a draft. Open one to carry on from its next step.">
       <div className="grid gap-2">
-        {[first, ...rest].map((x, i) => { const st = stageOf(x); return (
-          <div key={x.id} className={`flex flex-wrap items-center gap-3 rounded-lg px-3 py-2.5 ring-1 ring-inset ${i === 0 ? 'ring-indigo-200 bg-indigo-50/40' : 'ring-slate-200'}`}>
-            <FileText size={16} className="text-slate-400 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="text-13 font-semibold text-slate-900 truncate">{x.title || x.topic || x.keyword}</div>
-              <div className="text-12 text-slate-500 truncate">{x.keyword} · next: {st.next}</div>
-            </div>
-            <Badge tone={st.tone}>{st.label}</Badge>
-            <Button size="sm" variant={i === 0 ? 'primary' : 'secondary'} icon={ArrowRight} disabled={x.status === 'generating' || x.status === 'pending'} onClick={() => onOpen(x.id)}>{i === 0 ? 'Continue' : 'Open'}</Button>
-          </div>); })}
+        {[first, ...rest].map((x, i) => {
+          const st = stageOf(x); return (
+            <div key={x.id} className={`flex flex-wrap items-center gap-3 rounded-lg px-3 py-2.5 ring-1 ring-inset ${i === 0 ? 'ring-indigo-200 bg-indigo-50/40' : 'ring-slate-200'}`}>
+              <FileText size={16} className="text-slate-400 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-13 font-semibold text-slate-900 truncate">{x.title || x.topic || x.keyword}</div>
+                <div className="text-12 text-slate-500 truncate">{x.keyword} · next: {st.next}</div>
+              </div>
+              <Badge tone={st.tone}>{st.label}</Badge>
+              <Button size="sm" variant={i === 0 ? 'primary' : 'secondary'} icon={ArrowRight} disabled={x.status === 'generating' || x.status === 'pending'} onClick={() => onOpen(x.id)}>{i === 0 ? 'Continue' : 'Open'}</Button>
+            </div>);
+        })}
       </div>
       {open.length === 0 && <p className="mt-2 text-12 text-slate-500">All finished. Open a published one to promote it.</p>}
     </Card>
@@ -471,27 +474,27 @@ const selCls = 'h-8 rounded-lg border border-slate-200 bg-white px-2 text-12.5 t
 /** Step 2: the linking sites worth posting this blog on, best first; each one can be added to the plan. */
 function SuggestedPlaces({ comp, busy, add }) {
   return (
-      <div className="grid gap-2">
-        {comp.items.map(x => (
-          <div key={x.domain} className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-1.5 text-13">
-            <div className="flex flex-wrap items-center gap-2">
-              <a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:text-indigo-600 inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} /></a>
-              <Badge tone="gray">{x.category.label}</Badge>
-              <Badge tone={x.follow === 'dofollow' ? 'green' : 'gray'}>{x.follow === 'dofollow' ? 'Follow' : 'Nofollow'}</Badge>
-              {x.topic && <Badge tone={TOPIC[x.topic][1]}>{TOPIC[x.topic][0]}</Badge>}
-              {x.da != null && <span className="text-12 text-slate-500">DA {x.da}</span>}
-              <span className="ml-auto"><Button size="sm" variant="primary" icon={Plus} busy={busy === `a${x.domain}`} onClick={() => add(x)}>Add to plan</Button></span>
-            </div>
-            <p className="text-12.5 text-slate-600">Used by {x.competitors.join(', ')} · {x.articles === 1 ? '1 article' : `${x.articles} articles`}</p>
-            {x.example?.url && (
-              <p className="text-12.5 text-slate-500 truncate">Example: <a href={x.example.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{x.example.title || x.example.url}</a>
-                {x.example.competitor_article && <> → <a href={x.example.competitor_article} target="_blank" rel="noreferrer" className="hover:underline">{x.example.competitor}’s article</a></>}</p>
-            )}
-            <p className="text-12 text-slate-500">{x.how}</p>
+    <div className="grid gap-2">
+      {comp.items.map(x => (
+        <div key={x.domain} className="rounded-lg ring-1 ring-inset ring-slate-200 p-3 grid gap-1.5 text-13">
+          <div className="flex flex-wrap items-center gap-2">
+            <a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:text-indigo-600 inline-flex items-center gap-1">{x.domain}<ExternalLink size={11} /></a>
+            <Badge tone="gray">{x.category.label}</Badge>
+            <Badge tone={x.follow === 'dofollow' ? 'green' : 'gray'}>{x.follow === 'dofollow' ? 'Follow' : 'Nofollow'}</Badge>
+            {x.topic && <Badge tone={TOPIC[x.topic][1]}>{TOPIC[x.topic][0]}</Badge>}
+            {x.da != null && <span className="text-12 text-slate-500">DA {x.da}</span>}
+            <span className="ml-auto"><Button size="sm" variant="primary" icon={Plus} busy={busy === `a${x.domain}`} onClick={() => add(x)}>Add to plan</Button></span>
           </div>
-        ))}
-        {comp.total > comp.items.length && <p className="text-12 text-slate-500">Showing the best {comp.items.length} of {comp.total}. <Link to="/backlinks/opportunities" className="text-indigo-600 hover:underline">See all link opportunities</Link></p>}
-      </div>
+          <p className="text-12.5 text-slate-600">Used by {x.competitors.join(', ')} · {x.articles === 1 ? '1 article' : `${x.articles} articles`}</p>
+          {x.example?.url && (
+            <p className="text-12.5 text-slate-500 truncate">Example: <a href={x.example.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{x.example.title || x.example.url}</a>
+              {x.example.competitor_article && <> → <a href={x.example.competitor_article} target="_blank" rel="noreferrer" className="hover:underline">{x.example.competitor}’s article</a></>}</p>
+          )}
+          <p className="text-12 text-slate-500">{x.how}</p>
+        </div>
+      ))}
+      {comp.total > comp.items.length && <p className="text-12 text-slate-500">Showing the best {comp.items.length} of {comp.total}. <Link to="/backlinks/opportunities" className="text-indigo-600 hover:underline">See all link opportunities</Link></p>}
+    </div>
   );
 }
 
@@ -542,7 +545,7 @@ function TopPlatforms({ b, article }) {
       )}
       <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 p-2.5">
         <input value={f.q} onChange={e => setF(s => ({ ...s, q: e.target.value }))} placeholder="Search platforms" aria-label="Search platforms" className={`${selCls} !w-48`} />
-        <select aria-label="Type" className={selCls} value={f.kind} onChange={e => setF(s => ({ ...s, kind: e.target.value }))}><option value="">All types</option>{(d.kinds || []).map(k => <option key={k}>{k}</option>)}</select>
+        <Select aria-label="Type" className={selCls} value={f.kind} onChange={e => setF(s => ({ ...s, kind: e.target.value }))}><option value="">All types</option>{(d.kinds || []).map(k => <option key={k}>{k}</option>)}</Select>
         <label className={chk}><input type="checkbox" checked={f.free} onChange={e => setF(s => ({ ...s, free: e.target.checked }))} />Free to publish</label>
         {picked > 0 && <label className={chk}><input type="checkbox" checked={f.suggested} onChange={e => setF(s => ({ ...s, suggested: e.target.checked }))} />Picked for my business</label>}
         <span className="ml-auto text-12 text-slate-400">{list.length} shown</span>
@@ -688,7 +691,7 @@ export function PromoteCard({ b, article }) {
 /** Where the article is in the flow: five stages, and in a line what to do now. */
 export function FlowSteps({ step }) {
   const steps = [['Keywords & topic', 'Choose the keywords and a topic, or type your own.'], ['Write', 'The article is written from your keywords. Read it and edit what you like.'], ['Review & layout', 'Compare it with your website’s blog, fix what is missing, then save the draft.'],
-    ['Schedule or publish', 'Pick a day and time, or publish now. A task is added for you.'], ['Promote & track', 'Post a short overview on other sites with the blog’s link, then check the links.']];
+  ['Schedule or publish', 'Pick a day and time, or publish now. A task is added for you.'], ['Promote & track', 'Post a short overview on other sites with the blog’s link, then check the links.']];
   return (
     <div className="rounded-xl bg-white ring-1 ring-inset ring-slate-200 p-3.5">
       <ol className="grid grid-cols-5 gap-2">

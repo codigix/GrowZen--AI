@@ -109,7 +109,7 @@ export default function FullPageCard({ b, url }) {
                   <li key={t.key} className="flex items-center gap-2 text-12.5">
                     <span className="w-20 shrink-0 text-slate-600">{t.type}</span>
                     <span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className={`block h-full rounded-full ${TYPE_TINT[t.type] || 'bg-slate-400'}`} style={{ width: `${Math.max(2, (t.kb / maxKb) * 100)}%` }} /></span>
-                    <span className="w-24 shrink-0 text-right tabular-nums text-slate-700">{fmtSize(t.kb)} <span className="text-slate-400">· {t.requests}</span></span>
+                    <span className="w-24 shrink-0  tabular-nums text-slate-700">{fmtSize(t.kb)} <span className="text-slate-400">· {t.requests}</span></span>
                   </li>
                 ))}
               </ul>

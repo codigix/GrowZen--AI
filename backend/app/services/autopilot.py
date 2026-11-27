@@ -451,8 +451,8 @@ def cancel_for_post(db: Session, post_id: int) -> int:
     return n
 
 
-def _publish_one(db: Session, t: AgentTask, d: dict[str, Any]) -> int:
-    """One approved item whose time has come: refuse it when it has no approval or its profile is gone, otherwise send it. 1 when it was sent."""
+def _publish_one(db: Session, t: AgentTask, d: dict[str, Any], now: datetime) -> int:
+    """One approved item whose time has come: refuse it when it has no approval or its profile is gone, otherwise send it. 1 when it was sent (or tried)."""
     b = db.get(Business, t.business_id)
     if not d.get("approved_by") or not d.get("approved_at") or b is None:
         t.status, t.result = "failed", {"error": "No approval is recorded for this item, so it was not sent."}  # never publish on a guess
@@ -469,6 +469,16 @@ def _publish_one(db: Session, t: AgentTask, d: dict[str, Any]) -> int:
         t.status, t.result = "failed", {"error": "The Google profile is no longer linked."}
         return 0
     agent.apply(db, t, f"scheduled:{d.get('approved_by')}")
+    tries = int(d.get("tries") or 0)
+    why = str((t.result or {}).get("error") or "")
+    if t.kind == "gbp_post" and t.status == "failed" and "picture" in why.lower() and tries < 6:
+        # The picture could not be put at an address Google can fetch (a tunnel or the website was briefly down). The post keeps its approved time and is tried again every 10 minutes
+        # for an hour instead of being dropped, so it still goes out as soon as the picture can be reached.
+        t.status = "scheduled"
+        t.detail = {**(t.detail or {}), "tries": tries + 1, "retry_at": (now + timedelta(minutes=10)).isoformat()}
+        p = db.get(Post, d.get("post_id"))
+        if p is not None:
+            p.status = "scheduled"
     return 1
 
 
@@ -486,7 +496,10 @@ def publish_due(db: Session, limit: int = 20) -> int:
             break
         if due is None or due > now:
             continue
-        n += _publish_one(db, t, d)
+        retry_at = parse_when(d.get("retry_at"))
+        if retry_at is not None and retry_at > now:
+            continue  # a picture that could not be hosted is tried again a little later
+        n += _publish_one(db, t, d, now)
         db.commit()
     db.commit()
     return n

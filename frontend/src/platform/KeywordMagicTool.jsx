@@ -4,6 +4,8 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Download, History, Loade
 import { SeoShell, Card, Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { usePager, Pager, downloadCsv } from './DataTable';
 import { api, useApi, fmt } from './seoApi';
+import PlacePicker from './PlacePicker';
+import Select from '../components/Select';
 
 const INTENT = { informational: ['I', '#4338ca', '#e0e7ff', 'Informational'], commercial: ['C', '#b45309', '#fef3c7', 'Commercial'], transactional: ['T', '#047857', '#d1fae5', 'Transactional'], navigational: ['N', '#7e22ce', '#f3e8ff', 'Navigational'], local: ['L', '#0369a1', '#e0f2fe', 'Local'] };
 const QUESTION = /^(what|how|why|when|where|which|who|can|does|do|is|are|should|will)\b/;
@@ -17,7 +19,7 @@ const wordsOf = (k) => k.split(/\s+/).filter(Boolean);
 const readRecent = () => { try { return JSON.parse(window.localStorage.getItem(RECENT_KEY) || '[]').filter(x => typeof x === 'string').slice(0, 8); } catch { return []; } };
 const saveRecent = (k) => { try { window.localStorage.setItem(RECENT_KEY, JSON.stringify([k, ...readRecent().filter(x => x !== k)].slice(0, 8))); } catch { /* the list is a convenience: without storage it is simply not kept */ } };
 
-/** A filter as a pill: grey while it is off, indigo with its choice once it is on. The real <select> sits invisibly over it, so it works with the keyboard and on a phone. */
+/** A filter as a pill: grey while it is off, indigo with its choice once it is on. The real <Select> sits invisibly over it, so it works with the keyboard and on a phone. */
 function Pill({ label, value, onChange, options }) {
   const on = value !== '';
   const cur = options.find(o => o[0] === value);
@@ -26,9 +28,9 @@ function Pill({ label, value, onChange, options }) {
       <span className="pl-3 pointer-events-none">{label}{on ? ':' : ''}</span>
       <span className="pl-1 pr-7 pointer-events-none font-semibold">{on ? (cur?.[2] || cur?.[1]) : ''}</span>
       <ChevronDown size={13} className="absolute right-2.5 pointer-events-none opacity-70" />
-      <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="absolute inset-0 w-full opacity-0 cursor-pointer">
+      <Select aria-label={label} value={value} onChange={e => onChange(e.target.value)} className="absolute inset-0 w-full opacity-0 cursor-pointer">
         <option value="">Any</option>{options.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -134,7 +136,7 @@ function Body({ b }) {
     const r = await api(`/businesses/${b.id}/keyword-workspace/add`, { method: 'POST', body: { ideas: list.slice(0, 500).map(i => ({ keyword: i.keyword, volume: i.volume, detail: `Keyword Magic Tool: ${seed}` })), label: 'Keyword Magic Tool' } });
     toast(r.added ? `${r.added} keyword${r.added === 1 ? '' : 's'} sent to the Keyword Workspace` : 'Already in the Keyword Workspace');
   });
-  const goTo = (k, c = country) => { const q = k.trim(); if (q.length > 1) navigate(`/keyword-management/magic?q=${encodeURIComponent(q)}${c ? `&c=${c}` : ''}${areas.length && c === country ? `&a=${encodeURIComponent(areas.join('|'))}` : ''}`); };
+  const goTo = (k, c = country) => { const q = k.trim(); if (q.length > 1) navigate(`/keyword-management/magic?tab=ideas&q=${encodeURIComponent(q)}${c ? `&c=${c}` : ''}${areas.length && c === country ? `&a=${encodeURIComponent(areas.join('|'))}` : ''}`); };
   const toggle = (k) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const toggleOpen = (w) => setOpen(s => { const n = new Set(s); n.has(w) ? n.delete(w) : n.add(w); return n; });
   const pageAll = pager.rows.length > 0 && pager.rows.every(r => sel.has(r.keyword));
@@ -150,7 +152,9 @@ function Body({ b }) {
             {typed && <button type="button" onClick={() => setTyped('')} aria-label="Clear" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><X size={14} /></button>}</div>
           <Button variant="primary" icon={Wand2} disabled={typed.trim().length < 2} onClick={() => goTo(typed)}>Find keywords</Button>
           <label className="text-12.5 font-medium text-slate-500 flex items-center gap-1.5">Database
-            <select value={data?.country || country || ''} onChange={e => goTo(keyword || typed, e.target.value)} className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Database (country)">{!(data?.country || country) && <option value="">Your country</option>}{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select></label>
+            <Select value={data?.country || country || ''} onChange={e => goTo(keyword || typed, e.target.value)} className="h-10 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-13 text-slate-800" aria-label="Database (country)">{!(data?.country || country) && <option value="">Your country</option>}{(countries.data || []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</Select></label>
+          <PlacePicker b={{ ...b, country: data?.country || country || b.country }} multiple max={5} width={250} value={areas.map(label => ({ label }))}
+            onChange={(next) => { const q = (keyword || typed).trim(); if (q.length > 1) navigate(`/keyword-management/magic?tab=ideas&q=${encodeURIComponent(q)}${(data?.country || country) ? `&c=${data?.country || country}` : ''}${next.length ? `&a=${encodeURIComponent(next.map(x => x.label).join('|'))}` : ''}`); }} />
           <span className="text-12.5 text-slate-500">Currency: <b className="text-slate-700">INR</b></span>
         </div>
         {recent.length > 0 && <div className="mt-2.5 flex flex-wrap items-center gap-1.5"><span className="inline-flex items-center gap-1 text-12 font-medium text-slate-500"><History size={13} />Recent</span>{recent.map(k => <button key={k} type="button" onClick={() => goTo(k)} className="rounded-full bg-slate-100 hover:bg-indigo-50 px-2.5 py-0.5 text-12 text-slate-700 cursor-pointer">{k}</button>)}</div>}
@@ -235,8 +239,8 @@ function Body({ b }) {
                           <td className="px-3 py-2.5">{l ? <span className="inline-flex w-5 h-5 items-center justify-center rounded text-11 font-bold" style={{ color: l[1], backgroundColor: l[2] }} title={l[3]}>{l[0]}</span> : <span className="text-slate-300">—</span>}</td>
                           <td className="px-3 py-2.5 text-right"><div className="tabular-nums font-medium text-slate-900">{r.volume != null ? fmt(r.volume) : '—'}</div>{r.volume > 0 && <div className="mt-1 h-1 w-16 ml-auto rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-indigo-400" style={{ width: `${Math.max(4, (r.volume / topVol) * 100)}%` }} /></div>}</td>
                           <td className="px-3 py-2.5 text-right">{kd === undefined ? <button type="button" onClick={() => askKd(r.keyword)} className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer" title="Read the top 10 on Google for this keyword and work out its difficulty (about 15 seconds)">Check</button> : kd === 'loading' ? <Loader2 size={13} className="animate-spin text-slate-400 ml-auto" /> : kd == null ? <span className="text-slate-300" title="Google's results could not be read">—</span> : <span className="inline-flex items-center gap-1.5 tabular-nums">{kd}<span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: kdColor(kd) }} /></span>}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{r.index == null ? '—' : <span className="inline-flex items-center gap-1.5">{r.index}<span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: idxColor(r.index) }} /></span>}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{INR(r.cpc)}</td>
+                          <td className="px-3 py-2.5  tabular-nums">{r.index == null ? '—' : <span className="inline-flex items-center gap-1.5">{r.index}<span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: idxColor(r.index) }} /></span>}</td>
+                          <td className="px-3 py-2.5  tabular-nums">{INR(r.cpc)}</td>
                         </tr>);
                     })}</tbody>
                   </table>
@@ -255,3 +259,5 @@ function Body({ b }) {
 export function KeywordMagicToolPage() {
   return <SeoShell title="Keyword Magic Tool" subtitle="Every keyword idea for a topic: variations, questions and related searches, narrowed by match, filters and shared words, then sent to your Keyword Workspace">{(b) => <Body key={b.id} b={b} />}</SeoShell>;
 }
+
+export { Body as KeywordMagicBody };

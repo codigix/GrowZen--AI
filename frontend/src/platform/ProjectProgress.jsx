@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, Info, Phone, Navigation, MousePointerClick, 
 import { Card, Badge, ChartTooltip, Legend, SERIES, INK } from './SeoUi';
 import { useApi, fmt } from './seoApi';
 import { usePager, Pager, useSorted, SortTh } from './DataTable';
+import Select from '../components/Select';
 
 const C = { calls: SERIES[0], directions: SERIES[1], website_clicks: SERIES[2] };
 
@@ -84,8 +85,8 @@ function TopKeywords({ rows: all }) {
         <tbody className="divide-y divide-slate-100">{pager.rows.map(k => {
           const move = k.rank && k.prev_rank ? k.prev_rank - k.rank : 0;
           return (<tr key={k.keyword}><td className="py-2 pr-2 text-slate-900">{k.keyword}{!k.tracked && <span className="ml-2 text-11 text-slate-400">not tracked</span>}</td>
-            <td className="py-2 text-right tabular-nums">{k.rank ? <>#{k.rank}{move !== 0 && <span className={`ml-1.5 text-11.5 font-semibold ${move > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{move > 0 ? '▲' : '▼'}{Math.abs(move)}</span>}</> : <span className="text-slate-400">not read yet</span>}</td>
-            <td className="py-2 text-right tabular-nums text-slate-600">{k.volume != null ? fmt(k.volume) : '—'}</td></tr>);
+            <td className="py-2  tabular-nums">{k.rank ? <>#{k.rank}{move !== 0 && <span className={`ml-1.5 text-11.5 font-semibold ${move > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{move > 0 ? '▲' : '▼'}{Math.abs(move)}</span>}</> : <span className="text-slate-400">not read yet</span>}</td>
+            <td className="py-2  tabular-nums text-slate-600">{k.volume != null ? fmt(k.volume) : '—'}</td></tr>);
         })}</tbody>
       </table>
       <Pager p={pager} label="keywords" />
@@ -152,15 +153,15 @@ export default function ProgressSection({ b, view = 'progress' }) {
   const sel = 'h-9 rounded border border-slate-300 bg-white px-2.5 text-13 text-slate-800 cursor-pointer';
   const toggle = (
     <div className="flex flex-wrap items-center gap-2">
-      <select aria-label="Date range" className={sel} value={range} onChange={e => setRange(e.target.value)}>{RANGES.map(([id, t]) => <option key={id} value={id}>{t}</option>)}</select>
+      <Select aria-label="Date range" className={sel} value={range} onChange={e => setRange(e.target.value)}>{RANGES.map(([id, t]) => <option key={id} value={id}>{t}</option>)}</Select>
       {custom && <>
         <input type="date" aria-label="From" className={sel} value={from} max={to || today()} onChange={e => setFrom(e.target.value)} />
         <span className="text-12 text-slate-500">to</span>
         <input type="date" aria-label="To" className={sel} value={to} min={from || undefined} max={today()} onChange={e => setTo(e.target.value)} />
       </>}
-      <select aria-label="Group by" className={sel} value={group} onChange={e => setGroup(e.target.value)}>
+      <Select aria-label="Group by" className={sel} value={group} onChange={e => setGroup(e.target.value)}>
         <option value="auto">Group: automatic</option><option value="week">Group: weekly</option><option value="month">Group: monthly</option>
-      </select>
+      </Select>
       {range !== 'all' && <button type="button" onClick={() => { setRange('all'); setGroup('auto'); }} className="h-9 px-3 rounded text-12.5 font-semibold text-indigo-600 hover:bg-indigo-50 cursor-pointer">Show everything</button>}
     </div>
   );
@@ -183,129 +184,129 @@ export default function ProgressSection({ b, view = 'progress' }) {
     <section id="progress" className="space-y-5 scroll-mt-24" aria-label={only ? 'Overview' : 'Progress'}>
       {view === 'overview' ? (
         <>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Kpi icon={Navigation} label="Directions" m={m.directions} days={days} />
-        <Kpi icon={MousePointerClick} label="Website clicks" m={m.website_clicks} days={days} />
-        <Kpi icon={Star} label="Reviews" m={m.reviews} days={days} />
-        <Kpi icon={Wrench} label="Issues fixed" m={m.fixes} days={days} />
-        <Kpi icon={Link2} label="Backlinks found" m={m.backlinks} days={days} />
-      </div>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <Kpi icon={Navigation} label="Directions" m={m.directions} days={days} />
+            <Kpi icon={MousePointerClick} label="Website clicks" m={m.website_clicks} days={days} />
+            <Kpi icon={Star} label="Reviews" m={m.reviews} days={days} />
+            <Kpi icon={Wrench} label="Issues fixed" m={m.fixes} days={days} />
+            <Kpi icon={Link2} label="Backlinks found" m={m.backlinks} days={days} />
+          </div>
 
-      <div>
-        <h3 className="text-15 font-semibold text-slate-900 mb-2">Where the project stands</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          <Stand icon={ClipboardCheck} label="Growth Plan issues fixed" value={`${c.fixes_done} / ${c.fixes_total}`} bar={fixPct} sub={`${c.fixes_open} still to do · ${fixPct}% done`} to="/growth" />
-          <Stand icon={Search} label="Keywords tracked" value={`${fmt(c.keywords_tracked)}${c.keywords_saved > c.keywords_tracked ? ` / ${fmt(c.keywords_saved)}` : ''}`} sub={`${fmt(c.keywords_suggested)} suggestions found${c.ranking_any ? ` · ${c.ranking_top3} top 3 · ${c.ranking_top10} top 10` : ' · positions not read yet'}`} to="/keyword-management/tracked" />
-          <Stand icon={Link2} label="Backlinks found" value={c.backlinks_tracked ? fmt(c.backlinks) : '—'} sub={c.backlinks_tracked ? `${fmt(c.referring_domains)} referring domains · ${fmt(c.backlinks_verified)} verified` : 'The site is not tracked yet'} to="/backlinks/links" />
-          <Stand icon={Send} label="Link opportunities" value={fmt(c.link_opportunities)} sub={c.link_opportunities ? `${c.link_opportunities_contacted} contacted · ${c.link_opportunities_live} live` : 'None planned yet'} to="/backlinks/opportunities" />
-          <Stand icon={Globe} label="Pages indexed on Google" value={`${c.pages_indexed} / ${c.pages_known}`} bar={c.pages_known ? idxPct : null} sub={c.pages_known ? `${idxPct}% of the pages found` : 'Run the page scan'} to="/page-indexing" />
-          <Stand icon={BookOpen} label="Articles" value={fmt(c.articles)} sub={`${c.articles_live} live on the website`} to="/ai-content-generation/articles" />
-          <Stand icon={Send} label="Google posts" value={fmt(c.posts_published)} sub={c.posts_waiting ? `${c.posts_waiting} waiting or scheduled` : 'None waiting'} to="/google-posts" />
-          <Stand icon={MessageSquare} label="Reviews" value={c.rating ? `${c.rating}★ · ${fmt(c.reviews)}` : fmt(c.reviews)} sub={!c.reviews ? 'No reviews yet' : c.reviews_unreplied ? `${c.reviews_unreplied} without a reply` : 'All answered'} to="/reviews" />
-          <Stand icon={ListChecks} label="Waiting for your approval" value={fmt(c.approvals_waiting)} sub={c.approvals_waiting ? 'Open to approve or reject' : 'Nothing waiting'} to="/automation" />
-        </div>
-      </div>
+          <div>
+            <h3 className="text-15 font-semibold text-slate-900 mb-2">Where the project stands</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+              <Stand icon={ClipboardCheck} label="Growth Plan issues fixed" value={`${c.fixes_done} / ${c.fixes_total}`} bar={fixPct} sub={`${c.fixes_open} still to do · ${fixPct}% done`} to="/growth" />
+              <Stand icon={Search} label="Keywords tracked" value={`${fmt(c.keywords_tracked)}${c.keywords_saved > c.keywords_tracked ? ` / ${fmt(c.keywords_saved)}` : ''}`} sub={`${fmt(c.keywords_suggested)} suggestions found${c.ranking_any ? ` · ${c.ranking_top3} top 3 · ${c.ranking_top10} top 10` : ' · positions not read yet'}`} to="/keyword-management/tracked" />
+              <Stand icon={Link2} label="Backlinks found" value={c.backlinks_tracked ? fmt(c.backlinks) : '—'} sub={c.backlinks_tracked ? `${fmt(c.referring_domains)} referring domains · ${fmt(c.backlinks_verified)} verified` : 'The site is not tracked yet'} to="/backlinks/links" />
+              <Stand icon={Send} label="Link opportunities" value={fmt(c.link_opportunities)} sub={c.link_opportunities ? `${c.link_opportunities_contacted} contacted · ${c.link_opportunities_live} live` : 'None planned yet'} to="/backlinks/opportunities" />
+              <Stand icon={Globe} label="Pages indexed on Google" value={`${c.pages_indexed} / ${c.pages_known}`} bar={c.pages_known ? idxPct : null} sub={c.pages_known ? `${idxPct}% of the pages found` : 'Run the page scan'} to="/page-indexing" />
+              <Stand icon={BookOpen} label="Articles" value={fmt(c.articles)} sub={`${c.articles_live} live on the website`} to="/ai-content-generation/articles" />
+              <Stand icon={Send} label="Google posts" value={fmt(c.posts_published)} sub={c.posts_waiting ? `${c.posts_waiting} waiting or scheduled` : 'None waiting'} to="/google-posts" />
+              <Stand icon={MessageSquare} label="Reviews" value={c.rating ? `${c.rating}★ · ${fmt(c.reviews)}` : fmt(c.reviews)} sub={!c.reviews ? 'No reviews yet' : c.reviews_unreplied ? `${c.reviews_unreplied} without a reply` : 'All answered'} to="/reviews" />
+              <Stand icon={ListChecks} label="Waiting for your approval" value={fmt(c.approvals_waiting)} sub={c.approvals_waiting ? 'Open to approve or reject' : 'Nothing waiting'} to="/automation" />
+            </div>
+          </div>
 
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        <Card title="Actions taken" subtitle={`${m.actions.total} action${m.actions.total === 1 ? '' : 's'} logged ${d.range.key === 'all' ? 'so far' : 'in this range'}${m.actions.compare ? `, ${m.actions.before} in the ${days} days before` : ''}`}>
-          {d.timeline.length === 0 ? <p className="text-13 text-slate-500 py-2">No actions logged yet.</p> : (
-            <ul className="divide-y divide-slate-100">
-              {d.timeline.map((a, i) => (
-                <li key={i} className="py-2.5 flex items-start gap-3">
-                  <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{a.what}</div><div className="text-11.5 text-slate-500">{a.who} · {ago(a.at)}</div></div>
-                  {a.pushed && <Badge tone="green">Sent to Google</Badge>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-        <Card title="Recently approved and published" subtitle="What the assistant prepared and you approved">
-          {d.recent_tasks.length === 0 ? <p className="text-13 text-slate-500 py-2">Nothing approved yet.</p> : (
-            <ul className="divide-y divide-slate-100">
-              {d.recent_tasks.map((t, i) => (
-                <li key={i} className="py-2.5 flex items-center gap-3 text-13">
-                  <Clock size={15} className="text-indigo-500 shrink-0" /><span className="flex-1 min-w-0 truncate text-slate-800">{t.title}</span>
-                  <Badge tone={t.status === 'applied' ? 'green' : 'blue'}>{t.status === 'applied' ? 'Done' : t.status === 'scheduled' ? 'Scheduled' : 'Approved'}</Badge><span className="text-11.5 text-slate-400 shrink-0">{ago(t.at)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+            <Card title="Actions taken" subtitle={`${m.actions.total} action${m.actions.total === 1 ? '' : 's'} logged ${d.range.key === 'all' ? 'so far' : 'in this range'}${m.actions.compare ? `, ${m.actions.before} in the ${days} days before` : ''}`}>
+              {d.timeline.length === 0 ? <p className="text-13 text-slate-500 py-2">No actions logged yet.</p> : (
+                <ul className="divide-y divide-slate-100">
+                  {d.timeline.map((a, i) => (
+                    <li key={i} className="py-2.5 flex items-start gap-3">
+                      <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0"><div className="text-13 text-slate-900">{a.what}</div><div className="text-11.5 text-slate-500">{a.who} · {ago(a.at)}</div></div>
+                      {a.pushed && <Badge tone="green">Sent to Google</Badge>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            <Card title="Recently approved and published" subtitle="What the assistant prepared and you approved">
+              {d.recent_tasks.length === 0 ? <p className="text-13 text-slate-500 py-2">Nothing approved yet.</p> : (
+                <ul className="divide-y divide-slate-100">
+                  {d.recent_tasks.map((t, i) => (
+                    <li key={i} className="py-2.5 flex items-center gap-3 text-13">
+                      <Clock size={15} className="text-indigo-500 shrink-0" /><span className="flex-1 min-w-0 truncate text-slate-800">{t.title}</span>
+                      <Badge tone={t.status === 'applied' ? 'green' : 'blue'}>{t.status === 'applied' ? 'Done' : t.status === 'scheduled' ? 'Scheduled' : 'Approved'}</Badge><span className="text-11.5 text-slate-400 shrink-0">{ago(t.at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </div>
         </>
       ) : (
         <>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h2 className="text-18 font-semibold text-slate-900">Progress</h2><p className="text-13 text-slate-500">{d.range.key === 'all' ? `Everything so far: from ${nice(d.range.start)} (the first thing stored for this project) to today, ${days} days.` : `${nice(d.range.start)} to ${nice(d.range.end)} (${days} days), shown ${unit} by ${unit}. The change is against the ${days} days before.`}</p></div>
-        {toggle}
-      </div>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div><h2 className="text-18 font-semibold text-slate-900">Progress</h2><p className="text-13 text-slate-500">{d.range.key === 'all' ? `Everything so far: from ${nice(d.range.start)} (the first thing stored for this project) to today, ${days} days.` : `${nice(d.range.start)} to ${nice(d.range.end)} (${days} days), shown ${unit} by ${unit}. The change is against the ${days} days before.`}</p></div>
+            {toggle}
+          </div>
 
-      {nothing && <div className="rounded bg-sky-50 ring-1 ring-inset ring-sky-100 px-4 py-3 text-13 text-sky-900">Nothing has happened in {d.range.key === 'all' ? 'this project' : 'this date range'} yet. Connect the Google profile, run a website audit and start the Growth Plan: each action shows up here as it happens.</div>}
+          {nothing && <div className="rounded bg-sky-50 ring-1 ring-inset ring-sky-100 px-4 py-3 text-13 text-sky-900">Nothing has happened in {d.range.key === 'all' ? 'this project' : 'this date range'} yet. Connect the Google profile, run a website audit and start the Growth Plan: each action shows up here as it happens.</div>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Kpi icon={Phone} label="Calls" m={m.calls} days={days} />
-        <Kpi icon={Navigation} label="Directions" m={m.directions} days={days} />
-        <Kpi icon={MousePointerClick} label="Website clicks" m={m.website_clicks} days={days} />
-        <Kpi icon={Eye} label="Profile views" m={m.views} days={days} />
-        <Kpi icon={Star} label="New reviews" m={m.reviews} days={days} total={c.reviews} />
-        <Kpi icon={Users} label="Leads" m={m.leads} days={days} total={c.leads} />
-        <Kpi icon={Wrench} label="Issues fixed" m={m.fixes} days={days} total={c.fixes_done} />
-        <Kpi icon={FileText} label="Articles written" m={m.articles} days={days} total={c.articles} />
-        <Kpi icon={Search} label="Keywords added" m={m.keywords} days={days} total={c.keywords_saved} />
-        <Kpi icon={Link2} label="Backlinks gained" m={m.backlinks} days={days} total={c.backlinks} />
-      </div>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <Kpi icon={Phone} label="Calls" m={m.calls} days={days} />
+            <Kpi icon={Navigation} label="Directions" m={m.directions} days={days} />
+            <Kpi icon={MousePointerClick} label="Website clicks" m={m.website_clicks} days={days} />
+            <Kpi icon={Eye} label="Profile views" m={m.views} days={days} />
+            <Kpi icon={Star} label="New reviews" m={m.reviews} days={days} total={c.reviews} />
+            <Kpi icon={Users} label="Leads" m={m.leads} days={days} total={c.leads} />
+            <Kpi icon={Wrench} label="Issues fixed" m={m.fixes} days={days} total={c.fixes_done} />
+            <Kpi icon={FileText} label="Articles written" m={m.articles} days={days} total={c.articles} />
+            <Kpi icon={Search} label="Keywords added" m={m.keywords} days={days} total={c.keywords_saved} />
+            <Kpi icon={Link2} label="Backlinks gained" m={m.backlinks} days={days} total={c.backlinks} />
+          </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card title="Google activity" subtitle="Calls, directions and website clicks from the Google profile" action={<Legend items={[['Calls', C.calls], ['Directions', C.directions], ['Website clicks', C.website_clicks]]} />}>
-          {any('calls') || any('directions') || any('website_clicks') ? <Bars data={rows} stacked keys={[['calls', 'Calls', C.calls], ['directions', 'Directions', C.directions], ['website_clicks', 'Website clicks', C.website_clicks]]} /> : <Empty text="No Google profile activity yet. Connect the Google account and it fills in after the next sync." />}
-        </Card>
-        <Card title="Work done" subtitle="Issues fixed, articles written and Google posts published" action={<Legend items={[['Issues fixed', SERIES[0]], ['Articles', SERIES[1]], ['Posts', SERIES[2]]]} />}>
-          {any('fixes') || any('articles') || any('posts') ? <Bars data={rows} keys={[['fixes', 'Issues fixed', SERIES[0]], ['articles', 'Articles', SERIES[1]], ['posts', 'Posts', SERIES[2]]]} /> : <Empty text="No fixes, articles or posts in this period yet." />}
-        </Card>
-        <Card title="Site health" subtitle="The average audit score in each period">
-          {d.health.some(x => x != null) ? (
-            <div style={{ height: 220 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={rows} margin={{ top: 6, right: 8, left: -14, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} width={42} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Line type="monotone" dataKey="health" name="Site health" stroke={SERIES[0]} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ) : <Empty text="No website audit has finished in this period." />}
-        </Card>
-        <Card title="Keywords and backlinks" subtitle="Keywords added and new backlinks found" action={<Legend items={[['Keywords', SERIES[0]], ['Backlinks', SERIES[2]]]} />}>
-          {any('keywords') || any('backlinks') ? <Bars data={rows} keys={[['keywords', 'Keywords', SERIES[0]], ['backlinks', 'Backlinks', SERIES[2]]]} /> : <Empty text="No keywords added or backlinks found in this period." />}
-        </Card>
-        <Card title="Reviews and leads" subtitle="New Google reviews and enquiries" action={<Legend items={[['Reviews', SERIES[1]], ['Leads', SERIES[3] || SERIES[2]]]} />}>
-          {any('reviews') || any('leads') ? <Bars data={rows} keys={[['reviews', 'Reviews', SERIES[1]], ['leads', 'Leads', SERIES[3] || SERIES[2]]]} /> : <Empty text="No new reviews or leads in this period." />}
-        </Card>
-      </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <Card title="Google activity" subtitle="Calls, directions and website clicks from the Google profile" action={<Legend items={[['Calls', C.calls], ['Directions', C.directions], ['Website clicks', C.website_clicks]]} />}>
+              {any('calls') || any('directions') || any('website_clicks') ? <Bars data={rows} stacked keys={[['calls', 'Calls', C.calls], ['directions', 'Directions', C.directions], ['website_clicks', 'Website clicks', C.website_clicks]]} /> : <Empty text="No Google profile activity yet. Connect the Google account and it fills in after the next sync." />}
+            </Card>
+            <Card title="Work done" subtitle="Issues fixed, articles written and Google posts published" action={<Legend items={[['Issues fixed', SERIES[0]], ['Articles', SERIES[1]], ['Posts', SERIES[2]]]} />}>
+              {any('fixes') || any('articles') || any('posts') ? <Bars data={rows} keys={[['fixes', 'Issues fixed', SERIES[0]], ['articles', 'Articles', SERIES[1]], ['posts', 'Posts', SERIES[2]]]} /> : <Empty text="No fixes, articles or posts in this period yet." />}
+            </Card>
+            <Card title="Site health" subtitle="The average audit score in each period">
+              {d.health.some(x => x != null) ? (
+                <div style={{ height: 220 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={rows} margin={{ top: 6, right: 8, left: -14, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} axisLine={false} width={42} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Line type="monotone" dataKey="health" name="Site health" stroke={SERIES[0]} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <Empty text="No website audit has finished in this period." />}
+            </Card>
+            <Card title="Keywords and backlinks" subtitle="Keywords added and new backlinks found" action={<Legend items={[['Keywords', SERIES[0]], ['Backlinks', SERIES[2]]]} />}>
+              {any('keywords') || any('backlinks') ? <Bars data={rows} keys={[['keywords', 'Keywords', SERIES[0]], ['backlinks', 'Backlinks', SERIES[2]]]} /> : <Empty text="No keywords added or backlinks found in this period." />}
+            </Card>
+            <Card title="Reviews and leads" subtitle="New Google reviews and enquiries" action={<Legend items={[['Reviews', SERIES[1]], ['Leads', SERIES[3] || SERIES[2]]]} />}>
+              {any('reviews') || any('leads') ? <Bars data={rows} keys={[['reviews', 'Reviews', SERIES[1]], ['leads', 'Leads', SERIES[3] || SERIES[2]]]} /> : <Empty text="No new reviews or leads in this period." />}
+            </Card>
+          </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        <Card title="Keywords" subtitle={`${fmt(c.keywords_saved)} saved · ${fmt(c.keywords_tracked)} tracked · ${fmt(c.keywords_suggested)} suggestions`} action={<Link to="/keyword-management/tracked" className="text-12.5 font-semibold text-indigo-600 hover:underline">All keywords</Link>}>
-          {d.top_keywords.length === 0 ? <p className="text-13 text-slate-500 py-2">No keywords saved yet. {c.keywords_suggested ? 'Suggestions are waiting in Keyword Research.' : 'Find some in Keyword Research.'}</p> : (
-            <TopKeywords rows={d.top_keywords} />
-          )}
-        </Card>
-        <Card title="Latest backlinks" subtitle={d.backlink_domain ? `Links to ${d.backlink_domain} found by our crawler · ${fmt(c.backlinks)} in total from ${fmt(c.referring_domains)} domains` : 'The website of this project is not tracked yet'} action={<Link to="/backlinks/links" className="text-12.5 font-semibold text-indigo-600 hover:underline">All backlinks</Link>}>
-          {d.latest_backlinks.length === 0 ? <p className="text-13 text-slate-500 py-2">{d.backlink_domain ? 'The crawler has not found a link to this site yet. It checks regularly: new links appear here.' : 'Add the website to the project to start finding backlinks.'}</p> : (
-            <ul className="divide-y divide-slate-100">
-              {d.latest_backlinks.map((l, i) => (
-                <li key={i} className="py-2.5 flex items-start gap-3"><Link2 size={15} className="text-indigo-500 mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0"><div className="text-13 text-slate-900 truncate">{l.from}</div><div className="text-11.5 text-slate-500 truncate">{l.anchor ? `“${l.anchor}”` : 'no anchor text'} · {l.first_seen ? ago(l.first_seen) : 'date unknown'}</div></div>
-                  {l.verified && <Badge tone="green">Verified</Badge>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+            <Card title="Keywords" subtitle={`${fmt(c.keywords_saved)} saved · ${fmt(c.keywords_tracked)} tracked · ${fmt(c.keywords_suggested)} suggestions`} action={<Link to="/keyword-management/tracked" className="text-12.5 font-semibold text-indigo-600 hover:underline">All keywords</Link>}>
+              {d.top_keywords.length === 0 ? <p className="text-13 text-slate-500 py-2">No keywords saved yet. {c.keywords_suggested ? 'Suggestions are waiting in Keyword Research.' : 'Find some in Keyword Research.'}</p> : (
+                <TopKeywords rows={d.top_keywords} />
+              )}
+            </Card>
+            <Card title="Latest backlinks" subtitle={d.backlink_domain ? `Links to ${d.backlink_domain} found by our crawler · ${fmt(c.backlinks)} in total from ${fmt(c.referring_domains)} domains` : 'The website of this project is not tracked yet'} action={<Link to="/backlinks/links" className="text-12.5 font-semibold text-indigo-600 hover:underline">All backlinks</Link>}>
+              {d.latest_backlinks.length === 0 ? <p className="text-13 text-slate-500 py-2">{d.backlink_domain ? 'The crawler has not found a link to this site yet. It checks regularly: new links appear here.' : 'Add the website to the project to start finding backlinks.'}</p> : (
+                <ul className="divide-y divide-slate-100">
+                  {d.latest_backlinks.map((l, i) => (
+                    <li key={i} className="py-2.5 flex items-start gap-3"><Link2 size={15} className="text-indigo-500 mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0"><div className="text-13 text-slate-900 truncate">{l.from}</div><div className="text-11.5 text-slate-500 truncate">{l.anchor ? `“${l.anchor}”` : 'no anchor text'} · {l.first_seen ? ago(l.first_seen) : 'date unknown'}</div></div>
+                      {l.verified && <Badge tone="green">Verified</Badge>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </div>
 
         </>
       )}

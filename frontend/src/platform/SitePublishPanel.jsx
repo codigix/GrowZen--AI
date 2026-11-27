@@ -4,6 +4,7 @@ import { Badge, Button, Field, Modal, inputCls, useDoubleConfirm } from './SeoUi
 import { api, fmtDateTime } from './seoApi';
 import { featuredSrc } from './FeaturedImageField';
 import Select from '../components/Select';
+import DateTimeAmPm, { nowLocal } from './ScheduleTime';
 
 /** The article's post on the website: label + badge tone per stored wp_status. */
 export const POST_STATUS = {
@@ -221,6 +222,11 @@ export default function SitePublishPanel({ b, article, featured, toast, onPublis
   const [connecting, setConnecting] = useState(false);
   const [mode, setMode] = useState('draft');
   const [when, setWhen] = useState(defaultWhen);
+  const whenTouched = useRef(false);  // the user picked their own date/time: don't overwrite it when Schedule is clicked again
+  const selectMode = (id) => {
+    if (id === 'schedule' && !whenTouched.current) setWhen(nowLocal());  // default to right now, every time Schedule is first chosen
+    setMode(id);
+  };
   const [pubSteps, setPubSteps] = useState([]);
   const [publishing, setPublishing] = useState(false);
   const [result, setResult] = useState(null);
@@ -398,7 +404,7 @@ export default function SitePublishPanel({ b, article, featured, toast, onPublis
         <Num n={3} done={Boolean(result) || post?.wp_status === 'publish'}>Publish this article</Num>
         <div className="grid grid-cols-3 gap-2">
           {modes.map(m => (
-            <button key={m.id} type="button" onClick={() => setMode(m.id)}
+            <button key={m.id} type="button" onClick={() => selectMode(m.id)}
               className={`text-left p-2.5 rounded-xl border cursor-pointer ${mode === m.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-200 bg-slate-50'}`}>
               <span className="block font-bold text-slate-800">{m.title}</span>
               <span className="block text-[11px] text-slate-500">{m.hint}</span>
@@ -407,7 +413,7 @@ export default function SitePublishPanel({ b, article, featured, toast, onPublis
         </div>
         {mode === 'schedule' && (
           <Field label="Publish at" hint={heldByUs ? 'GrowZen holds the post and publishes it at this time (your computer\'s time zone).' : undefined}>
-            <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} className={inputCls} />
+            <DateTimeAmPm value={when} onChange={v => { whenTouched.current = true; setWhen(v); }} />
           </Field>
         )}
         {article && integ?.method === 'wordpress' && (

@@ -1,12 +1,14 @@
 """The keyword workspace of a project: every keyword from every source in one list, with where it came from; collect, compare, pick."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..auth import User, current_user
 from ..deps import get_business
-from ..models import Business
+from ..models import Business, KeywordCandidate
+from ..services import ai
 from ..services import keyword_workspace as kw
 from ..services.activity import log
 
@@ -126,6 +128,16 @@ def add(body: IdeasIn, b: Business = Depends(get_business), db: Session = Depend
     return {"added": kw.add_ideas(db, b, body.ideas, body.label)}
 
 
+@router.post("/relevance")
+def relevance(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Checks the keywords not checked yet (at most 40 a call) against this business: another company's brand, another service or place is set aside with the reason. Nothing is hidden without an AI."""
+    from ..services import keyword_fit  # noqa: PLC0415
+    rows = list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)))
+    out = keyword_fit.judge(db, b, rows, limit=40)
+    db.commit()
+    return {**out, "remaining": len(keyword_fit.unchecked(rows)), "ai": ai.is_configured()}
+
+
 @router.post("/collect")
 def collect(body: CollectIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Read the chosen sources (all when none are named) and file the keywords they give. A source that cannot run says why."""
@@ -203,3 +215,194 @@ def competitor_rankings(body: RankedIn, b: Business = Depends(get_business), db:
     """The keywords one competitor really ranks for (paid per keyword at Apify; the cost is returned)."""
     from ..services import competitor_keyword_report as ck  # noqa: PLC0415
     return ck.ranked(db, b, body.domain, body.limit)
+
+
+class BulkIn(BaseModel):
+    keywords: list[str] = Field(min_length=1, max_length=100)
+    country: str | None = Field(default=None, max_length=2)
+
+
+@router.post("/bulk-metrics")
+def bulk_metrics(body: BulkIn, b: Business = Depends(get_business)):
+    """Real monthly searches and top-of-page bid from Keyword Planner for a pasted list, for one country."""
+    from ..services import keyword_metrics, market  # noqa: PLC0415
+    found, note = keyword_metrics.lookup(body.keywords, body.country or market.serp_country(b))
+    return {"rows": [{"keyword": k, "volume": (found.get(k) or {}).get("volume"), "cpc": (found.get(k) or {}).get("cpc"), "competition": (found.get(k) or {}).get("competition")} for k in dict.fromkeys(" ".join(x.lower().split()) for x in body.keywords if x.strip())], "note": note}
+
+
+class StrategyIn(BaseModel):
+    seeds: list[str] = Field(min_length=1, max_length=5)
+    country: str | None = Field(default=None, max_length=2)
+
+
+@router.post("/strategy")
+def strategy_builder(body: StrategyIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Seeds to a content plan: topics, each with a pillar page and subpages and the keywords for each. Nothing is saved."""
+    from ..services import keyword_strategy  # noqa: PLC0415
+    return keyword_strategy.build(db, b, body.seeds, body.country)
+
+
+class NamesIn(BaseModel):
+    keywords: list[str] = Field(min_length=1, max_length=500)
+
+
+@router.post("/mark-picked")
+def mark_picked(body: NamesIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    return {"marked": kw.mark_picked(db, b, body.keywords)}
+
+
+@router.get("/saved")
+def saved_keywords(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import keyword_prepare  # noqa: PLC0415
+    return keyword_prepare.saved(db, b)
+
+
+@router.get("/area-pin")
+def area_pin(label: str = Query(min_length=2, max_length=160), country: str = Query("IN", max_length=2), b: Business = Depends(get_business)):
+    """The map position of a chosen place, for the location map."""
+    from ..services import keyword_locations  # noqa: PLC0415
+    try:
+        return {"pin": keyword_locations.place_pin(label, country)}
+    except Exception as exc:  # noqa: BLE001 -- the map is a help: the place still works without a pin
+        return {"pin": None, "reason": str(exc)[:160]}
+
+
+@router.get("/area-at")
+def area_at(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180), country: str = Query("IN", max_length=2), b: Business = Depends(get_business)):
+    """The place at a point clicked on the location map."""
+    from ..services import keyword_locations  # noqa: PLC0415
+    try:
+        return {"place": keyword_locations.place_at(lat, lng, country)}
+    except Exception as exc:  # noqa: BLE001
+        return {"place": None, "reason": str(exc)[:160]}
+
+
+@router.get("/competitor-gap")
+def competitor_gap(sync: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The keyword gap: what the competitors rank for and where you stand, from their kept rankings and Google's top 10 on your tracked searches. Nothing of their websites is audited."""
+    from ..services import competitor_keyword_report as ck  # noqa: PLC0415
+    return ck.gap(db, b, sync=sync)  # sync=true asks Google Keyword Planner again for every keyword and updates the kept difficulty, volume and cost per click
+
+
+class KdIn(BaseModel):
+    limit: int = Field(20, ge=1, le=40)
+    force: bool = False
+    keywords: list[str] = Field(default_factory=list, max_length=40)  # read these keywords (a page's own) instead of the best of the gap
+
+
+@router.post("/competitor-gap/kd")
+def competitor_gap_kd(body: KdIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Reads the real SEO difficulty (top 10 on Google) of the best useful keywords of the gap, at most `limit`, and keeps it. Costs Apify credit per keyword."""
+    from ..services import competitor_keyword_report as ck  # noqa: PLC0415
+    return {**ck.read_kd(db, b, body.limit, body.force, body.keywords or None), "gap": ck.gap(db, b)}
+
+
+class AnalysisIn(BaseModel):
+    domains: list[str] = Field(default_factory=list, max_length=60)
+
+
+class AnalyzeIn(BaseModel):
+    domain: str = Field(min_length=3, max_length=120)
+    limit: int = Field(default=100, ge=10, le=300)
+    force: bool = False  # read again even when it was read within the cache period
+
+
+@router.post("/competitor-analysis")
+def competitor_analysis(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """What was last read for each competitor domain (and for your own site): Domain Authority, referring domains, keywords, organic traffic, status. Nothing is read from Google or Apify here."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"metrics": ca.metrics(db, b, body.domains), "own": ca.own(db, b)}
+
+
+@router.post("/competitor-analysis/analyze")
+def competitor_analyze(body: AnalyzeIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Read one competitor now: its Domain Authority and the keywords it ranks for (paid per keyword at Apify). No website audit."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    if not ca.valid_domain(body.domain):
+        raise HTTPException(400, "That is not a website domain. Enter it like example.com.")
+    return ca.analyze_one(db, b, body.domain, body.limit, force=body.force)
+
+
+@router.get("/competitor-analysis/history")
+def competitor_history(domain: str, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Every earlier analysis of one competitor (status, provider per part, what was missing, the figures then). Refreshing adds a run and never overwrites one."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"runs": ca.history(db, b, domain)}
+
+
+@router.get("/competitor-analysis/usage")
+def competitor_usage(b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Provider calls made for this project: totals per provider and the latest calls."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.usage(db, b)
+
+
+@router.get("/competitor-analysis/config")
+def competitor_config(b: Business = Depends(get_business)):
+    """What is read by itself (new competitors, Domain Authority, keywords), retries, refresh period, cache and the daily limit."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.get_config(b)
+
+
+@router.put("/competitor-analysis/config")
+def competitor_config_put(body: dict, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.set_config(db, b, body)
+
+
+@router.post("/competitor-analysis/top-keywords")
+def competitor_top_keywords(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """The keywords that bring each competitor the most estimated visits."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"keywords": ca.top_keywords(db, b, body.domains)}
+
+
+@router.post("/competitor-analysis/trend")
+def competitor_trend(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Each competitor's traffic and keyword counts at the end of each analysis run (the only history kept)."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"trend": ca.trend(db, b, body.domains)}
+
+
+@router.post("/competitor-analysis/pages")
+def competitor_pages(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return {"pages": ca.pages(db, b, body.domains)}
+
+
+@router.post("/competitor-analysis/pages/check")
+def competitor_pages_check(body: AnalysisIn, force: bool = False, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Asks whether the ranking pages of these competitors still exist, and keeps the answer. Pages that are gone stop counting toward traffic."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    out = ca.check_pages(db, b, body.domains, force=force)
+    return {**out, "pages": ca.pages(db, b, body.domains), "metrics": ca.metrics(db, b, body.domains)}
+
+
+@router.post("/competitor-analysis/auto")
+def competitor_auto(body: AnalysisIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Start analyzing, in the background, the listed competitors that were not analyzed yet (Domain Authority and ranked keywords). Nothing about their websites is audited."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.start_auto(db, b, body.domains)
+
+
+@router.get("/competitor-analysis/progress")
+def competitor_auto_progress(b: Business = Depends(get_business)):
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.progress(b.id)
+
+
+@router.post("/competitor-analysis/stop")
+def competitor_auto_stop(b: Business = Depends(get_business)):
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.stop_auto(b.id)
+
+
+class RatingsIn(BaseModel):
+    location: str | None = Field(default=None, max_length=160)
+
+
+@router.post("/competitor-analysis/ratings")
+def competitor_ratings(body: RatingsIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Distance from the chosen place and the match score (nine factors) of every saved competitor, without needing a research run."""
+    from ..services import competitor_analysis as ca  # noqa: PLC0415
+    return ca.ratings(db, b, (body.location or "").strip() or None)

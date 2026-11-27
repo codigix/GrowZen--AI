@@ -36,10 +36,15 @@ def _context(db: Session, b: Business) -> str:
     return "\n".join(x for x in lines if x)
 
 
-def judge(db: Session, b: Business, rows: list[KeywordCandidate]) -> dict[str, int]:
+def unchecked(rows: list[KeywordCandidate]) -> list[KeywordCandidate]:
+    """The open keywords that have not been checked against the business yet."""
+    return [r for r in rows if r.fit is None and not _protected(r) and not r.dismissed]
+
+
+def judge(db: Session, b: Business, rows: list[KeywordCandidate], limit: int = MAX_PER_RUN) -> dict[str, int]:
     """Check the rows that have not been checked. Returns how many were checked, kept as a good fit, and hidden."""
     from . import ai
-    todo = [r for r in rows if r.fit is None and not _protected(r) and not r.dismissed][:MAX_PER_RUN]
+    todo = unchecked(rows)[:limit]
     out = {"checked": 0, "fit": 0, "hidden": 0}
     if not todo or not ai.is_configured():
         return out

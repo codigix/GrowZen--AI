@@ -6,7 +6,7 @@ from typing import Literal
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -142,7 +142,8 @@ def track_competitor(body: CompetitorDomainIn, b: Business = Depends(get_busines
 @router.get("/rank-history")
 def rank_history(days: int = 90, b: Business = Depends(get_business), db: Session = Depends(get_db)):
     """Each tracked keyword's checked positions over time."""
-    return {"history": organic.history(db, b, max(7, min(days, 365)))}
+    from ..services import report_filter  # noqa: PLC0415
+    return {"history": organic.history(db, b, max(7, min(report_filter.span(days), 365)))}
 
 
 LANGUAGES = {"en": "English", "hi": "Hindi", "mr": "Marathi", "gu": "Gujarati", "ta": "Tamil", "te": "Telugu", "bn": "Bengali", "kn": "Kannada", "ml": "Malayalam", "ar": "Arabic",
@@ -157,6 +158,99 @@ def _bucket(row: dict) -> str:
     if not o["found"]:
         return "not_found"
     return "page1" if o["page"] == 1 else "page2" if o["page"] == 2 else "page3plus"
+
+
+class TargetingIn(BaseModel):
+    location: str | None = Field(default=None, max_length=160)
+    device: str = Field(default="desktop", pattern="^(desktop|mobile|tablet)$")
+    language: str = Field(default="en", max_length=5)
+
+
+@router.put("/track-targeting")
+def track_targeting(body: TargetingIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Change where Google is asked from (place, device, language) for the project's position tracking; the rest of the campaign is kept."""
+    cfg = dict(b.track_config or {})
+    cfg.update({"location": (body.location or "").strip() or None, "device": body.device, "language": body.language or "en"})
+    b.track_config = cfg
+    db.commit()
+    return {"location": cfg["location"] or intel.default_location(b), "device": cfg["device"], "language": cfg["language"]}
+
+
+@router.get("/keyword-position")
+def keyword_position(keyword: str = Query(min_length=2, max_length=255), days: int = 365, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """One tracked keyword: position history, summary, visibility and estimated traffic (from the stored Search Console checks)."""
+    out = organic.one(db, b, keyword, days)
+    cfg = {**TRACK_DEFAULTS, **(b.track_config or {})}
+    out["targeting"] = {"location": cfg["location"] or intel.default_location(b), "custom": bool(cfg["location"]), "device": cfg["device"], "language": cfg["language"], "languages": LANGUAGES, "country": market.serp_country(b)}
+    if not out["tracked"]:
+        return out
+    from ..services import google_rank as _google_rank  # noqa: PLC0415
+    try:  # Search Console's position on each device for this keyword
+        out["devices"] = (_google_rank.device_positions(db, b, [out["keyword"]]).get("keywords") or {}).get(out["keyword"]) or {}
+    except Exception:  # noqa: BLE001 -- the split is extra: the page works without it
+        out["devices"] = {}
+    from ..competitors import hygiene  # noqa: PLC0415
+    from ..services import keyword_status as ks  # noqa: PLC0415
+    kw = out["keyword"]
+    item = next((x for x in ks.status(db, b)["items"] if x["keyword"] == kw), None)
+    used = ks.pages_for_keywords(db, b)
+    row = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == kw))
+    out["project"] = {"role": row.role if row else None, "priority": row.priority if row else None, "status": item, "pages": (used.get("pages") or {}).get(kw, []), "crawled": used.get("crawled"), "competitors": hygiene.saved_competitor_domains(db, b, limit=12)}
+    return out
+
+
+@router.get("/keyword-position/search-console")
+def keyword_position_gsc(keyword: str = Query(min_length=2, max_length=255), days: int = Query(90, ge=7, le=240), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """One search from Search Console: per day, page, device and country, with the period before for growth. Google's own figures."""
+    from ..services import google_rank as _gr  # noqa: PLC0415
+    try:
+        return {"state": "ok", **_gr.keyword_report(db, b, keyword, days)}
+    except _gr.RankCheckError as exc:
+        return {"state": "error", "message": str(exc)[:240]}
+
+
+class SerpScanIn(BaseModel):
+    keywords: list[str] | None = Field(default=None, max_length=12)
+
+
+@router.post("/serp-features/scan")
+def serp_features_scan(body: SerpScanIn, b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    """Read Google's results page now for the tracked keywords (up to 12) and keep which special results each showed."""
+    from ..services import serp_features as sf  # noqa: PLC0415
+    return sf.scan(db, b, body.keywords)
+
+
+@router.get("/serp-features")
+def serp_features_report(keyword: str | None = Query(default=None, max_length=255), days: int = Query(90, ge=7, le=365), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import serp_features as sf  # noqa: PLC0415
+    return sf.report(db, b, keyword, days)
+
+
+@router.get("/position-competitors")
+def position_competitors(keyword: str | None = Query(default=None, max_length=255), days: int = Query(90, ge=7, le=365), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import serp_features as sf  # noqa: PLC0415
+    return sf.competitors(db, b, keyword, days)
+
+
+@router.get("/tracking-insights")
+def tracking_insights(keyword: str | None = Query(default=None, max_length=255), b: Business = Depends(get_business), db: Session = Depends(get_db)):
+    from ..services import serp_features as sf  # noqa: PLC0415
+    return sf.insights(db, b, keyword)
+
+
+@router.get("/keyword-position/serp")
+def keyword_position_serp(keyword: str = Query(min_length=2, max_length=255), b: Business = Depends(get_business)):
+    """What Google shows for the keyword right now (competitors, features, our result). Read live, not kept."""
+    from ..services import keyword_difficulty as kd  # noqa: PLC0415
+    from ..services import market as _market  # noqa: PLC0415
+    try:
+        where = (b.track_config or {}).get("location")  # the place chosen for tracking: Google is asked from there
+        r = kd.serp(" ".join(keyword.lower().split()), _market.serp_country(b), where)
+    except Exception as exc:  # noqa: BLE001
+        return {"state": "error", "message": str(exc)[:200]}
+    mine = kd.site_of(b.website or "") if b.website else ""
+    org = [{**o, "mine": bool(mine) and (o.get("site") or "").replace("www.", "") == mine.replace("www.", "")} for o in r.get("organic", [])]
+    return {"state": "ok", "organic": org, "features": r.get("features") or {}, "ads": len(r.get("ads") or []), "questions": len(r.get("questions") or []), "ai_overview": bool(r.get("ai_overview")), "location": where, "location_applied": r.get("location_applied")}
 
 
 @router.get("/current-positions")

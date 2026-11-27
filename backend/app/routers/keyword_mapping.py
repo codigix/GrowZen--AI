@@ -18,6 +18,25 @@ def get_mapping(b: Business = Depends(get_business), db: Session = Depends(get_d
     return keyword_mapping.plan(db, b)
 
 
+class AssignIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+    target_url: str | None = Field(default=None, max_length=500)
+    role: str | None = None  # primary | secondary
+    status: str | None = None  # mapped | not_mapped | optimization | new_page | completed
+
+
+@router.post("/keyword-mapping/assign")
+def assign_mapping(body: AssignIn, b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Map keywords by hand, many at once: a page, main or supporting, and a status. Returns the new plan."""
+    try:
+        out = keyword_mapping.assign(db, b, body.ids, body.target_url, body.role, body.status)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    log(db, user.name, "keyword_mapping_assigned", b.id, keywords=out["updated"])
+    db.commit()
+    return out | keyword_mapping.plan(db, b)
+
+
 @router.post("/keyword-mapping/apply")
 def apply_mapping(b: Business = Depends(get_business), db: Session = Depends(get_db), user: User = Depends(current_user)):
     out = keyword_mapping.apply(db, b)

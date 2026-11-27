@@ -17,15 +17,16 @@ import SitePublishPanel, { postStatusOf, canDeletePost, useDeleteWebsitePost } f
 import FeaturedImageField, { featuredOf } from './FeaturedImageField';
 import BlogImageAnalysis from './BlogImageAnalysis';
 import SeoChecklist from './SeoChecklist';
-import { ResearchBriefStep, WorkflowPanel } from './SeoWorkflow';
+import { ResearchBriefStep, WorkflowPanel, runResearch } from './SeoWorkflow';
 import ReactSitePanel from './ReactSitePanel';
 import HtmlSitePanel from './HtmlSitePanel';
-import RegenerateContent, { SeoField } from './RegenerateContent';
+import RegenerateContent, { SeoField, AiFieldButton } from './RegenerateContent';
 import { PUB_STATUS, PublishingCalendar, ScheduleModal, cancelSchedule, retrySchedule, scheduleText } from './ArticleScheduling';
 import PostedBlogs from './PostedBlogs';
 import { KeywordTopicPlanner, LayoutCheckCard, ResumeCard, ArticleDownloads } from './BlogFlow';
 import PromoteBlogs from './PromoteBlogs';
 import { slugify, highlightHtml, splitKeywords, crumb, MARK_STYLE, paragraphCoverage, brandOf } from './keywordHighlight';
+import Select from '../components/Select';
 
 
 const STEPS = ['Topic & Intent', 'AI Draft', 'Images & Analysis', 'Real Details', 'Quality Checks', 'Publish & Schedule'];
@@ -179,17 +180,21 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         { id: 'comp', label: 'Competition', options: [['LOW', 'Low'], ['MEDIUM', 'Medium'], ['HIGH', 'High']], test: (x, v) => x.competition === v }
       ].filter(f => f.options.length > 1)}
       columns={[
-        { id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8', header: <span className="sr-only">Select</span>,
-          cell: x => <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[x.title])} onChange={() => toggle(x)} aria-label={`Select ${x.title}`} title="Select to write an article (up to 10)" /> },
+        {
+          id: 'pick', label: 'Select', csv: false, className: 'pl-4 pr-1 py-2 w-8', thClass: 'pl-4 pr-1 py-2.5 w-8', header: <span className="sr-only">Select</span>,
+          cell: x => <input type="checkbox" className="w-4 rounded text-indigo-600 focus:ring-0 cursor-pointer" checked={Boolean(selected[x.title])} onChange={() => toggle(x)} aria-label={`Select ${x.title}`} title="Select to write an article (up to 10)" />
+        },
         { id: 'query', header: 'Query', value: x => x.title, className: 'px-2 py-2 text-slate-800' },
-        { id: 'searches', header: 'Searches / mo', right: true, first: 'desc', value: x => x.score ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-600', cell: x => (x.score != null ? fmt(x.score) : <span className="text-slate-300">—</span>) },
-        { id: 'change', header: 'Change', csv: false, right: true, first: 'desc', value: x => pctOf(x), className: 'px-2 py-2 text-right whitespace-nowrap',
-          cell: x => { const c = pctOf(x); return x.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge> : c != null ? <span className={`inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums ${c >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{c >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(c)}%</span> : <span className="text-slate-300">—</span>; } },
+        { id: 'searches', header: 'Searches / mo', right: true, first: 'desc', value: x => x.score ?? null, className: 'px-2 py-2  tabular-nums text-slate-600', cell: x => (x.score != null ? fmt(x.score) : <span className="text-slate-300">—</span>) },
+        {
+          id: 'change', header: 'Change', csv: false, right: true, first: 'desc', value: x => pctOf(x), className: 'px-2 py-2 text-right whitespace-nowrap',
+          cell: x => { const c = pctOf(x); return x.velocity === 'Breakout' ? <Badge tone="blue">Breakout</Badge> : c != null ? <span className={`inline-flex items-center gap-0.5 text-12 font-semibold tabular-nums ${c >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{c >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Math.abs(c)}%</span> : <span className="text-slate-300">—</span>; }
+        },
         { id: 'comp', header: 'Competition', csv: false, value: x => ({ LOW: 0, MEDIUM: 1, HIGH: 2 })[x.competition] ?? null, className: 'px-2 py-2', cell: x => (COMP[x.competition] ? <Badge tone={COMP[x.competition][1]}>{COMP[x.competition][0]}</Badge> : <span className="text-slate-300">—</span>) },
         { id: 'x_intent', header: 'Intent', hide: true, value: x => x.intent || '' }, // not shown, but part of the CSV so the file has the same facts as the filters
         { id: 'x_change', header: 'Change over 3 months (%)', hide: true, value: x => (x.velocity === 'Breakout' ? 'Breakout' : pctOf(x) ?? '') },
         { id: 'x_comp', header: 'Competition', hide: true, value: x => (COMP[x.competition] ? COMP[x.competition][0] : '') },
-        { id: 'draft', header: 'Action', right: true, className: 'px-3 py-2 text-right whitespace-nowrap', thClass: 'px-3 py-2.5', cell: x => <button type="button" onClick={() => openWriter(x)} title="Create the brief and a draft for this query" className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Write it</button> }
+        { id: 'draft', header: 'Action', right: true, className: 'px-3 py-2  whitespace-nowrap', thClass: 'px-3 py-2.5', cell: x => <button type="button" onClick={() => openWriter(x)} title="Create the brief and a draft for this query" className="text-12 font-semibold text-indigo-700 hover:underline cursor-pointer">Write it</button> }
       ]} />
   );
   return (
@@ -204,14 +209,14 @@ function TrendingTopicsTab({ b, onSelectTopic }) {
         {seeds.length > 0 && <div className="flex flex-wrap items-center gap-1.5 text-12"><span className="text-slate-500">Topics for</span>{seeds.map(x => <button key={x} type="button" onClick={() => setPicked(x)} aria-pressed={x === seed} className={`h-7 px-2.5 rounded-full font-semibold cursor-pointer ring-1 ring-inset ${x === seed ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'}`}>{x}</button>)}</div>}
         <div className="ml-auto flex flex-wrap items-center gap-2 text-12 text-slate-600">
           <label className="inline-flex items-center gap-1.5">Location
-            <select value={country} onChange={e => setCountry(e.target.value)} aria-label="Search location" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
+            <Select value={country} onChange={e => setCountry(e.target.value)} aria-label="Search location" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
               {Object.entries(KP_COUNTRIES).map(([c, n]) => <option key={c} value={c}>{n}</option>)}
-            </select>
+            </Select>
           </label>
           <label className="inline-flex items-center gap-1.5">Period
-            <select value={range} onChange={e => setRange(Number(e.target.value))} aria-label="Period" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
+            <Select value={range} onChange={e => setRange(Number(e.target.value))} aria-label="Period" className="h-8 rounded-lg ring-1 ring-inset ring-slate-300 bg-white px-2 text-12">
               <option value={3}>Last 3 months</option><option value={6}>Last 6 months</option><option value={12}>Last 12 months</option>
-            </select>
+            </Select>
           </label>
           <span className="inline-flex items-center gap-1.5 text-11.5 text-slate-500" title="Google Keyword Planner reports monthly figures, not weekly or daily"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Google Keyword Planner · monthly data</span>
         </div>
@@ -288,6 +293,18 @@ const ARTICLE_LENGTHS = [
   { id: 'long', label: 'Long', words: '~2,500 words', time: '~15–22 min' }
 ];
 const mins = (sec) => (sec >= 60 ? `${Math.floor(sec / 60)}m ${Math.round(sec % 60)}s` : `${Math.round(sec)}s`);
+/** "in 38 min", "in 2h 15m", "in 3 days", or "any moment now" for a scheduled publish time (recomputed on every render, so it stays current as the list refreshes). */
+const timeUntil = (iso) => {
+  const ms = iso ? new Date(iso).getTime() - Date.now() : NaN;
+  if (Number.isNaN(ms)) return '';
+  if (ms <= 60000) return 'any moment now';
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 60) return `in ${totalMin} min`;
+  const h = Math.floor(totalMin / 60), m = totalMin % 60;
+  if (h < 24) return `in ${h}h${m ? ` ${m}m` : ''}`;
+  const d = Math.floor(h / 24), remH = h % 24;
+  return `in ${d} day${d === 1 ? '' : 's'}${remH ? ` ${remH}h` : ''}`;
+};
 
 const ARTICLE_STATUS = { pending: ['Pending', 'gray'], generating: ['Generating', 'blue'], completed: ['Completed', 'green'], failed: ['Failed', 'red'] };
 // Generated articles list: the filter an article falls under, its accent colour, and the filter chips
@@ -383,8 +400,10 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
         </label>
         <Button size="sm" icon={Download} disabled={!shown.length} title={`Download the ${shown.length} article${shown.length === 1 ? '' : 's'} in this list (with the filter and search applied) as a CSV file`}
           onClick={() => downloadCsv(`generated-articles-${siteStem(b)}`, ['Title', 'Primary keyword', 'Other keywords', 'Status', 'Web address slug', 'Words', 'Length', 'Written in (minutes)', 'Created', 'Scheduled for', 'Published address'],
-            shown.map(x => { const ps = x.status === 'completed' ? x.publishing_status : null; const views = [x.react_url && x.react_status !== 'deleted' && x.react_url, x.wp_url && x.wp_status !== 'deleted' && x.wp_url].filter(Boolean);
-              return [x.title || '', x.keyword || '', (x.secondary_keywords || []).join(', '), (ps ? (PUB_STATUS[ps] || PUB_STATUS.draft)[0] : x.status === 'failed' ? 'Writing failed' : (ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending)[0]), x.slug || '', x.stats?.words ?? '', x.stats ? (ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard') : '', x.stats?.total_seconds != null ? Math.round(x.stats.total_seconds / 6) / 10 : '', x.created_at || '', x.schedule?.planned_for || '', views.join('; ')]; }))}>Export CSV</Button>
+            shown.map(x => {
+              const ps = x.status === 'completed' ? x.publishing_status : null; const views = [x.react_url && x.react_status !== 'deleted' && x.react_url, x.wp_url && x.wp_status !== 'deleted' && x.wp_url].filter(Boolean);
+              return [x.title || '', x.keyword || '', (x.secondary_keywords || []).join(', '), (ps ? (PUB_STATUS[ps] || PUB_STATUS.draft)[0] : x.status === 'failed' ? 'Writing failed' : (ARTICLE_STATUS[x.status] || ARTICLE_STATUS.pending)[0]), x.slug || '', x.stats?.words ?? '', x.stats ? (ARTICLE_LENGTHS.find(l => l.id === x.stats.length)?.label || 'Standard') : '', x.stats?.total_seconds != null ? Math.round(x.stats.total_seconds / 6) / 10 : '', x.created_at || '', x.schedule?.planned_for || '', views.join('; ')];
+            }))}>Export CSV</Button>
       </div>
 
       <div className="space-y-3">
@@ -450,12 +469,14 @@ function ArticlesList({ b, articles, reload, openId, onOpen, toast = () => { } }
                 {x.schedule?.attempts > 0 && x.schedule?.error && ps === 'scheduled' && (
                   <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[12px] text-rose-800">
                     <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                    <span>The scheduled time came{x.schedule.planned_for ? ` (${new Date(x.schedule.planned_for).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''} but publishing failed ({x.schedule.attempts} {x.schedule.attempts === 1 ? 'try' : 'tries'}). It tries again at <b>{scheduleText(x.schedule)}</b>.<span className="block mt-0.5 text-rose-700/90">{x.schedule.error}</span></span>
+                    <span>The scheduled time came{x.schedule.planned_for ? ` (${new Date(x.schedule.planned_for).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''} but publishing failed ({x.schedule.attempts} {x.schedule.attempts === 1 ? 'try' : 'tries'}). It tries again at <b>{scheduleText(x.schedule)}</b> <span className="text-[11px] font-medium text-rose-700/80">({timeUntil(x.schedule.due_at)})</span>.<span className="block mt-0.5 text-rose-700/90">{x.schedule.error}</span></span>
                   </div>
                 )}
                 {x.schedule && (ps === 'scheduled' || ps === 'publishing') && !(x.schedule.attempts > 0 && x.schedule.error) && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-900">
-                    <Clock size={13} className="shrink-0" /> <span>{ps === 'publishing' ? 'Publishing now to ' : 'Publishes automatically: '}<b>{scheduleText(x.schedule)}</b></span>
+                    <Clock size={13} className="shrink-0" />
+                    <span>{ps === 'publishing' ? 'Publishing now to ' : 'Publishes automatically: '}<b>{scheduleText(x.schedule)}</b></span>
+                    {ps === 'scheduled' && <span className="text-[11px] font-medium text-amber-700/80">({timeUntil(x.schedule.due_at)})</span>}
                   </div>
                 )}
                 {ps === 'failed' && (
@@ -590,8 +611,8 @@ function BlogStudioTab({ b, activeTopic, openId, setOpenId, onPickTopic, onSched
   const pendingLength = ARTICLE_LENGTHS.find(l => l.id === pending?.length) || ARTICLE_LENGTHS[1];
   const preview = pendingArticle?.body || '';
 
-  const generate = async ({ topic, keywords, length, title, workflow }) => {
-    const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, title: title || undefined, workflow: workflow || undefined, keywords: keywords.map(k => ({ keyword: k })) } });
+  const generate = async ({ topic, keywords, length, title, blog_title, workflow }) => {
+    const r = await api(`/businesses/${b.id}/articles/generate`, { method: 'POST', body: { topic, length, title: title || undefined, blog_title: blog_title || undefined, workflow: workflow || undefined, keywords: keywords.map(k => ({ keyword: k })) } });
     setPendingId(r.articles[0].id);
     setOpenId(null);
     list.reload(true);
@@ -712,17 +733,21 @@ function SavedKeywordPicker({ b, inUse, onAdd }) {
             onState={st => { shownRows.current = st.rows; }}
             rowClass={k => (picked.includes(k.keyword) ? 'bg-indigo-50' : used.has(k.keyword.toLowerCase()) ? 'opacity-50' : 'hover:bg-slate-50')}
             columns={[
-              { id: 'pick', label: 'Select', csv: false, className: 'pl-3 pr-1 py-2 w-8', thClass: 'pl-3 pr-1 py-2.5 w-8',
+              {
+                id: 'pick', label: 'Select', csv: false, className: 'pl-3 pr-1 py-2 w-8', thClass: 'pl-3 pr-1 py-2.5 w-8',
                 header: <input type="checkbox" aria-label="Select all shown" checked={shownRows.current.length > 0 && shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).every(k => picked.includes(k.keyword))} onChange={() => { const free = shownRows.current.filter(k => !used.has(k.keyword.toLowerCase())).map(k => k.keyword); const every = free.every(k => picked.includes(k)); setPicked(pk => (every ? pk.filter(k => !free.includes(k)) : [...new Set([...pk, ...free])])); }} />,
-                cell: k => <input type="checkbox" disabled={used.has(k.keyword.toLowerCase())} checked={picked.includes(k.keyword) || used.has(k.keyword.toLowerCase())} onChange={() => toggle(k.keyword)} aria-label={`Pick ${k.keyword}`} /> },
-              { id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
+                cell: k => <input type="checkbox" disabled={used.has(k.keyword.toLowerCase())} checked={picked.includes(k.keyword) || used.has(k.keyword.toLowerCase())} onChange={() => toggle(k.keyword)} aria-label={`Pick ${k.keyword}`} />
+              },
+              {
+                id: 'keyword', header: 'Keyword', value: k => k.keyword, className: 'px-2 py-2',
                 cell: k => <span className="min-w-0"><span className="font-semibold text-slate-900 break-words">{k.keyword}</span>
                   {used.has(k.keyword.toLowerCase()) && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-indigo-50 text-indigo-700">added</span>}
                   {k.for_blog && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-emerald-50 text-emerald-700">meant for blogs</span>}
-                  {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span> },
-              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: k => k.volume ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-700', cell: k => (k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>) },
-              { id: 'difficulty', header: 'Difficulty', right: true, value: k => k.difficulty ?? null, className: 'px-2 py-2 text-right tabular-nums text-slate-700', cell: k => (k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>) },
-              { id: 'rank', header: 'Rank', right: true, value: k => k.rank ?? null, className: 'px-3 py-2 text-right tabular-nums text-slate-700', cell: k => (k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>) }
+                  {k.used > 0 && <span className="ml-2 text-[11px] rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700">used in {k.used} article{k.used > 1 ? 's' : ''}</span>}</span>
+              },
+              { id: 'volume', header: 'Searches / mo', right: true, first: 'desc', value: k => k.volume ?? null, className: 'px-2 py-2  tabular-nums text-slate-700', cell: k => (k.volume != null ? fmt(k.volume) : <span className="text-slate-300">—</span>) },
+              { id: 'difficulty', header: 'Difficulty', right: true, value: k => k.difficulty ?? null, className: 'px-2 py-2  tabular-nums text-slate-700', cell: k => (k.difficulty != null ? k.difficulty : <span className="text-slate-300">—</span>) },
+              { id: 'rank', header: 'Rank', right: true, value: k => k.rank ?? null, className: 'px-3 py-2  tabular-nums text-slate-700', cell: k => (k.rank != null ? `#${k.rank}` : <span className="text-slate-300">—</span>) }
             ]} />
         </div>
       )}
@@ -767,7 +792,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     meta_description: selectedArticle?.meta_description || ''
   });
   const urlBase = useApi(selectedArticle ? `/businesses/${b.id}/articles/url-base` : null).data; // where this site's posts live, learned from the ones already published
-  const mark = false; // the preview shows the article as it is: no keyword colouring
+  const mark = false; // keywords are bold only, no background color highlights
   const [previewView, setPreviewView] = useState('post'); // standard | post (the site's blog details page, the default) | list (the site's blog page)
   const [device, setDevice] = useState('desktop');
   const [site, setSite] = useState({ busy: false, html: '', error: '', notes: [], ref: '' });
@@ -778,8 +803,16 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const useRef2 = (v) => { const clean = v.trim(); setRefUrl(clean); try { if (clean) localStorage.setItem(refKey, clean); else localStorage.removeItem(refKey); } catch { /* kept for this page only */ } };
   const [kwBusyP, setKwBusyP] = useState(false);
   const [chunkBusy, setChunkBusy] = useState(false);
+  const syncingTo = useRef(null); // a saved body the draft is being loaded from (null once the draft shows it)
+  const syncedKey = useRef('');  // the saved content the editor was last filled from
   useEffect(() => {
     if (selectedArticle) {
+      // a background refresh (scheduled posts are re-read every 30 s) brings the same saved content again: the edits typed since
+      // then (slug, title, text...) must stay, so the editor is only refilled when the SAVED content really changed
+      const key = JSON.stringify([selectedArticle.id, selectedArticle.body, selectedArticle.keyword, selectedArticle.secondary_keywords, selectedArticle.title, selectedArticle.meta_description]);
+      if (key === syncedKey.current) return;
+      syncedKey.current = key;
+      if ((selectedArticle.body || '') !== draft) syncingTo.current = selectedArticle.body || '';
       setDraft(selectedArticle.body || '');
       setMeta({
         keyword: selectedArticle.keyword || '',
@@ -789,7 +822,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
         meta_description: selectedArticle.meta_description || ''
       });
     }
-  }, [selectedArticle]);
+  }, [selectedArticle]); // eslint-disable-line react-hooks/exhaustive-deps
   // edits not saved yet are kept in this browser, so leaving the page does not lose them
   const bk = selectedArticle ? `growzen.blogedit.${b.id}.${selectedArticle.id}` : null;
   const [restore, setRestore] = useState(null);
@@ -797,12 +830,21 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     if (!bk) return;
     try {
       const v = JSON.parse(localStorage.getItem(bk) || 'null');
+      // edits kept before the article was last saved on the server (e.g. an older copy of a just-written article) are never offered back
+      const savedAt = Date.parse(selectedArticle.updated_at || '') || 0;
+      if (v && savedAt && !(v.at > savedAt)) { localStorage.removeItem(bk); return; }
       if (v && (v.draft !== (selectedArticle.body || '') || v.meta?.title !== (selectedArticle.title || '') || v.meta?.meta_description !== (selectedArticle.meta_description || ''))) setRestore(v);
     } catch { /* nothing kept */ }
   }, [bk]); // eslint-disable-line react-hooks/exhaustive-deps
   // The unsent draft is kept in the browser after a pause in typing (not on every key: the whole article is written each time), and at once when the page is left or closed.
   const backupNow = useRef(null);
   useEffect(() => {
+    if (!bk || restore) return;
+    // the draft is still being loaded from a newer saved copy (an older cached copy came first): that is not the user's edit, so nothing is kept
+    if (syncingTo.current !== null) {
+      if (draft !== syncingTo.current) return;
+      syncingTo.current = null;
+    }
     backupNow.current = null;
     if (!bk || restore) return undefined;
     const same = draft === (selectedArticle.body || '') && meta.title === (selectedArticle.title || '') && meta.meta_description === (selectedArticle.meta_description || '');
@@ -899,18 +941,51 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   };
   const openTitleStep = () => { setTitleStage(true); setGenError(''); if (!titleOptions.length) suggestTitles(); };
 
+  // Blog title (H1): the heading readers see on the page, separate from the SEO title; suggested for the picked SEO title, editable.
+  const [blogTitleOptions, setBlogTitleOptions] = useState([]);
+  const [pickedBlogTitle, setPickedBlogTitle] = useState('');
+  const [blogTitleBusy, setBlogTitleBusy] = useState(false);
+  const [blogTitleError, setBlogTitleError] = useState('');
+  const suggestBlogTitles = async () => {
+    if (!pickedTitle.trim()) return;
+    setBlogTitleBusy(true); setBlogTitleError('');
+    try {
+      const r = await api(`/businesses/${b.id}/articles/titles`, { method: 'POST', body: { kind: 'blog', seo_title: pickedTitle.trim(), topic: topicText.trim() || kw.trim(), primary: kw.trim(), secondary: [], avoid: blogTitleOptions } });
+      setBlogTitleOptions(r.titles || []);
+      if (!pickedBlogTitle.trim() && r.titles?.length) setPickedBlogTitle(r.titles[0]);
+    } catch (e) { setBlogTitleError(`${e.message || e} You can type your own Blog title below, or leave it the same as the SEO title.`); }
+    finally { setBlogTitleBusy(false); }
+  };
+
   // Research & brief (the SEO workflow): after the title, the research stages run and the user confirms the brief; the article is written from it.
   const [briefStage, setBriefStage] = useState(false);
   const workflowInput = () => ({
-    title: pickedTitle.trim(), primary: kw.trim(), secondary: secondaryList.map(k => k.trim()).filter(Boolean),
+    title: pickedBlogTitle.trim() || pickedTitle.trim(), primary: kw.trim(), secondary: secondaryList.map(k => k.trim()).filter(Boolean),
     topic: topicText.trim() || kw.trim(), intent: intent || '', length: articleLength, audience: '', instructions: ''
   });
+
+  // "Next: Generate Blog": the research stages and the content brief run in the background (not shown), then the blog is written from them.
+  // If research fails, the blog is still written (without research).
+  const [researchMsg, setResearchMsg] = useState('');
+  const [researchSecs, setResearchSecs] = useState(0); // elapsed time, shown while the topic is researched
+  const researchAndGenerate = async () => {
+    setGenError(''); setGenBusy(true);
+    const started = Date.now();
+    setResearchSecs(0);
+    const tick = setInterval(() => setResearchSecs(Math.round((Date.now() - started) / 1000)), 1000);
+    let wf = null;
+    try {
+      wf = await runResearch(b, workflowInput(), (label, n, total) => setResearchMsg(`Researching the topic (step ${n} of ${total}): ${label}…`));
+    } catch { wf = null; }
+    setResearchMsg('Starting to write the blog…');
+    try { await generateBlog(wf || undefined); } finally { clearInterval(tick); setResearchMsg(''); }
+  };
 
   const generateBlog = (workflow) => {
     const keywords = [kw, ...secondaryList].map(k => k.trim().toLowerCase()).filter(Boolean);
     setGenBusy(true); setGenError('');
     // once writing starts, go on to the Write step (AI Draft) and show it from the top
-    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength, title: pickedTitle.trim(), workflow: workflow && workflow.brief ? workflow : undefined })
+    return onGenerate({ topic: topicText.trim() || kw.trim(), keywords, length: articleLength, title: pickedTitle.trim(), blog_title: pickedBlogTitle.trim() || undefined, workflow: workflow && workflow.brief ? workflow : undefined })
       .then(() => { setStep(1); setTimeout(() => document.getElementById('eeat-pipeline-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); })
       .catch(e => setGenError(e.message || String(e))).finally(() => setGenBusy(false));
   };
@@ -919,13 +994,30 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     keyword: meta.keyword, slug: slugify(meta.slug, 100), secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean),
     title: meta.title, meta_description: meta.meta_description, body: draft
   });
+  // The web address (slug) saves itself when it is changed (typed and left, written by AI ✨, or reset to the keyword): only the slug is sent,
+  // so nothing else typed in the editor is saved or lost. Everything else still needs "Save changes".
+  const slugTouched = useRef(false);
+  const saveSlug = (raw) => {
+    if (!selectedArticle) return Promise.resolve();
+    const clean = slugify(raw, 100);
+    const next = clean === slugify(meta.keyword) ? '' : clean;  // the keyword's own address is stored as "follow the keyword"
+    if (next === (selectedArticle.slug || '') || (!next && !selectedArticle.slug)) return Promise.resolve();
+    return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: { slug: next } })
+      .then(() => { slugTouched.current = false; toast('✓ Web address saved'); if (onSaved) onSaved(); })
+      .catch(e => toast(e.message || String(e)));
+  };
   // SEO title / meta description: typed by hand or written by AI (✨); every regeneration uses what is in the boxes now
   const regenRef = useRef(null);
   const [fieldBusy, setFieldBusy] = useState('');
   const h1Raw = (draft.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) || [])[1];
   const h1Text = h1Raw ? (() => { const t = document.createElement('textarea'); t.innerHTML = h1Raw.replace(/<[^>]+>/g, ''); return t.value.trim(); })() : '';
   const titleNow = meta.title.trim();
-  const h1Differs = Boolean(selectedArticle && h1Text && titleNow && h1Text !== titleNow);
+  // only when the heading followed the saved SEO title and the SEO title was then changed (a separate Blog title is not a mismatch)
+  const h1Differs = Boolean(selectedArticle && h1Text && titleNow && h1Text !== titleNow && h1Text === (selectedArticle.title || '').trim());
+  const setBlogTitle = (v) => {
+    const esc = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    setDraft(d => (/<h1\b[^>]*>[\s\S]*?<\/h1>/i.test(d) ? d.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, `<h1>${esc}</h1>`) : `<h1>${esc}</h1>\n${d}`));
+  };
   const updateH1 = () => {
     const esc = titleNow.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     setDraft(d => d.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, `<h1>${esc}</h1>`));
@@ -939,6 +1031,20 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const brand = brandOf(b.name); // the short name readers know: it is written into the article and highlighted like the keywords
   const slugNow = slugify(meta.slug, 100) || slugify(meta.keyword);
   const fullUrl = urlBase?.base ? `${urlBase.base}${slugNow}${urlBase.trailing_slash ? '/' : ''}` : '';
+  // is this web address already used by another blog or by a post on the website? (a message only: nothing is blocked)
+  const [slugUsed, setSlugUsed] = useState(null);  // { slug, by } when taken
+  const slugArticleId = selectedArticle?.id;
+  useEffect(() => {
+    setSlugUsed(null);
+    if (!slugArticleId || !slugNow) return undefined;
+    let live = true;
+    const t = setTimeout(() => {
+      api(`/businesses/${b.id}/articles/${slugArticleId}/slug-check?slug=${encodeURIComponent(slugNow)}`)
+        .then(r => { if (live) setSlugUsed(r.used ? { slug: r.slug, by: r.by } : null); })
+        .catch(() => { /* the check is only a hint */ });
+    }, 500);
+    return () => { live = false; clearTimeout(t); };
+  }, [b.id, slugArticleId, slugNow]);
   const keywordWords = slugify(meta.keyword).split('-').filter(Boolean);
   const slugHasKeyword = keywordWords.length > 0 && keywordWords.every(w => slugNow.split('-').includes(w));
   const previewHtml = React.useMemo(() => (mark ? highlightHtml(draft, meta.keyword, secondaryNow, { flag: true, brand }) : draft), [draft, mark, meta.keyword, meta.secondary, brand]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1036,7 +1142,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-semibold">{site.info.from_setup ? `Publishing Setup: ${site.info.label || 'connected website'}` : 'Project website (no publishing website is set up yet)'}</span>
             </div>
           )}
-          <div className="text-[11.5px] text-slate-500">{site.source === 'brand' &&<span className="inline-block mr-1.5 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold">Your site’s brand</span>}{site.notes.join(' ')}{site.source === 'brand' ? '' : ' Scripts on your site are switched off, so menus and sliders will not move.'}</div>
+          <div className="text-[11.5px] text-slate-500">{site.source === 'brand' && <span className="inline-block mr-1.5 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold">Your site’s brand</span>}{site.notes.join(' ')}{site.source === 'brand' ? '' : ' Scripts on your site are switched off, so menus and sliders will not move.'}</div>
           <div className="rounded-xl border border-slate-200 bg-slate-100 p-3 flex justify-center overflow-x-auto relative">
             {site.busy && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center"><RefreshCw size={20} className="animate-spin text-indigo-500" /></div>}
             <iframe title="Preview in your website's design" sandbox="" referrerPolicy="no-referrer" srcDoc={site.html}
@@ -1049,14 +1155,14 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
   const saveArticle = () => {
     setSaveBusy(true);
     return api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: articleFields() })
-      .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } toast('Draft saved'); if (onSaved) onSaved(); })
+      .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } toast('✓ Changes saved successfully'); if (onSaved) onSaved(); })
       .catch(e => toast(e.message))
       .finally(() => setSaveBusy(false));
   };
   // article images placed on the Images & Analysis step: the article is saved with them at once (publishing sends the saved article)
   const saveWithBody = (body) => api(`/businesses/${b.id}/articles/${selectedArticle.id}`, { method: 'PATCH', body: { ...articleFields(), body } })
     .then(() => { try { localStorage.removeItem(bk); } catch { /* nothing */ } if (onSaved) onSaved(); });
-  const [scheduledDate] = useState(() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // tomorrow 10:00, local
+  const [scheduledDate] = useState(() => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); });  // right now, local (refreshed again when Schedule is actually picked)
 
   // Real Details step: "Include" adds one factual sentence (only what the business profile says) to the draft, then the check turns green.
   // Name, place and services go after the introduction's first paragraph; phone and website go at the end, before the schema block.
@@ -1067,7 +1173,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
     try { includeDetailRun(id); } catch (err) { console.error('Include failed', err); setIncludeBusy(''); setIncludeMsg({ id, ok: false, text: `Could not add it: ${err?.message || err}` }); }
   };
   const includeDetailRun = (id) => {
-    const e =(t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const e = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const bn = brandOf(b.name) || b.name;
     const place = [b.area, b.city].filter(Boolean).join(', ');
     const svc = (b.services || []).map(x => x?.name).filter(Boolean).slice(0, 4).join(', ');
@@ -1121,10 +1227,10 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               <button
                 onClick={() => (selectedArticle || i <= step) && setStep(i)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-left transition-colors cursor-pointer ${i === step
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                    : i < step
-                      ? 'text-slate-800 hover:bg-slate-50'
-                      : 'text-slate-500'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : i < step
+                    ? 'text-slate-800 hover:bg-slate-50'
+                    : 'text-slate-500'
                   }`}
               >
                 <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${i < step ? 'bg-emerald-500 text-white' : i === step ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-500'
@@ -1165,7 +1271,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
 
         {step === 0 && titleStage && !briefStage && (
           <div className="max-w-3xl space-y-4">
-            <div className="text-[12px] text-slate-500">Step 2 of 3 · Choose the SEO title. Next, the research stages build a content brief you can edit (or generate straight away without research).</div>
+            <div className="text-[12px] text-slate-500">Step 2 of 2 · Choose the SEO title and the Blog title, then generate the blog. The topic is researched automatically before writing.</div>
             <Field label="Topic" hint="You can still change the topic. Click Regenerate Titles after changing it.">
               <input className={inputCls} value={topicText} onChange={e => setTopicText(e.target.value)} />
             </Field>
@@ -1193,13 +1299,42 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               </div>
               {pickedTitle.trim() && kw.trim() && !pickedTitle.toLowerCase().includes(kw.trim().toLowerCase()) && <div className="mt-1 text-[11.5px] text-amber-800">This title does not contain the primary keyword “{kw}”.</div>}
             </Field>
+
+            {/* Blog title (H1): the heading on the blog page, separate from the SEO title; the article is written for it */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-[12.5px] font-semibold text-slate-800">Blog title (H1)</div>
+                  <div className="text-[11.5px] text-slate-500">The heading readers see on the blog page. It can be longer and more descriptive than the SEO title. Leave it empty to use the SEO title.</div>
+                </div>
+                <Button size="sm" icon={blogTitleOptions.length ? RefreshCw : Sparkles} busy={blogTitleBusy} disabled={!pickedTitle.trim()} onClick={suggestBlogTitles}>{blogTitleOptions.length ? 'Regenerate' : 'Suggest Blog titles'}</Button>
+              </div>
+              {blogTitleOptions.length > 0 && (
+                <div className="grid grid-cols-1 gap-1.5" role="radiogroup" aria-label="Blog title options">
+                  {blogTitleOptions.map(t => (
+                    <button key={t} type="button" role="radio" aria-checked={pickedBlogTitle === t} onClick={() => setPickedBlogTitle(t)}
+                      className={`px-3 py-2 rounded-lg border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${pickedBlogTitle === t ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'bg-white border-slate-200 hover:border-indigo-300'}`}>
+                      <span className="text-[12.5px] font-semibold text-slate-800">{t}</span>
+                      <span className="text-[11px] text-slate-500 shrink-0">{t.length} characters</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {blogTitleError && <div className="text-[11.5px] text-amber-800">{blogTitleError}</div>}
+              <div className="flex items-center gap-2">
+                <input className={inputCls} value={pickedBlogTitle} onChange={e => setPickedBlogTitle(e.target.value)} placeholder={pickedTitle.trim() ? `Same as the SEO title: ${pickedTitle.trim()}` : 'Pick an SEO title first'} />
+                <span className={`text-[11.5px] font-semibold shrink-0 tabular-nums ${!pickedBlogTitle.trim() || (pickedBlogTitle.trim().length >= 35 && pickedBlogTitle.trim().length <= 90) ? 'text-emerald-700' : 'text-amber-700'}`}>{pickedBlogTitle.trim().length} / 35-90</span>
+              </div>
+              {pickedBlogTitle.trim() && kw.trim() && !pickedBlogTitle.toLowerCase().includes(kw.trim().toLowerCase()) && <div className="text-[11.5px] text-amber-800">This Blog title does not contain the primary keyword “{kw}”.</div>}
+            </div>
             {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
             {genError && <div className="text-[12px] text-red-600">{genError}</div>}
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={() => { setTitleStage(false); setTitleOptions([]); setPickedTitle(''); }}>Back to keywords</Button>
-              <Button variant="ai" icon={Sparkles} disabled={!pickedTitle.trim() || titleBusy || generating} onClick={() => { setGenError(''); setBriefStage(true); }}>Next: Research &amp; Brief</Button>
-              <Button busy={genBusy} disabled={!pickedTitle.trim() || titleBusy || generating} onClick={() => generateBlog()} title="Write the article straight away, without the research stages">Generate without research</Button>
+              <Button disabled={genBusy} onClick={() => { setTitleStage(false); setTitleOptions([]); setPickedTitle(''); setBlogTitleOptions([]); setPickedBlogTitle(''); }}>Back to keywords</Button>
+              <Button variant="ai" icon={Sparkles} busy={genBusy} disabled={!pickedTitle.trim() || titleBusy || generating || genBusy} onClick={researchAndGenerate}>Next: Generate Blog</Button>
             </div>
+            {researchMsg && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />{researchMsg}
+              <span className="text-slate-500 tabular-nums">· {Math.floor(researchSecs / 60)}:{String(researchSecs % 60).padStart(2, '0')} elapsed (research usually takes under a minute)</span></div>}
           </div>
         )}
 
@@ -1213,68 +1348,68 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
               {onGenerate && showSaved && <SavedKeywordPicker b={b} inUse={[kw, ...secondaryList]} onAdd={addSaved} />}
             </div>
             <aside className="space-y-3 xl:sticky xl:top-4" aria-label="This article">
-            {onGenerate && (
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-[12px] font-bold text-slate-800">Keywords for this article</div>
-                  <Button size="sm" icon={RefreshCw} busy={kwBusy} disabled={topicText.trim().length < 2} onClick={() => suggestKeywords(kwReady)}>
-                    {kwReady ? 'Regenerate Secondary Keywords' : 'Generate Keywords'}
-                  </Button>
-                </div>
-                {kwBusy && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing keywords for “{topicText}” with Claude AI…</div>}
-                {kwError && <div className="text-[11.5px] text-amber-800">{kwError}</div>}
-                {kwReady && !kwBusy && kwNote && <div className="text-[11px] text-slate-500">{kwNote}</div>}
-                {!kwReady && !kwBusy && <div className="text-[11.5px] text-slate-500">Enter a topic and click Generate Keywords. The blog is written after you confirm the keywords.</div>}
-                {kwReady && (
-                  <>
-                    {intent && <div className="text-[11.5px] text-slate-600">Search intent: <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-semibold capitalize">{intent}</span></div>}
-                    <Field label="Primary keyword" hint="Appears in the title, meta description and introduction">
-                      <div className="flex items-center gap-1.5">
-                        <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
-                        <VolTag k={kw} />
+              {onGenerate && (
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[12px] font-bold text-slate-800">Keywords for this article</div>
+                    <Button size="sm" icon={RefreshCw} busy={kwBusy} disabled={topicText.trim().length < 2} onClick={() => suggestKeywords(kwReady)}>
+                      {kwReady ? 'Regenerate Secondary Keywords' : 'Generate Keywords'}
+                    </Button>
+                  </div>
+                  {kwBusy && <div className="text-[11.5px] text-indigo-700 flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" />Writing keywords for “{topicText}” with Claude AI…</div>}
+                  {kwError && <div className="text-[11.5px] text-amber-800">{kwError}</div>}
+                  {kwReady && !kwBusy && kwNote && <div className="text-[11px] text-slate-500">{kwNote}</div>}
+                  {!kwReady && !kwBusy && <div className="text-[11.5px] text-slate-500">Enter a topic and click Generate Keywords. The blog is written after you confirm the keywords.</div>}
+                  {kwReady && (
+                    <>
+                      {intent && <div className="text-[11.5px] text-slate-600">Search intent: <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-semibold capitalize">{intent}</span></div>}
+                      <Field label="Primary keyword" hint="Appears in the title, meta description and introduction">
+                        <div className="flex items-center gap-1.5">
+                          <input className={inputCls} value={kw} onChange={e => setKw(e.target.value)} />
+                          <VolTag k={kw} />
+                        </div>
+                        {slugify(kw) && <div className="mt-1 text-[11.5px] text-slate-500 break-all">The article's web address ends with <span className="font-mono font-semibold text-slate-700">/{slugify(kw)}</span> (you can change it after the article is written).</div>}
+                      </Field>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
+                        <div className="grid grid-cols-1 gap-2">
+                          {secondaryList.map((k, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <input className={inputCls} value={k} onChange={e => setSecondaryList(l => l.map((x, j) => (j === i ? e.target.value : x)))} />
+                              <VolTag k={k} />
+                              <button type="button" title="Remove" className="h-9 w-9 shrink-0 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" onClick={() => setSecondaryList(l => l.filter((_, j) => j !== i))}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                        <Button size="sm" icon={Plus} className="mt-2" onClick={() => setSecondaryList(l => [...l, ''])}>Add keyword</Button>
                       </div>
-                      {slugify(kw) && <div className="mt-1 text-[11.5px] text-slate-500 break-all">The article's web address ends with <span className="font-mono font-semibold text-slate-700">/{slugify(kw)}</span> (you can change it after the article is written).</div>}
-                    </Field>
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Secondary keywords <span className="normal-case tracking-normal font-normal text-slate-400">({secondaryList.filter(k => k.trim()).length}, 5 to 10 works best; edit, add or remove)</span></div>
-                      <div className="grid grid-cols-1 gap-2">
-                        {secondaryList.map((k, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <input className={inputCls} value={k} onChange={e => setSecondaryList(l => l.map((x, j) => (j === i ? e.target.value : x)))} />
-                            <VolTag k={k} />
-                            <button type="button" title="Remove" className="h-9 w-9 shrink-0 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer" onClick={() => setSecondaryList(l => l.filter((_, j) => j !== i))}>×</button>
-                          </div>
-                        ))}
-                      </div>
-                      <Button size="sm" icon={Plus} className="mt-2" onClick={() => setSecondaryList(l => [...l, ''])}>Add keyword</Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-            {onGenerate && (
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Article length</div>
-                <div className="grid grid-cols-1 gap-1.5">
-                  {ARTICLE_LENGTHS.map(l => (
-                    <button key={l.id} type="button" onClick={() => pickLength(l.id)} aria-pressed={articleLength === l.id}
-                      className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
-                      <span className="text-[12.5px] font-bold">{l.label}</span>
-                      <span className={`text-[11px] ${articleLength === l.id ? 'text-indigo-100' : 'text-slate-500'}`}>{l.words} · {l.time}</span>
-                    </button>
-                  ))}
+                    </>
+                  )}
                 </div>
-              </div>
-            )}
-            {onGenerate && (
-              <div className="space-y-1.5">
-                <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={openTitleStep}>Next: Choose SEO Title</Button>
-                {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
-                {!kwReady && !kwBusy && <div className="text-[11.5px] text-amber-700">Generate the keywords first.</div>}
-                <div className="text-[11.5px] text-slate-500">Next you choose the SEO title; then a complete blog (meta description, introduction, H2/H3 sections, FAQs, conclusion) is written with the keywords above and opened for review.</div>
-              </div>
-            )}
-            {genError && <div className="text-[12px] text-red-600">{genError}</div>}
+              )}
+              {onGenerate && (
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Article length</div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {ARTICLE_LENGTHS.map(l => (
+                      <button key={l.id} type="button" onClick={() => pickLength(l.id)} aria-pressed={articleLength === l.id}
+                        className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-3 text-left cursor-pointer transition-all ${articleLength === l.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'}`}>
+                        <span className="text-[12.5px] font-bold">{l.label}</span>
+                        <span className={`text-[11px] ${articleLength === l.id ? 'text-indigo-100' : 'text-slate-500'}`}>{l.words} · {l.time}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {onGenerate && (
+                <div className="space-y-1.5">
+                  <Button variant="ai" icon={Sparkles} className="w-full justify-center" busy={genBusy} disabled={!kwReady || kwBusy || !kw.trim() || generating} onClick={openTitleStep}>Next: Choose SEO Title</Button>
+                  {generating && <div className="text-[11.5px] text-amber-700 font-semibold">An article is being written; wait for it to finish.</div>}
+                  {!kwReady && !kwBusy && <div className="text-[11.5px] text-amber-700">Generate the keywords first.</div>}
+                  <div className="text-[11.5px] text-slate-500">Next you choose the SEO title; then a complete blog (meta description, introduction, H2/H3 sections, FAQs, conclusion) is written with the keywords above and opened for review.</div>
+                </div>
+              )}
+              {genError && <div className="text-[12px] text-red-600">{genError}</div>}
             </aside>
           </div>
         )}
@@ -1325,17 +1460,28 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   <Field label="Primary keyword" hint="Must appear in the title, meta description and introduction"><input className={inputCls} value={meta.keyword} onChange={e => setMeta(m => ({ ...m, keyword: e.target.value }))} /></Field>
                   <Field label="Secondary keywords" hint="Comma separated; each should appear in the article"><input className={inputCls} value={meta.secondary} onChange={e => setMeta(m => ({ ...m, secondary: e.target.value }))} /></Field>
                 </div>
-                <Field label="Web address (slug)" hint={meta.slug.trim() ? 'Your own words. Click “Use the primary keyword” to follow the keyword again.' : 'Follows the primary keyword: change the keyword and this changes with it. Type here to set your own.'}>
+                <Field label="Web address (slug)" hint={slugUsed ? undefined : meta.slug.trim() ? 'Your own words. Click “Use the primary keyword” to follow the keyword again.' : 'Follows the primary keyword: change the keyword and this changes with it. Type here to set your own.'}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center min-w-0 flex-1 rounded-lg border border-slate-300 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                    <div className={`flex items-center min-w-0 flex-1 rounded-lg border bg-white overflow-hidden focus-within:ring-2 ${slugUsed ? 'border-rose-400 focus-within:ring-rose-300' : 'border-slate-300 focus-within:ring-indigo-500'}`}>
                       <span className="px-2.5 py-2 bg-slate-50 text-[12px] text-slate-500 border-r border-slate-200 whitespace-nowrap max-w-[55%] truncate" title={urlBase?.base}>{urlBase?.base ? urlBase.base.replace(/^https?:\/\//, '') : '/'}</span>
                       <input className="flex-1 min-w-0 px-2.5 py-2 text-[13px] font-mono outline-none" value={meta.slug.trim() ? meta.slug : slugify(meta.keyword)} aria-label="Web address slug" maxLength={100}
-                        onChange={e => setMeta(m => ({ ...m, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-\s]+/g, '').replace(/\s+/g, '-') }))}
-                        onBlur={() => setMeta(m => ({ ...m, slug: slugify(m.slug, 100) === slugify(m.keyword) ? '' : slugify(m.slug, 100) }))} />
+                        onChange={e => { slugTouched.current = true; setMeta(m => ({ ...m, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-\s]+/g, '').replace(/\s+/g, '-') })); }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        onBlur={() => {
+                          setMeta(m => ({ ...m, slug: slugify(m.slug, 100) === slugify(m.keyword) ? '' : slugify(m.slug, 100) }));
+                          if (slugTouched.current) saveSlug(meta.slug);
+                        }} />
+                      <AiFieldButton busy={fieldBusy === 'slug'} disabled={Boolean(fieldBusy)} title="Write a new web address with AI (keeps the primary keyword)" onClick={() => regenRef.current?.run('slug')} />
                     </div>
-                    {meta.slug.trim() && slugify(meta.slug, 100) !== slugify(meta.keyword) && <Button size="sm" onClick={() => setMeta(m => ({ ...m, slug: '' }))}>Use the primary keyword</Button>}
+                    {meta.slug.trim() && slugify(meta.slug, 100) !== slugify(meta.keyword) && <Button size="sm" onClick={() => { setMeta(m => ({ ...m, slug: '' })); saveSlug(''); }}>Use the primary keyword</Button>}
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${slugHasKeyword ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>{slugHasKeyword ? <Check size={11} strokeWidth={3} /> : <AlertTriangle size={11} />}{slugHasKeyword ? 'Has the primary keyword' : 'Without the primary keyword'}</span>
                   </div>
+                  {slugUsed && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-rose-700" role="alert">
+                      <AlertTriangle size={13} className="shrink-0" />
+                      <span><span className="font-mono">{slugUsed.slug}</span> is already taken ({slugUsed.by}). Try another web address.</span>
+                    </div>
+                  )}
                   {fullUrl && <div className="mt-1 text-[11.5px] text-slate-500 break-all">Full address: <span className="font-mono">{fullUrl}</span></div>}
                 </Field>
                 {(() => {
@@ -1391,6 +1537,16 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     <Button size="sm" variant="ai" icon={Sparkles} onClick={() => regenRef.current?.run('full')}>Regenerate article for this title</Button>
                   </div>
                 )}
+                <Field label="Blog title (H1)" hint="The heading readers see on the blog page. It can differ from the SEO title (which is shown in Google).">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1 min-w-0">
+                      <input className={`${inputCls} pr-11`} value={h1Text} onChange={e => setBlogTitle(e.target.value)} placeholder="The article's main heading" />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2"><AiFieldButton busy={fieldBusy === 'h1'} disabled={Boolean(fieldBusy)} title="Write a new Blog title (H1) with AI" onClick={() => regenRef.current?.run('h1')} /></span>
+                    </div>
+                    <span className={`text-[11.5px] font-semibold shrink-0 tabular-nums ${h1Text.length >= 35 && h1Text.length <= 90 ? 'text-emerald-700' : 'text-amber-700'}`}>{h1Text.length} / 35-90</span>
+                  </div>
+                  {h1Text && meta.keyword.trim() && !h1Text.toLowerCase().includes(meta.keyword.trim().toLowerCase()) && <div className="mt-1 text-[11.5px] text-amber-800">The Blog title does not contain the primary keyword “{meta.keyword}”.</div>}
+                </Field>
                 <SeoField kind="meta" value={meta.meta_description} onChange={v => setMeta(m => ({ ...m, meta_description: v }))}
                   onRegenerate={selectedArticle ? () => regenRef.current?.run('meta') : null} busy={fieldBusy === 'meta'} disabled={Boolean(fieldBusy)} />
                 {selectedArticle && <DuplicateNotice b={b} article={selectedArticle} title={meta.title} image={featured} />}
@@ -1405,15 +1561,15 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                     <div className="flex flex-wrap items-center gap-2">
                       {selectedArticle && <ArticleDownloads b={b} article={{ ...selectedArticle, body: draft, title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, slug: meta.slug.trim() || slugify(meta.keyword), secondary_keywords: secondaryNow }} />}
                       {selectedArticle && <RegenerateContent ref={regenRef} b={b} article={selectedArticle} body={draft} onAccept={setDraft} toast={toast} onFieldBusy={setFieldBusy}
-                        fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean) }}
-                        onField={(field, value) => setMeta(m => ({ ...m, [field]: value }))} />}
+                        fields={{ title: meta.title, meta_description: meta.meta_description, keyword: meta.keyword, secondary_keywords: meta.secondary.split(',').map(k => k.trim()).filter(Boolean), slug: meta.slug.trim() || slugify(meta.keyword) }}
+                        onField={(field, value) => { if (field === 'h1') setBlogTitle(value); else { setMeta(m => ({ ...m, [field]: value })); if (field === 'slug') saveSlug(value); } }} />}
                       <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
                         <button
                           type="button"
                           onClick={() => setBodyTab('editor')}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${bodyTab === 'editor'
-                              ? 'bg-white text-indigo-700 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
                         >
                           <Code size={13} />
@@ -1423,8 +1579,8 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                           type="button"
                           onClick={() => setBodyTab('preview')}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all cursor-pointer ${bodyTab === 'preview'
-                              ? 'bg-white text-indigo-700 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            ? 'bg-white text-indigo-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
                         >
                           <Eye size={13} />
@@ -1466,7 +1622,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                             [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5 [&_ul]:my-3
                             [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1.5 [&_ol]:my-3
                             [&_li]:text-slate-700 [&_li]:leading-relaxed
-                            [&_strong]:font-semibold [&_strong]:text-slate-900
+                            [&_strong]:font-bold [&_strong]:text-slate-950
                             [&_em]:italic [&_em]:text-slate-700
                             [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-slate-50/60 [&_blockquote]:p-3.5 [&_blockquote]:my-3.5 [&_blockquote]:italic [&_blockquote]:text-slate-700 [&_blockquote]:rounded-r-lg
                             [&_a]:text-indigo-600 [&_a]:underline [&_a]:hover:text-indigo-800
@@ -1492,7 +1648,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-slate-600">
                   <span>{(selectedArticle.suggested_keywords || []).length > 0 && <><span className="text-slate-500">Suggested tags:</span> {selectedArticle.suggested_keywords.join(', ')}</>}</span>
-                  <Button size="sm" busy={saveBusy} onClick={saveArticle}>Save changes</Button>
+                  {/* (Save changes is in the bar at the bottom of the step, next to "Next Step") */}
                 </div>
                 {(selectedArticle.warnings || []).length > 0 && (
                   <div className="space-y-1.5">
@@ -1524,7 +1680,7 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
                   {liveBody ? (
                     <div>
                       <div
-                        className="text-[13px] text-slate-800 leading-relaxed space-y-3 [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3 [&_p]:mt-2 [&_p]:text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1 [&_figure]:hidden [&_img]:hidden"
+                        className="text-[13px] text-slate-800 leading-relaxed space-y-3 [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:border-slate-100 [&_h2]:pb-1 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_h3]:text-slate-800 [&_h3]:mt-3 [&_p]:mt-2 [&_p]:text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mt-1 [&_strong]:font-bold [&_strong]:text-slate-950 [&_figure]:hidden [&_img]:hidden"
                         dangerouslySetInnerHTML={{ __html: liveBody }}
                       />
                       {isGenerating && (
@@ -1654,6 +1810,21 @@ function BlogWriterTab({ b, selectedTopic, selectedArticle, pendingArticle, pend
             )}
           </PublishDestinations>
         )}
+        {/* the same "Next Step" as at the top of the card, so a long page does not need scrolling back up */}
+        {step !== 0 && step !== PUBLISH_STEP && (
+          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2">
+            {selectedArticle && draft !== (selectedArticle.body || '') && <span className="text-[11.5px] text-amber-800 mr-auto">Changes not saved yet</span>}
+            {selectedArticle && <Button size="sm" busy={saveBusy} onClick={saveArticle}>Save changes</Button>}
+            <Button variant="primary" size="sm" busy={genBusy} onClick={() => {
+              next();
+              // the next step opens at its top, not at the bottom where this button is
+              requestAnimationFrame(() => document.getElementById('eeat-pipeline-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+            }}>
+              Next Step: {STEPS[step + 1]}
+              <ChevronRight size={13} />
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -1700,8 +1871,7 @@ function PublishDestinations({ b, children }) {
 }
 
 /** Blog publishing setup, on its own: connect the website (WordPress, React or HTML) once, any time after the business is added. */
-function PublishingSetup({ b }) {
-  const toast = window.__seoToast || console.log;
+function PublishingSetup({ b, toast = window.__seoToast || console.log }) {
   return (
     <div className="space-y-4">
       <Card>
@@ -1740,6 +1910,8 @@ export default function ContentStudioPage() {
       return raw && tab === 'blog' ? JSON.parse(raw) : null;
     } catch { return null; }
   });
+  // the page's own toast (shown at the bottom of the screen): "Changes saved successfully", errors, etc. (window.__seoToast is never set, so messages only reached the console)
+  const [toast, toastNode] = useToast();
   const [openArticleId, setOpenArticleId] = useState(() => { const n = Number(new URLSearchParams(window.location.search).get('article')); return Number.isInteger(n) && n > 0 ? n : null; }); // a Growth task links to one article
 
   const handleSelectTopic = (topic) => {
@@ -1770,13 +1942,14 @@ export default function ContentStudioPage() {
           />
 
           {tab === 'trends' && <TrendingTopicsTab b={b} onSelectTopic={handleSelectTopic} />}
-          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onPickTopic={handleSelectTopic} onShowArticles={() => setTab('articles')} toast={window.__seoToast || console.log} />}
-          {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={window.__seoToast || console.log}
+          {tab === 'blog' && <BlogStudioTab b={b} activeTopic={activeTopic} openId={openArticleId} setOpenId={setOpenArticleId} onPickTopic={handleSelectTopic} onShowArticles={() => setTab('articles')} toast={toast} />}
+          {tab === 'articles' && <GeneratedArticlesTab b={b} openId={openArticleId} onOpen={openInWriter} toast={toast}
             onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} onShowPosted={() => setTab('posted')} />}
-          {tab === 'posted' && <PostedBlogs b={b} toast={window.__seoToast || console.log} onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
+          {tab === 'posted' && <PostedBlogs b={b} toast={toast} onWrite={() => { setOpenArticleId(null); setActiveTopic(null); setTab('blog'); }} />}
           {tab === 'promote' && <PromoteBlogs b={b} onShowPosted={() => setTab('posted')} />}
-          {tab === 'calendar' && <PublishingCalendar b={b} toast={window.__seoToast || console.log} onOpenArticle={openInWriter} />}
-          {tab === 'publishing' && <PublishingSetup b={b} />}
+          {tab === 'calendar' && <PublishingCalendar b={b} toast={toast} onOpenArticle={openInWriter} />}
+          {tab === 'publishing' && <PublishingSetup b={b} toast={toast} />}
+          {toastNode}
         </div>
       )}
     </SeoShell>

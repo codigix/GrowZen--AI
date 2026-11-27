@@ -45,7 +45,7 @@ function Table({ cols, rows, empty = 'No data for this period.' }) {
   if (!rows?.length) return <Empty>{empty}</Empty>;
   const row = (r, i, key) => (
     <tr key={key} className={r.__total ? 'font-semibold bg-slate-50' : 'hover:bg-slate-50/60'}>
-      {cols.map((c, j) => <td key={c.label} className={`py-2 pr-4 text-slate-700 ${c.right ? 'text-right tabular-nums' : 'truncate max-w-[320px]'}`}>{c.render(r)}</td>)}
+      {cols.map((c, j) => <td key={c.label} className={`py-2 pr-4 text-slate-700 ${c.right ? ' tabular-nums' : 'truncate max-w-[320px]'}`}>{c.render(r)}</td>)}
     </tr>
   );
   return (
@@ -119,148 +119,148 @@ function Report({ r }) {
 
       {view === 'overview' && (
         <div className="space-y-3">
-      {/* KPIs: one strip, each number with its change against the period before */}
-      <div className="rounded-xl bg-white ring-1 ring-slate-200 grid grid-cols-2 lg:grid-cols-4 divide-x divide-y divide-slate-100 overflow-hidden [&>*:nth-child(-n+4)]:border-t-0">
-        {[[Users, 'Active users', fmt(t.activeUsers), ch.activeUsers, 'vs previous period'], [UserPlus, 'New users', fmt(t.newUsers), ch.newUsers], [Activity, 'Sessions', fmt(t.sessions), ch.sessions], [MousePointerClick, 'Engaged sessions', fmt(t.engagedSessions), ch.engagedSessions],
-          [Gauge, 'Engagement rate', pct(t.engagementRate), ch.engagementRate], [Clock, 'Avg engagement time', dur(t.engagementTimePerUser), ch.engagementTimePerUser, `per active user · ${dur(t.averageSessionDuration)} per session`], [Zap, 'Event count', fmt(t.eventCount), ch.eventCount], [Eye, 'Page views', fmt(t.screenPageViews), ch.screenPageViews, `${fmt(t.keyEvents)} key events`]].map(([Ic, label, value, delta, hint]) => (
-          <div key={label} className="px-4 py-3 min-w-0" title={hint}>
-            <div className="flex items-center gap-1.5 text-12 font-semibold text-slate-500 truncate"><Ic size={13} className="text-indigo-500" />{label}</div>
-            <div className="mt-0.5 flex items-baseline gap-2"><span className="text-[22px] leading-tight font-bold text-slate-900 tabular-nums">{value}</span><PctMove v={delta} /></div>
-          </div>))}
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-3">
-        {/* Realtime */}
-        <Card title="Active users in last 30 minutes" subtitle="Live from Google Analytics" action={<Radio size={16} className="text-emerald-500" />}>
-          <div className="text-3xl font-extrabold text-slate-900 tabular-nums">{fmt(rt.active_users_30_min)}</div>
-          <div className="mt-3">
-            <Table cols={[{ label: 'Country', render: x => x.country }, { label: 'Active users', right: true, render: x => fmt(x.active_users) }]} rows={rt.by_country} empty="No active users right now." />
+          {/* KPIs: one strip, each number with its change against the period before */}
+          <div className="rounded-xl bg-white ring-1 ring-slate-200 grid grid-cols-2 lg:grid-cols-4 divide-x divide-y divide-slate-100 overflow-hidden [&>*:nth-child(-n+4)]:border-t-0">
+            {[[Users, 'Active users', fmt(t.activeUsers), ch.activeUsers, 'vs previous period'], [UserPlus, 'New users', fmt(t.newUsers), ch.newUsers], [Activity, 'Sessions', fmt(t.sessions), ch.sessions], [MousePointerClick, 'Engaged sessions', fmt(t.engagedSessions), ch.engagedSessions],
+            [Gauge, 'Engagement rate', pct(t.engagementRate), ch.engagementRate], [Clock, 'Avg engagement time', dur(t.engagementTimePerUser), ch.engagementTimePerUser, `per active user · ${dur(t.averageSessionDuration)} per session`], [Zap, 'Event count', fmt(t.eventCount), ch.eventCount], [Eye, 'Page views', fmt(t.screenPageViews), ch.screenPageViews, `${fmt(t.keyEvents)} key events`]].map(([Ic, label, value, delta, hint]) => (
+              <div key={label} className="px-4 py-3 min-w-0" title={hint}>
+                <div className="flex items-center gap-1.5 text-12 font-semibold text-slate-500 truncate"><Ic size={13} className="text-indigo-500" />{label}</div>
+                <div className="mt-0.5 flex items-baseline gap-2"><span className="text-[22px] leading-tight font-bold text-slate-900 tabular-nums">{value}</span><PctMove v={delta} /></div>
+              </div>))}
           </div>
-        </Card>
 
-        {/* Users and sessions over time */}
-        <Card className="lg:col-span-2" title="Users and sessions per day" subtitle={`${fmt(sum('active_users'))} user-days · ${fmt(sum('sessions'))} sessions · ${fmt(sum('events'))} events`}>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={r.timeline || []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid stroke={INK.grid} vertical={false} />
-                <XAxis dataKey="date" tickFormatter={dayLabel} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} minTickGap={24} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} />
-                <Tooltip />
-                <ChartLegend />
-                <Area type="monotone" dataKey="sessions" name="Sessions" stroke={SERIES[1]} fill={SERIES[1]} fillOpacity={0.12} strokeWidth={2} />
-                <Area type="monotone" dataKey="active_users" name="Active users" stroke={SERIES[0]} fill={SERIES[0]} fillOpacity={0.12} strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="grid lg:grid-cols-3 gap-3">
+            {/* Realtime */}
+            <Card title="Active users in last 30 minutes" subtitle="Live from Google Analytics" action={<Radio size={16} className="text-emerald-500" />}>
+              <div className="text-3xl font-extrabold text-slate-900 tabular-nums">{fmt(rt.active_users_30_min)}</div>
+              <div className="mt-3">
+                <Table cols={[{ label: 'Country', render: x => x.country }, { label: 'Active users', right: true, render: x => fmt(x.active_users) }]} rows={rt.by_country} empty="No active users right now." />
+              </div>
+            </Card>
+
+            {/* Users and sessions over time */}
+            <Card className="lg:col-span-2" title="Users and sessions per day" subtitle={`${fmt(sum('active_users'))} user-days · ${fmt(sum('sessions'))} sessions · ${fmt(sum('events'))} events`}>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={r.timeline || []} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                    <CartesianGrid stroke={INK.grid} vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={dayLabel} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} minTickGap={24} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} />
+                    <Tooltip />
+                    <ChartLegend />
+                    <Area type="monotone" dataKey="sessions" name="Sessions" stroke={SERIES[1]} fill={SERIES[1]} fillOpacity={0.12} strokeWidth={2} />
+                    <Area type="monotone" dataKey="active_users" name="Active users" stroke={SERIES[0]} fill={SERIES[0]} fillOpacity={0.12} strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
           </div>
-        </Card>
-      </div>
 
         </div>
       )}
       {view === 'acquisition' && (
         <div className="space-y-3">
-      {/* Traffic acquisition */}
-      <Card title="Traffic acquisition" subtitle="Sessions by primary channel group">
-        {channelSeries.length > 0 && (
-          <div className="h-64 mb-5">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={channelSeries} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid stroke={INK.grid} vertical={false} />
-                <XAxis dataKey="date" tickFormatter={dayLabel} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} minTickGap={24} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} />
-                <Tooltip />
-                <ChartLegend />
-                {channelNames.map((n, i) => <Line key={n} type="monotone" dataKey={n} stroke={SERIES[i % SERIES.length]} strokeWidth={2} dot={false} connectNulls />)}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-        <Table
-          cols={[
-            { label: 'Channel', render: c => c.channel },
-            { label: 'Sessions', right: true, render: c => `${fmt(c.sessions)} (${share(c.sessions, totalSessions)})` },
-            { label: 'Engaged sessions', right: true, render: c => fmt(c.engagedSessions) },
-            { label: 'Engagement rate', right: true, render: c => pct(c.engagementRate) },
-            { label: 'Avg engagement time', right: true, value: c => c.averageSessionDuration ?? null, render: c => dur(c.averageSessionDuration) },
-            { label: 'Events per session', right: true, render: c => Number(c.eventsPerSession || 0).toFixed(2) },
-            { label: 'Event count', right: true, render: c => fmt(c.eventCount) }
-          ]}
-          rows={channels}
-        />
-      </Card>
+          {/* Traffic acquisition */}
+          <Card title="Traffic acquisition" subtitle="Sessions by primary channel group">
+            {channelSeries.length > 0 && (
+              <div className="h-64 mb-5">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={channelSeries} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                    <CartesianGrid stroke={INK.grid} vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={dayLabel} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} minTickGap={24} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} />
+                    <Tooltip />
+                    <ChartLegend />
+                    {channelNames.map((n, i) => <Line key={n} type="monotone" dataKey={n} stroke={SERIES[i % SERIES.length]} strokeWidth={2} dot={false} connectNulls />)}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <Table
+              cols={[
+                { label: 'Channel', render: c => c.channel },
+                { label: 'Sessions', right: true, render: c => `${fmt(c.sessions)} (${share(c.sessions, totalSessions)})` },
+                { label: 'Engaged sessions', right: true, render: c => fmt(c.engagedSessions) },
+                { label: 'Engagement rate', right: true, render: c => pct(c.engagementRate) },
+                { label: 'Avg engagement time', right: true, value: c => c.averageSessionDuration ?? null, render: c => dur(c.averageSessionDuration) },
+                { label: 'Events per session', right: true, render: c => Number(c.eventsPerSession || 0).toFixed(2) },
+                { label: 'Event count', right: true, render: c => fmt(c.eventCount) }
+              ]}
+              rows={channels}
+            />
+          </Card>
 
-      <div className="grid lg:grid-cols-2 gap-3">
-        <Card title="Source / medium">
-          <Table cols={[{ label: 'Source / medium', render: s => s.source_medium }, { label: 'Sessions', right: true, render: s => fmt(s.sessions) }, { label: 'Active users', right: true, render: s => fmt(s.active_users) }]} rows={shown(r.sources)} />
-        </Card>
-        <Card title="Active users by first user source / medium">
-          <Table cols={[{ label: 'First user source / medium', render: s => s.source_medium }, { label: 'Active users', right: true, render: s => fmt(s.active_users) }]} rows={shown(r.first_sources)} />
-        </Card>
-      </div>
+          <div className="grid lg:grid-cols-2 gap-3">
+            <Card title="Source / medium">
+              <Table cols={[{ label: 'Source / medium', render: s => s.source_medium }, { label: 'Sessions', right: true, render: s => fmt(s.sessions) }, { label: 'Active users', right: true, render: s => fmt(s.active_users) }]} rows={shown(r.sources)} />
+            </Card>
+            <Card title="Active users by first user source / medium">
+              <Table cols={[{ label: 'First user source / medium', render: s => s.source_medium }, { label: 'Active users', right: true, render: s => fmt(s.active_users) }]} rows={shown(r.first_sources)} />
+            </Card>
+          </div>
         </div>
       )}
       {view === 'pages' && (
         <div className="space-y-3">
-      <Card title="Top pages/screens" subtitle="Page title and screen class">
-          <Table cols={[{ label: 'Page title', render: p => p.title }, { label: 'Views', right: true, render: p => fmt(p.views) }, { label: 'Active users', right: true, render: p => fmt(p.active_users) }, { label: 'Event count', right: true, render: p => fmt(p.event_count) }, { label: 'Bounce rate', right: true, render: p => pct(p.bounce_rate) }]} rows={shown(r.pages)} />
-        </Card>
-      <Card title="Pages and screens" subtitle="Page path and screen class">
-        <Table
-          cols={[
-            { label: 'Page path and screen class', render: p => p.path },
-            { label: 'Views', right: true, render: p => fmt(p.views) },
-            { label: 'Active users', right: true, render: p => fmt(p.active_users) },
-            { label: 'Views per active user', right: true, render: p => Number(p.views_per_user || 0).toFixed(2) },
-            { label: 'Avg engagement time per active user', right: true, value: p => p.engagement_per_user ?? null, render: p => dur(p.engagement_per_user) },
-            { label: 'Event count', right: true, render: p => fmt(p.event_count) },
-            { label: 'Key events', right: true, render: p => fmt(p.key_events) }
-          ]}
-          rows={pathRows}
-        />
-      </Card>
+          <Card title="Top pages/screens" subtitle="Page title and screen class">
+            <Table cols={[{ label: 'Page title', render: p => p.title }, { label: 'Views', right: true, render: p => fmt(p.views) }, { label: 'Active users', right: true, render: p => fmt(p.active_users) }, { label: 'Event count', right: true, render: p => fmt(p.event_count) }, { label: 'Bounce rate', right: true, render: p => pct(p.bounce_rate) }]} rows={shown(r.pages)} />
+          </Card>
+          <Card title="Pages and screens" subtitle="Page path and screen class">
+            <Table
+              cols={[
+                { label: 'Page path and screen class', render: p => p.path },
+                { label: 'Views', right: true, render: p => fmt(p.views) },
+                { label: 'Active users', right: true, render: p => fmt(p.active_users) },
+                { label: 'Views per active user', right: true, render: p => Number(p.views_per_user || 0).toFixed(2) },
+                { label: 'Avg engagement time per active user', right: true, value: p => p.engagement_per_user ?? null, render: p => dur(p.engagement_per_user) },
+                { label: 'Event count', right: true, render: p => fmt(p.event_count) },
+                { label: 'Key events', right: true, render: p => fmt(p.key_events) }
+              ]}
+              rows={pathRows}
+            />
+          </Card>
         </div>
       )}
       {view === 'audience' && (
         <div className="space-y-3">
-      <div className="grid lg:grid-cols-2 gap-3">
-        <Card title="Active users by country">
-          <Table cols={[{ label: 'Country', render: c => c.country }, { label: 'Active users', right: true, render: c => `${fmt(c.active_users)} (${share(c.active_users, totalUsers)})` }, { label: 'Sessions', right: true, render: c => fmt(c.sessions) }]} rows={r.countries} />
-        </Card>
-        <Card title="Active users by city">
-          <Table cols={[{ label: 'City', render: c => c.city }, { label: 'Active users', right: true, render: c => fmt(c.active_users) }]} rows={shown(r.cities)} />
-        </Card>
-      </div>
-      <div className="grid lg:grid-cols-2 gap-3">
-        <Card title="Devices">
-          <Table cols={[{ label: 'Device', render: d => d.device }, { label: 'Active users', right: true, render: d => fmt(d.active_users) }, { label: 'Sessions', right: true, render: d => fmt(d.sessions) }]} rows={r.devices} />
-        </Card>
-        <Card title="New vs returning users" subtitle="Active users per day">
-          {nvr.length ? (
-            <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={nvr} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                  <CartesianGrid stroke={INK.grid} vertical={false} />
-                  <XAxis dataKey="date" tickFormatter={dayLabel} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} minTickGap={24} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} />
-                  <Tooltip />
-                  <ChartLegend />
-                  <Line type="monotone" dataKey="new" name="new" stroke={SERIES[1]} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="returning" name="returning" stroke="#7cb342" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ) : <Empty>No data available.</Empty>}
-        </Card>
-      </div>
-      <div className="grid lg:grid-cols-2 gap-3">
-        <Card title="Key events by platform">
-          <Table cols={[{ label: 'Platform', render: k => k.platform }, { label: 'Key events', right: true, render: k => fmt(k.key_events) }]} rows={r.key_events_platform} empty="No data available." />
-        </Card>
-        <Card title="Active users by audience name">
-          <Table cols={[{ label: 'Audience name', render: a => a.audience }, { label: 'Active users', right: true, render: a => fmt(a.active_users) }]} rows={r.audiences} empty="No data available." />
-        </Card>
-      </div>
+          <div className="grid lg:grid-cols-2 gap-3">
+            <Card title="Active users by country">
+              <Table cols={[{ label: 'Country', render: c => c.country }, { label: 'Active users', right: true, render: c => `${fmt(c.active_users)} (${share(c.active_users, totalUsers)})` }, { label: 'Sessions', right: true, render: c => fmt(c.sessions) }]} rows={r.countries} />
+            </Card>
+            <Card title="Active users by city">
+              <Table cols={[{ label: 'City', render: c => c.city }, { label: 'Active users', right: true, render: c => fmt(c.active_users) }]} rows={shown(r.cities)} />
+            </Card>
+          </div>
+          <div className="grid lg:grid-cols-2 gap-3">
+            <Card title="Devices">
+              <Table cols={[{ label: 'Device', render: d => d.device }, { label: 'Active users', right: true, render: d => fmt(d.active_users) }, { label: 'Sessions', right: true, render: d => fmt(d.sessions) }]} rows={r.devices} />
+            </Card>
+            <Card title="New vs returning users" subtitle="Active users per day">
+              {nvr.length ? (
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={nvr} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+                      <CartesianGrid stroke={INK.grid} vertical={false} />
+                      <XAxis dataKey="date" tickFormatter={dayLabel} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} minTickGap={24} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: INK.muted }} stroke={INK.axis} />
+                      <Tooltip />
+                      <ChartLegend />
+                      <Line type="monotone" dataKey="new" name="new" stroke={SERIES[1]} strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="returning" name="returning" stroke="#7cb342" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <Empty>No data available.</Empty>}
+            </Card>
+          </div>
+          <div className="grid lg:grid-cols-2 gap-3">
+            <Card title="Key events by platform">
+              <Table cols={[{ label: 'Platform', render: k => k.platform }, { label: 'Key events', right: true, render: k => fmt(k.key_events) }]} rows={r.key_events_platform} empty="No data available." />
+            </Card>
+            <Card title="Active users by audience name">
+              <Table cols={[{ label: 'Audience name', render: a => a.audience }, { label: 'Active users', right: true, render: a => fmt(a.active_users) }]} rows={r.audiences} empty="No data available." />
+            </Card>
+          </div>
         </div>
       )}
     </div>

@@ -75,7 +75,7 @@ export default function NotificationBell() {
               {items.map(n => (
                 <li key={n.id}>
                   <div className={`flex gap-3 px-4 py-3 ${n.read ? '' : 'bg-indigo-50/50'}`}>
-                    <span className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${n.kind === 'low_rating_review' ? 'bg-rose-50 text-rose-500' : 'bg-amber-50 text-amber-500'}`}><Star size={15} className={n.read ? '' : 'fill-current'} /></span>
+                    <span className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${n.kind === 'low_rating_review' || n.kind.endsWith('_failed') ? 'bg-rose-50 text-rose-500' : 'bg-amber-50 text-amber-500'}`}><Star size={15} className={n.read ? '' : 'fill-current'} /></span>
                     <div className="min-w-0 flex-1">
                       <button type="button" role="menuitem" onClick={() => go(n)} className="text-left w-full cursor-pointer outline-none focus-visible:underline">
                         <div className="text-11.5 text-slate-400 truncate">{n.business_name || 'Project'} · {ago(n.created_at)}</div>

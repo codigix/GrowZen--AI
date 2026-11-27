@@ -72,10 +72,10 @@ function KeywordTable({ rows: all, empty = 'No keywords.', resetKey = '', name =
             {rows.map(r => (
               <tr key={r.keyword} className="hover:bg-slate-50">
                 <td className="px-4 py-2.5 font-medium text-indigo-700 max-w-[280px] truncate" title={r.keyword}>{r.keyword}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.rank ?? <span className="text-slate-400">&gt;10</span>}</td>
+                <td className="px-4 py-2.5  tabular-nums">{r.rank ?? <span className="text-slate-400">&gt;10</span>}</td>
                 <td className="px-4 py-2.5 text-right"><Chg v={r.change} d={0} /></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.visibility}%</td>
+                <td className="px-4 py-2.5  tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
+                <td className="px-4 py-2.5  tabular-nums">{r.visibility}%</td>
                 <td className="px-4 py-2.5 text-slate-500">{r.tag || '—'}</td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={r.keyword} url={r.url} /></td>
               </tr>
@@ -95,7 +95,7 @@ function Impact({ title, tone, block, onAll, allLabel }) {
       {block.rows.length ? (
         <table className="w-full text-13">
           <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">{tone === 'pos' ? 'Visibility gain' : 'Visibility loss'}</Th></tr></thead>
-          <tbody className="divide-y divide-slate-100">{block.rows.map(r => <tr key={r.keyword}><td className="px-4 py-2.5 text-indigo-700 max-w-[200px] truncate" title={r.keyword}>{r.keyword}</td><td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${tone === 'pos' ? 'text-emerald-600' : 'text-red-500'}`}>{sign(r.gain)}%</td></tr>)}</tbody>
+          <tbody className="divide-y divide-slate-100">{block.rows.map(r => <tr key={r.keyword}><td className="px-4 py-2.5 text-indigo-700 max-w-[200px] truncate" title={r.keyword}>{r.keyword}</td><td className={`px-4 py-2.5  tabular-nums font-semibold ${tone === 'pos' ? 'text-emerald-600' : 'text-red-500'}`}>{sign(r.gain)}%</td></tr>)}</tbody>
         </table>
       ) : <Empty>{tone === 'pos' ? 'No keyword gained visibility in this period.' : 'No keyword lost visibility in this period.'}</Empty>}
       <div className="p-4"><Button size="sm" onClick={onAll} disabled={!block.count}>{allLabel}</Button></div>
@@ -169,7 +169,7 @@ export function Landscape({ d, onTab, b }) {
         <Card title="Top keywords" pad={false}>
           <table className="w-full text-13">
             <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Keyword</Th><Th c="text-right">Pos.</Th><Th c="text-right">Visibility</Th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{d.top.map(r => <tr key={r.keyword}><td className="px-4 py-2.5 text-indigo-700 max-w-[190px] truncate" title={r.keyword}>{r.keyword}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.rank ?? '—'} <Chg v={r.change} d={0} /></td><td className="px-4 py-2.5 text-right tabular-nums">{r.visibility}%</td></tr>)}</tbody>
+            <tbody className="divide-y divide-slate-100">{d.top.map(r => <tr key={r.keyword}><td className="px-4 py-2.5 text-indigo-700 max-w-[190px] truncate" title={r.keyword}>{r.keyword}</td><td className="px-4 py-2.5  tabular-nums">{r.rank ?? '—'} <Chg v={r.change} d={0} /></td><td className="px-4 py-2.5  tabular-nums">{r.visibility}%</td></tr>)}</tbody>
           </table>
           <div className="p-4"><Button size="sm" onClick={() => setKwView('all')}>View all {d.tracked} keywords</Button></div>
         </Card>
@@ -192,8 +192,8 @@ export function Landscape({ d, onTab, b }) {
             <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><Th>Tag</Th><Th c="text-right">Keywords</Th><Th c="text-right">Visibility</Th><Th c="text-right">Avg. pos.</Th></tr></thead>
             <tbody className="divide-y divide-slate-100">{d.tags.slice(0, 5).map(t => (
               <tr key={t.tag}><td className="px-4 py-2.5"><span className="px-2.5 py-0.5 rounded-full border border-slate-200 text-12 text-slate-700">{t.tag}</span></td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{t.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{t.visibility}% <Chg v={t.visibility_change} /></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{t.avg_position ?? '—'}</td></tr>))}</tbody>
+                <td className="px-4 py-2.5  tabular-nums text-indigo-700">{t.keywords}</td><td className="px-4 py-2.5  tabular-nums">{t.visibility}% <Chg v={t.visibility_change} /></td>
+                <td className="px-4 py-2.5  tabular-nums">{t.avg_position ?? '—'}</td></tr>))}</tbody>
           </table>
         ) : (
           <div className="py-10 flex flex-col items-center text-center gap-2">
@@ -212,9 +212,9 @@ export function Landscape({ d, onTab, b }) {
             <tbody className="divide-y divide-slate-100">{d.pages[pagesTab].map(p => (
               <tr key={p.url} className="hover:bg-slate-50">
                 <td className="px-4 py-2.5 max-w-[420px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={p.url}>{path(p.url)}<ExternalLink size={10} /></a></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{p.keywords}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{p.avg_position} <Chg v={p.avg_position_change} better="down" /></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? <>{p.traffic} <Chg v={p.traffic_change} /></> : '—'}</td>
+                <td className="px-4 py-2.5  tabular-nums">{p.keywords}</td>
+                <td className="px-4 py-2.5  tabular-nums">{p.avg_position} <Chg v={p.avg_position_change} better="down" /></td>
+                <td className="px-4 py-2.5  tabular-nums">{d.has_volume ? <>{p.traffic} <Chg v={p.traffic_change} /></> : '—'}</td>
               </tr>))}</tbody>
           </table>
         ) : <Empty>{pagesTab === 'top' ? 'No page of this site is shown on Google for a tracked keyword yet.' : `No ${pagesTab} pages in this period.`}</Empty>}
@@ -252,24 +252,24 @@ function TagsTab({ d }) {
   const { sorted, sort, onSort } = useSorted(d.tags, tagValue);
   const pg = usePager(sorted, { size: 25 });
   return (
-      <Card title={`Tags (${d.tags.length})`} subtitle="Keywords grouped by their cluster" pad={false}>
-        {d.tags.length ? (
-          <table className="w-full text-13">
-            <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="tag" sort={sort} onSort={onSort} className={TC}>Tag</SortTh><SortTh id="keywords" sort={sort} onSort={onSort} right first="desc" className={TC}>Keywords</SortTh><SortTh id="visibility" sort={sort} onSort={onSort} right first="desc" className={TC}>Visibility</SortTh><SortTh id="traffic" sort={sort} onSort={onSort} right first="desc" className={TC}>Est. traffic</SortTh><SortTh id="pos" sort={sort} onSort={onSort} right className={TC}>Avg. pos.</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={TC}>Volume</SortTh></tr></thead>
-            <tbody className="divide-y divide-slate-100">{pg.rows.map(t => (
-              <tr key={t.tag} className="hover:bg-slate-50">
-                <td className="px-4 py-2.5"><span className="px-2.5 py-0.5 rounded-full border border-slate-200 text-12 text-slate-700">{t.tag}</span></td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{t.keywords}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{t.visibility}% <Chg v={t.visibility_change} /></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{d.has_volume ? <>{t.traffic} <Chg v={t.traffic_change} /></> : '—'}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{t.avg_position ?? '—'} <Chg v={t.avg_position_change} better="down" d={1} /></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{t.volume != null ? fmt(t.volume) : '—'}</td>
-              </tr>))}</tbody>
-          </table>
-        ) : <Empty>No keyword has a tag yet. Group keywords into clusters in Keyword Strategy Builder and they show up here.</Empty>}
-        {d.tags.length > 0 && <div className="px-4 py-3 border-t border-slate-100"><CsvButton onClick={() => downloadCsv(`keyword-tags-${d.domain}`, ['Tag', 'Keywords', 'Visibility (%)', 'Estimated traffic', 'Average position', 'Searches per month'], sorted.map(t => [t.tag, t.keywords, t.visibility ?? '', d.has_volume ? (t.traffic ?? '') : '', t.avg_position ?? '', t.volume ?? '']))} /></div>}
-        {d.tags.length > 0 && <Pager p={pg} label="tags" />}
-      </Card>
+    <Card title={`Tags (${d.tags.length})`} subtitle="Keywords grouped by their cluster" pad={false}>
+      {d.tags.length ? (
+        <table className="w-full text-13">
+          <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><SortTh id="tag" sort={sort} onSort={onSort} className={TC}>Tag</SortTh><SortTh id="keywords" sort={sort} onSort={onSort} right first="desc" className={TC}>Keywords</SortTh><SortTh id="visibility" sort={sort} onSort={onSort} right first="desc" className={TC}>Visibility</SortTh><SortTh id="traffic" sort={sort} onSort={onSort} right first="desc" className={TC}>Est. traffic</SortTh><SortTh id="pos" sort={sort} onSort={onSort} right className={TC}>Avg. pos.</SortTh><SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={TC}>Volume</SortTh></tr></thead>
+          <tbody className="divide-y divide-slate-100">{pg.rows.map(t => (
+            <tr key={t.tag} className="hover:bg-slate-50">
+              <td className="px-4 py-2.5"><span className="px-2.5 py-0.5 rounded-full border border-slate-200 text-12 text-slate-700">{t.tag}</span></td>
+              <td className="px-4 py-2.5  tabular-nums text-indigo-700">{t.keywords}</td>
+              <td className="px-4 py-2.5  tabular-nums">{t.visibility}% <Chg v={t.visibility_change} /></td>
+              <td className="px-4 py-2.5  tabular-nums">{d.has_volume ? <>{t.traffic} <Chg v={t.traffic_change} /></> : '—'}</td>
+              <td className="px-4 py-2.5  tabular-nums">{t.avg_position ?? '—'} <Chg v={t.avg_position_change} better="down" d={1} /></td>
+              <td className="px-4 py-2.5  tabular-nums">{t.volume != null ? fmt(t.volume) : '—'}</td>
+            </tr>))}</tbody>
+        </table>
+      ) : <Empty>No keyword has a tag yet. Group keywords into clusters in Keyword Strategy Builder and they show up here.</Empty>}
+      {d.tags.length > 0 && <div className="px-4 py-3 border-t border-slate-100"><CsvButton onClick={() => downloadCsv(`keyword-tags-${d.domain}`, ['Tag', 'Keywords', 'Visibility (%)', 'Estimated traffic', 'Average position', 'Searches per month'], sorted.map(t => [t.tag, t.keywords, t.visibility ?? '', d.has_volume ? (t.traffic ?? '') : '', t.avg_position ?? '', t.volume ?? '']))} /></div>}
+      {d.tags.length > 0 && <Pager p={pg} label="tags" />}
+    </Card>
   );
 }
 

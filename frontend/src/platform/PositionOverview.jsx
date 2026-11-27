@@ -241,28 +241,28 @@ export default function PositionOverview({ d, b, onChanged }) {
                 const td = r.traffic != null && r.traffic_was != null ? Math.round((r.traffic - r.traffic_was) * 100) / 100 : null;
                 return (
                   <React.Fragment key={r.keyword}>
-                  <tr className={open.has(r.keyword) ? 'bg-slate-50' : 'hover:bg-slate-50'}>
-                    <td className="pl-3 pt-3 w-8 align-top"><button type="button" aria-label={open.has(r.keyword) ? 'Hide the position chart' : 'Show the position chart'} onClick={() => toggleRow(r.keyword)} className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer"><ChevronRight size={15} className={`transition-transform ${open.has(r.keyword) ? 'rotate-90' : ''}`} /></button></td>
-                    <td className="px-3 py-3 max-w-[260px] align-top"><button type="button" onClick={() => toggleRow(r.keyword)} className="font-medium text-indigo-700 hover:underline text-left cursor-pointer">{r.keyword}</button><div><TagPill r={r} b={b} onChanged={onChanged} /></div></td>
-                    {cols.has('intent') && <td className="px-3 py-3">{r.intent && INTENT[r.intent] ? <span title={r.intent} className={`inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center ${INTENT[r.intent][1]}`}>{INTENT[r.intent][0]}</span> : <span className="text-slate-400">n/a</span>}</td>}
-                    {cols.has('sf') && <td className="px-3 py-3 text-right tabular-nums">{r.sf ? <span className="inline-flex items-center gap-1" title="SERP features on this results page"><Sparkles size={12} className="text-slate-400" />{r.sf}</span> : dash}</td>}
-                    {cols.has('kd') && <td className="px-3 py-3 text-right tabular-nums">{r.kd != null ? <span className="inline-flex items-center gap-1.5">{r.kd}<span className="w-2.5 h-2.5 rounded-full" style={{ background: kdColor(r.kd) }} /></span> : dash}</td>}
-                    {show('positions') && <>
-                      <td className="px-3 py-3 text-right tabular-nums">{r.was ?? dash}</td>
-                      <td className="px-3 py-3 text-right tabular-nums font-semibold bg-slate-50/60">{r.rank ?? dash}</td>
-                      <td className="px-3 py-3 text-right">{r.change == null ? dash : r.change ? <Chg v={r.change} d={0} /> : <span className="text-slate-500">0</span>}</td></>}
-                    {show('visibility') && <>
-                      <td className="px-3 py-3 text-right tabular-nums">{r.visibility}%</td>
-                      <td className="px-3 py-3 text-right tabular-nums">{vd == null ? dash : vd ? <Chg v={vd} d={3} /> : <span className="text-slate-500">0</span>}</td></>}
-                    {show('traffic') && <>
-                      <td className="px-3 py-3 text-right tabular-nums">{r.traffic ?? dash}</td>
-                      <td className="px-3 py-3 text-right tabular-nums">{td == null ? dash : td ? <Chg v={td} /> : <span className="text-slate-500">0</span>}</td></>}
-                    {cols.has('vol') && <td className="px-3 py-3 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : dash}</td>}
-                    {cols.has('cpc') && <td className="px-3 py-3 text-right tabular-nums">{r.cpc != null ? r.cpc : dash}</td>}
-                    {cols.has('url') && <td className="px-3 py-3 max-w-[260px] truncate">{r.url ? <a href={r.url} target="_blank" rel="noreferrer" title={r.url} className="text-indigo-700 hover:underline inline-flex items-center gap-1">{path(r.url)}<ExternalLink size={10} className="shrink-0" /></a> : dash}</td>}
-                    <td className="px-3 py-3 text-right whitespace-nowrap align-top"><KeywordActs keyword={r.keyword} url={r.url} /></td>
-                  </tr>
-                  {open.has(r.keyword) && <tr><td colSpan={17} className="p-0 border-y-2 border-indigo-200 bg-white"><PositionChart r={r} domains={chosen} colorOf={colorOf} me={me} /></td></tr>}
+                    <tr className={open.has(r.keyword) ? 'bg-slate-50' : 'hover:bg-slate-50'}>
+                      <td className="pl-3 pt-3 w-8 align-top"><button type="button" aria-label={open.has(r.keyword) ? 'Hide the position chart' : 'Show the position chart'} onClick={() => toggleRow(r.keyword)} className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer"><ChevronRight size={15} className={`transition-transform ${open.has(r.keyword) ? 'rotate-90' : ''}`} /></button></td>
+                      <td className="px-3 py-3 max-w-[260px] align-top"><button type="button" onClick={() => toggleRow(r.keyword)} className="font-medium text-indigo-700 hover:underline text-left cursor-pointer">{r.keyword}</button><div><TagPill r={r} b={b} onChanged={onChanged} /></div></td>
+                      {cols.has('intent') && <td className="px-3 py-3">{r.intent && INTENT[r.intent] ? <span title={r.intent} className={`inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center ${INTENT[r.intent][1]}`}>{INTENT[r.intent][0]}</span> : <span className="text-slate-400">n/a</span>}</td>}
+                      {cols.has('sf') && <td className="px-3 py-3  tabular-nums">{r.sf ? <span className="inline-flex items-center gap-1" title="SERP features on this results page"><Sparkles size={12} className="text-slate-400" />{r.sf}</span> : dash}</td>}
+                      {cols.has('kd') && <td className="px-3 py-3  tabular-nums">{r.kd != null ? <span className="inline-flex items-center gap-1.5">{r.kd}<span className="w-2.5 h-2.5 rounded-full" style={{ background: kdColor(r.kd) }} /></span> : dash}</td>}
+                      {show('positions') && <>
+                        <td className="px-3 py-3  tabular-nums">{r.was ?? dash}</td>
+                        <td className="px-3 py-3  tabular-nums font-semibold bg-slate-50/60">{r.rank ?? dash}</td>
+                        <td className="px-3 py-3 text-right">{r.change == null ? dash : r.change ? <Chg v={r.change} d={0} /> : <span className="text-slate-500">0</span>}</td></>}
+                      {show('visibility') && <>
+                        <td className="px-3 py-3  tabular-nums">{r.visibility}%</td>
+                        <td className="px-3 py-3  tabular-nums">{vd == null ? dash : vd ? <Chg v={vd} d={3} /> : <span className="text-slate-500">0</span>}</td></>}
+                      {show('traffic') && <>
+                        <td className="px-3 py-3  tabular-nums">{r.traffic ?? dash}</td>
+                        <td className="px-3 py-3  tabular-nums">{td == null ? dash : td ? <Chg v={td} /> : <span className="text-slate-500">0</span>}</td></>}
+                      {cols.has('vol') && <td className="px-3 py-3  tabular-nums">{r.volume != null ? fmt(r.volume) : dash}</td>}
+                      {cols.has('cpc') && <td className="px-3 py-3  tabular-nums">{r.cpc != null ? r.cpc : dash}</td>}
+                      {cols.has('url') && <td className="px-3 py-3 max-w-[260px] truncate">{r.url ? <a href={r.url} target="_blank" rel="noreferrer" title={r.url} className="text-indigo-700 hover:underline inline-flex items-center gap-1">{path(r.url)}<ExternalLink size={10} className="shrink-0" /></a> : dash}</td>}
+                      <td className="px-3 py-3 text-right whitespace-nowrap align-top"><KeywordActs keyword={r.keyword} url={r.url} /></td>
+                    </tr>
+                    {open.has(r.keyword) && <tr><td colSpan={17} className="p-0 border-y-2 border-indigo-200 bg-white"><PositionChart r={r} domains={chosen} colorOf={colorOf} me={me} /></td></tr>}
                   </React.Fragment>);
               })}
               {!pager.rows.length && <tr><td colSpan={17} className="px-5 py-10 text-center text-slate-500">No keyword matches these filters.</td></tr>}

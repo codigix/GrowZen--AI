@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { RefreshCw, Sparkles, Download, ExternalLink, ArrowUp, ArrowDown, ChevronDown, ChevronRight, MapPin, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { RefreshCw, Sparkles, Download, ExternalLink, ArrowUp, ArrowDown, ChevronDown, ChevronRight, MapPin, Search, LineChart } from 'lucide-react';
 import { Card, Button, Badge, ErrorNote, Stat, useAction, useToast, SkList } from './SeoUi';
 import { api, useApi, fmtDate } from './seoApi';
 import Tip from './Tip';
@@ -95,6 +96,7 @@ export default function PagePositions({ b }) {
                   <SortTh id="url" sort={sort} onSort={onSort} className={P}>Page that ranks</SortTh>
                   <SortTh id="volume" sort={sort} onSort={onSort} right first="desc" className={P}>Volume</SortTh>
                   <SortTh id="advice" sort={sort} onSort={onSort} className={P}>What to do</SortTh>
+                  <th className={`${TH} text-right`}>Track</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -109,17 +111,18 @@ export default function PagePositions({ b }) {
                         <td className="px-3 py-3 font-semibold text-slate-900 max-w-[240px]"><span className="block truncate" title={r.keyword}>{r.keyword}</span>{r.checked && <span className="block text-11.5 font-normal text-slate-400">checked {fmtDate(r.checked)}</span>}</td>
                         <td className="px-3 py-3"><PosBadge r={r} /></td>
                         <td className="px-3 py-3 text-right">{r.change ? <Badge tone={r.change > 0 ? 'green' : 'red'}>{r.change > 0 ? <ArrowUp size={11} /> : <ArrowDown size={11} />}{Math.abs(r.change)}</Badge> : <span className="text-slate-300">—</span>}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{n0(r.impressions)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{n0(r.clicks)}</td>
+                        <td className="px-3 py-3  tabular-nums">{n0(r.impressions)}</td>
+                        <td className="px-3 py-3  tabular-nums">{n0(r.clicks)}</td>
                         <td className="px-3 py-3 whitespace-nowrap">{!r.checked ? <span className="text-slate-300">—</span> : r.maps_rank ? <Badge tone={r.maps_rank <= 3 ? 'green' : 'blue'}><MapPin size={11} />#{r.maps_rank}</Badge> : <Tip text={r.maps_first ? `Not in the Maps results. Maps leader: ${r.maps_first}.` : 'Not in the Maps results.'}><span className="text-12 text-slate-400">not listed</span></Tip>}</td>
                         <td className="px-3 py-3 max-w-[200px]">{r.url ? <a href={r.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{path(r.url)}</span><ExternalLink size={11} className="shrink-0" /></a> : r.target_url ? <span className="text-slate-500 truncate block" title={r.target_url}>target {path(r.target_url)}</span> : <span className="text-slate-300">—</span>}</td>
-                        <td className="px-3 py-3 text-right tabular-nums text-slate-600">{n0(r.volume)}</td>
+                        <td className="px-3 py-3  tabular-nums text-slate-600">{n0(r.volume)}</td>
                         <td className="px-3 py-3 max-w-[260px]">{top ? <span className="flex items-start gap-1.5"><Badge tone={t}>{label}</Badge><Tip text={top.text} wide><span className="text-12.5 text-slate-600 line-clamp-2">{top.text}</span></Tip></span> : <span className="text-slate-300">—</span>}{r.advice.length > 1 && <span className="text-11.5 text-indigo-600">+{r.advice.length - 1} more</span>}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap"><Link to={`/rank-tracking/landscape?kw=${encodeURIComponent(r.keyword)}`} onClick={e => e.stopPropagation()} title={`Open the tracking page of “${r.keyword}”: position history, SERP features, competitors`} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-indigo-600 text-white text-12.5 font-semibold hover:bg-indigo-700"><LineChart size={14} />Track</Link></td>
                       </tr>
                       {on && (
                         <tr className="bg-slate-50/70">
                           <td />
-                          <td colSpan={9} className="px-3 py-3">
+                          <td colSpan={10} className="px-3 py-3">
                             {r.ahead.length > 0 && <div className="mb-2 text-12 text-slate-500">Ahead of you: {r.ahead.join(', ')}</div>}
                             <ul className="grid gap-2">{r.advice.map((a, i) => { const [l, tt] = LEVEL[a.level] || LEVEL.improve; return <li key={i} className="flex gap-2 text-13 text-slate-700"><Badge tone={tt}>{l}</Badge><span>{a.text}</span></li>; })}</ul>
                           </td>

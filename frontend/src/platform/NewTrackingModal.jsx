@@ -4,6 +4,7 @@ import { Button, ErrorNote, useAction } from './SeoUi';
 import { api } from './seoApi';
 import Wizard, { Row, fieldCls, boxCls } from './Wizard';
 import Select from '../components/Select';
+import PlacePicker from './PlacePicker';
 
 const ENGINES = [['google', 'Google'], ['chatgpt', 'ChatGPT'], ['gemini', 'Gemini']];
 const DEVICES = [['desktop', 'Desktop'], ['mobile', 'Mobile'], ['tablet', 'Tablet']];
@@ -71,7 +72,7 @@ export default function NewTrackingModal({ open, onClose, projects, initialId, o
           <Row label="Device" hint={cfg.device !== 'desktop' ? 'Positions are read for desktop for now; this choice is saved for when other devices are available.' : null}>
             <div className="inline-flex rounded border border-slate-300 overflow-hidden">{DEVICES.map(([d, l]) => <button key={d} type="button" onClick={() => set('device', d)} className={seg(cfg.device === d)}>{l}</button>)}</div>
           </Row>
-          <Row label="Location" hint="A city or country: Google's results are read as if searched from there."><input className={`${fieldCls} w-full max-w-md`} value={cfg.location} onChange={e => set('location', e.target.value)} placeholder="e.g. Pune, India" aria-label="Location" /></Row>
+          <Row label="Location" hint="Search any place on Google Maps, or click the map: Google's results are read as if searched from there.">{id ? <PlacePicker b={{ id, country: projects?.find(p => String(p.id) === String(id))?.country || 'IN', target_areas: projects?.find(p => String(p.id) === String(id))?.target_areas || [] }} value={cfg.location} width={320} placeholder="Choose a place" places={[{ name: info?.location || 'Project area', kind: 'default' }]} onChange={(v) => set('location', v)} /> : <span className="text-13 text-slate-500">Choose a project first.</span>}</Row>
           <Row label="Language"><Select className={`${fieldCls} w-48`} value={cfg.language} onChange={e => set('language', e.target.value)} aria-label="Language">{LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Row>
           <Row label="Business name for local map pack" hint="Optional. The full name as it appears on Google Maps, to follow the business in the Maps pack."><input className={`${fieldCls} w-full max-w-md`} value={cfg.map_name} onChange={e => set('map_name', e.target.value)} placeholder="Enter full business name" aria-label="Business name" /></Row>
         </div>

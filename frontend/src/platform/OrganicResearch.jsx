@@ -158,8 +158,10 @@ function FeatureCount({ list = [], mine = [] }) {
       {open && (
         <span role="dialog" aria-label="SERP Features on SERP" className="absolute right-0 top-full mt-1 z-30 w-60 rounded bg-white shadow-lg ring-1 ring-slate-200 p-4 text-left whitespace-normal">
           <span className="block text-14 font-bold text-slate-900 mb-2">SERP Features on SERP</span>
-          <span className="block space-y-2.5">{list.map(f => { const I = SF_ICON[f] || Info; return (
-            <span key={f} className={`flex items-center gap-2.5 text-14 ${mine.includes(f) ? 'text-emerald-700 font-semibold' : 'text-slate-700'}`}><I size={16} className={mine.includes(f) ? 'text-emerald-600' : 'text-slate-400'} />{f}{mine.includes(f) && <span className="text-11 font-normal">(you)</span>}</span>); })}</span>
+          <span className="block space-y-2.5">{list.map(f => {
+            const I = SF_ICON[f] || Info; return (
+              <span key={f} className={`flex items-center gap-2.5 text-14 ${mine.includes(f) ? 'text-emerald-700 font-semibold' : 'text-slate-700'}`}><I size={16} className={mine.includes(f) ? 'text-emerald-600' : 'text-slate-400'} />{f}{mine.includes(f) && <span className="text-11 font-normal">(you)</span>}</span>);
+          })}</span>
         </span>
       )}
     </span>
@@ -187,14 +189,14 @@ function TopKeywords({ intel, research, onAll }) {
     <Card title="Top Keywords" pad={false}>
       <div className="px-5 pt-4 pb-3 border-t border-slate-100"><div className="inline-flex rounded border border-slate-200 overflow-hidden">{chip('all', 'All Positions')}{chip('organic', 'Organic')}{chip('serp', 'SERP Features')}</div></div>
       <RowsTable exportName={`top-keywords-${siteOf(research, intel)}`} exportCols={[['Keyword', x => x.keyword], ['Position', x => x.position], ['Search result features', x => x.features.length], ['Searches per month', x => x.volume], ['Share of traffic (%)', x => (x.share == null ? '' : Math.round(x.share * 100) / 100)]]} rows={shown} cols={[{ id: 'keyword', label: 'Keyword', value: x => x.keyword, th: 'px-5 py-3' }, { id: 'position', label: 'Position', value: x => x.position, right: true, first: 'asc', th: 'px-3 py-3' }, { id: 'sf', label: 'SF', value: x => x.features.length, right: true, th: 'px-3 py-3' }, { id: 'volume', label: 'Volume', value: x => x.volume, right: true, th: 'px-3 py-3' }, { id: 'share', label: 'Traffic %', value: x => x.share, right: true, th: 'px-5 py-3' }]} resetKey={tab} tableClass="w-full text-14" thead="text-12.5 text-slate-600 border-b border-slate-200" initialSort={{ key: 'share', dir: 'desc' }} empty="No keyword in this view." label="keywords" searchText={x => x.keyword} row={x => (
-            <tr key={x.keyword} className="align-top">
-              <td className="px-5 py-3 max-w-[260px]"><a href={`https://www.google.com/search?q=${encodeURIComponent(x.keyword)}`} target="_blank" rel="noreferrer" title="Open this search on Google" className="text-indigo-700 hover:underline">{x.keyword}</a>
-                <a href={`https://www.google.com/search?q=${encodeURIComponent(x.keyword)}`} target="_blank" rel="noreferrer" aria-label={`See the results page for ${x.keyword}`} className="ml-1.5 inline-block align-middle text-slate-400 hover:text-slate-700"><PanelTop size={14} /></a></td>
-              <td className="px-3 py-3 text-right tabular-nums">{x.position ?? <span className="text-slate-300">—</span>}</td>
-              <td className="px-3 py-3 text-right"><FeatureCount list={x.features} mine={x.mine} /></td>
-              <td className="px-3 py-3 text-right tabular-nums">{x.volume != null ? fmt(x.volume) : <span className="text-slate-300">—</span>}</td>
-              <td className="px-5 py-3 text-right tabular-nums">{x.share == null ? <span className="text-slate-300">—</span> : x.share < 0.01 ? '< 0.01' : x.share.toFixed(2)}</td>
-            </tr>)} />
+        <tr key={x.keyword} className="align-top">
+          <td className="px-5 py-3 max-w-[260px]"><a href={`https://www.google.com/search?q=${encodeURIComponent(x.keyword)}`} target="_blank" rel="noreferrer" title="Open this search on Google" className="text-indigo-700 hover:underline">{x.keyword}</a>
+            <a href={`https://www.google.com/search?q=${encodeURIComponent(x.keyword)}`} target="_blank" rel="noreferrer" aria-label={`See the results page for ${x.keyword}`} className="ml-1.5 inline-block align-middle text-slate-400 hover:text-slate-700"><PanelTop size={14} /></a></td>
+          <td className="px-3 py-3  tabular-nums">{x.position ?? <span className="text-slate-300">—</span>}</td>
+          <td className="px-3 py-3 text-right"><FeatureCount list={x.features} mine={x.mine} /></td>
+          <td className="px-3 py-3  tabular-nums">{x.volume != null ? fmt(x.volume) : <span className="text-slate-300">—</span>}</td>
+          <td className="px-5 py-3  tabular-nums">{x.share == null ? <span className="text-slate-300">—</span> : x.share < 0.01 ? '< 0.01' : x.share.toFixed(2)}</td>
+        </tr>)} />
       <div className="p-4"><button type="button" onClick={onAll} className="h-9 px-3.5 rounded text-13 font-semibold bg-slate-900 text-white hover:bg-slate-800 cursor-pointer">View all {fmt(count)} keywords</button></div>
     </Card>
   );
@@ -217,8 +219,8 @@ function Intent({ intel, research }) {
             <thead className="text-11.5 text-slate-500"><tr><Th>Intent</Th><Th c="text-right">Keywords</Th>{!fallback && <Th c="text-right">Traffic</Th>}</tr></thead>
             <tbody className="divide-y divide-slate-100">{list.map(i => (
               <tr key={i.intent}><td className="px-4 py-2"><span className="inline-block w-2.5 h-2.5 rounded-full mr-2" style={{ background: meta(i.intent)[1] }} />{meta(i.intent)[0]}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-indigo-700">{i.keywords} <span className="text-slate-400">({Math.round((i.keywords / kTotal) * 1000) / 10}%)</span></td>
-                {!fallback && <td className="px-4 py-2 text-right tabular-nums">{tTotal ? `${Math.round((i.traffic / tTotal) * 100)}%` : '—'}</td>}</tr>))}</tbody>
+                <td className="px-4 py-2  tabular-nums text-indigo-700">{i.keywords} <span className="text-slate-400">({Math.round((i.keywords / kTotal) * 1000) / 10}%)</span></td>
+                {!fallback && <td className="px-4 py-2  tabular-nums">{tTotal ? `${Math.round((i.traffic / tTotal) * 100)}%` : '—'}</td>}</tr>))}</tbody>
           </table>
         </div>
       ) : <Empty>{whyIntel(intel, s, 'keywords')}</Empty>}
@@ -236,10 +238,10 @@ function Changes({ research, kinds, title, render, noun = 'tracked keywords' }) 
       <div className="px-5 py-3 flex gap-1.5 border-b border-slate-100">{kinds.map(([id, l]) => <button key={id} type="button" onClick={() => setTab(id)} className={`h-7 px-3 text-12 font-semibold rounded border cursor-pointer ${tab === id ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 bg-white'}`}>{l}{research?.counts ? <span className="ml-1 opacity-60">{research.counts[id] ?? ''}</span> : null}</button>)}</div>
       {none ? <Empty>{researchWhy(research)}</Empty> : rows.length ? (
         <RowsTable exportName={`position-changes-${siteOf(research)}`} exportCols={[['Keyword', r => r.keyword], ['Previous position', r => r.was], ['Current position', r => r.rank], ['Searches per month', r => r.volume]]} rows={rows} cols={[{ id: 'keyword', label: 'Keyword', value: r => r.keyword }, { id: 'was', label: 'Was', value: r => r.was, right: true, first: 'asc' }, { id: 'now', label: 'Now', value: r => r.rank, right: true, first: 'asc' }, { id: 'volume', label: 'Volume', value: r => r.volume, right: true }]} resetKey={tab} label="keywords" searchText={r => r.keyword} row={r => render ? render(r) : (
-            <tr key={r.keyword} className="hover:bg-slate-50"><td className="px-4 py-2.5 text-indigo-700 font-medium max-w-[260px] truncate" title={r.keyword}>{r.keyword}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{r.was ?? '—'}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{r.rank ?? '—'} <span className={`text-11.5 font-semibold ${r.change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{r.change > 0 ? '↑' : '↓'}{Math.abs(r.change)}</span></td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td></tr>)} />
+          <tr key={r.keyword} className="hover:bg-slate-50"><td className="px-4 py-2.5 text-indigo-700 font-medium max-w-[260px] truncate" title={r.keyword}>{r.keyword}</td>
+            <td className="px-4 py-2.5  tabular-nums text-slate-500">{r.was ?? '—'}</td>
+            <td className="px-4 py-2.5  tabular-nums">{r.rank ?? '—'} <span className={`text-11.5 font-semibold ${r.change > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{r.change > 0 ? '↑' : '↓'}{Math.abs(r.change)}</span></td>
+            <td className="px-4 py-2.5  tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td></tr>)} />
       ) : <Empty>Nothing found. {research.comparable ? 'No tracked keyword changed in this way in this period.' : 'Changes appear after a second position check.'}</Empty>}
     </Card>
   );
@@ -247,8 +249,10 @@ function Changes({ research, kinds, title, render, noun = 'tracked keywords' }) 
 
 function researchWhy(r) {
   if (!r) return 'Loading…';
-  return { no_website: 'Add the business website first: positions are matched by its domain.', no_keywords: 'No keyword is tracked yet. Add keywords in the Positions tab or the Keyword Magic Tool.',
-    no_data: r.rank_ready ? 'No position has been checked in this period. Press “Check positions now” in the Positions tab.' : 'No position has been checked yet. Link the Google account that owns this website (Search Console) first.' }[r.state] || 'Not available.';
+  return {
+    no_website: 'Add the business website first: positions are matched by its domain.', no_keywords: 'No keyword is tracked yet. Add keywords in the Positions tab or the Keyword Magic Tool.',
+    no_data: r.rank_ready ? 'No position has been checked in this period. Press “Check positions now” in the Positions tab.' : 'No position has been checked yet. Link the Google account that owns this website (Search Console) first.'
+  }[r.state] || 'Not available.';
 }
 
 function FeatureChanges({ research }) {
@@ -315,11 +319,13 @@ function FeatureGrid({ research }) {
     <div>
       <div className="text-13 font-semibold text-slate-800 mb-2">{title}</div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-x-4 gap-y-3">
-        {rows.map(r => { const I = FEATURE_ICON[r.feature] || Sparkles; const on = r.keywords > 0; return (
-          <div key={r.feature} className={`flex items-center gap-2.5 ${on ? '' : 'opacity-40'}`}>
-            <span className={`w-7 h-7 rounded flex items-center justify-center shrink-0 ${on ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}><I size={14} /></span>
-            <div className="min-w-0 leading-tight"><div className="text-12.5 font-medium text-slate-800 truncate">{r.feature}</div><div className="text-11.5 text-slate-500">{r.keywords} keyword{r.keywords !== 1 ? 's' : ''}</div></div>
-          </div>); })}
+        {rows.map(r => {
+          const I = FEATURE_ICON[r.feature] || Sparkles; const on = r.keywords > 0; return (
+            <div key={r.feature} className={`flex items-center gap-2.5 ${on ? '' : 'opacity-40'}`}>
+              <span className={`w-7 h-7 rounded flex items-center justify-center shrink-0 ${on ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}><I size={14} /></span>
+              <div className="min-w-0 leading-tight"><div className="text-12.5 font-medium text-slate-800 truncate">{r.feature}</div><div className="text-11.5 text-slate-500">{r.keywords} keyword{r.keywords !== 1 ? 's' : ''}</div></div>
+            </div>);
+        })}
       </div>
     </div>
   );
@@ -340,7 +346,7 @@ function PagesCard({ intel, research, onAll }) {
     return (
       <Card title="Your pages in Google's top 10" subtitle="Pages of your site that rank for a tracked keyword" pad={false}>
         {own.length ? (
-          <RowsTable exportName={`ranking-pages-${siteOf(intel, research)}`} exportCols={[['Page address', p => p.url], ['Keywords', p => p.keywords], ['Average position', p => p.avg_position]]} rows={own} cols={[{ id: 'url', label: 'URL', value: p => p.url }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }, { id: 'avg', label: 'Avg. position', value: p => p.avg_position, right: true, first: 'asc' }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[320px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={p.url}>{path(p.url)}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 text-right tabular-nums">{p.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{p.avg_position}</td></tr>} />
+          <RowsTable exportName={`ranking-pages-${siteOf(intel, research)}`} exportCols={[['Page address', p => p.url], ['Keywords', p => p.keywords], ['Average position', p => p.avg_position]]} rows={own} cols={[{ id: 'url', label: 'URL', value: p => p.url }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }, { id: 'avg', label: 'Avg. position', value: p => p.avg_position, right: true, first: 'asc' }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[320px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={p.url}>{path(p.url)}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5  tabular-nums">{p.keywords}</td><td className="px-4 py-2.5  tabular-nums">{p.avg_position}</td></tr>} />
         ) : <Empty>None of your pages is in Google&apos;s top 10 for a tracked keyword yet. Pages appear here as soon as one ranks.</Empty>}
       </Card>
     );
@@ -349,7 +355,7 @@ function PagesCard({ intel, research, onAll }) {
     <Card title="Top pages" pad={false}>
       {rows.length ? (
         <>
-          <RowsTable exportName={`top-pages-${siteOf(intel, research)}`} exportCols={[['Page address', p => p.url], ['Share of traffic (%)', p => (total ? Math.round((p.traffic / total) * 10000) / 100 : '')], ['Keywords', p => p.keywords]]} rows={rows} cols={[{ id: 'url', label: 'URL', value: p => p.url }, { id: 'traffic', label: 'Traffic %', value: p => p.traffic, right: true }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[320px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={p.url}>{path(p.url)}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 text-right tabular-nums">{p.traffic / total < 0.0001 ? '< 0.01' : (p.traffic / total * 100).toFixed(2)}</td><td className="px-4 py-2.5 text-right tabular-nums">{p.keywords}</td></tr>} />
+          <RowsTable exportName={`top-pages-${siteOf(intel, research)}`} exportCols={[['Page address', p => p.url], ['Share of traffic (%)', p => (total ? Math.round((p.traffic / total) * 10000) / 100 : '')], ['Keywords', p => p.keywords]]} rows={rows} cols={[{ id: 'url', label: 'URL', value: p => p.url }, { id: 'traffic', label: 'Traffic %', value: p => p.traffic, right: true }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[320px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={p.url}>{path(p.url)}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5  tabular-nums">{p.traffic / total < 0.0001 ? '< 0.01' : (p.traffic / total * 100).toFixed(2)}</td><td className="px-4 py-2.5  tabular-nums">{p.keywords}</td></tr>} />
           <div className="p-4"><Button size="sm" onClick={onAll}>View all {rows.length} pages</Button></div>
         </>
       ) : <Empty>{whyIntel(intel, s, 'pages')}</Empty>}
@@ -369,12 +375,12 @@ function DiscoveredSubdomains({ b }) {
         : !d ? <p className="px-5 py-8 text-13 text-slate-500">Finding subdomains and checking each one. This takes up to half a minute.</p>
           : d.rows.length ? (
             <RowsTable exportName={`discovered-subdomains-${b.name}`} exportCols={[['Subdomain', x => x.subdomain], ['Status', x => (x.resolves ? (x.status || 0) : '')], ['Page title', x => x.title || ''], ['Found in', x => x.sources.join(', ')]]} rows={d.rows} cols={[{ id: 'subdomain', label: 'Subdomain', value: x => x.subdomain }, { id: 'status', label: 'Status', value: x => x.resolves ? (x.status || 0) : null }, { id: 'title', label: 'Page title', value: x => x.title }, { id: 'sources', label: 'Found in', value: x => x.sources.join(', ') }]} minWidth={760} size={25} label="subdomains" searchText={x => `${x.subdomain} ${x.title || ''}`} row={x => (
-                <tr key={x.subdomain} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5"><a href={`https://${x.subdomain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.subdomain}<ExternalLink size={10} /></a>{x.main && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">main</span>}</td>
-                  <td className="px-4 py-2.5">{!x.resolves ? <Badge>Not live</Badge> : x.status ? <Badge tone={tone(x.status)}>{x.status}</Badge> : <Badge tone="amber">No answer</Badge>}</td>
-                  <td className="px-4 py-2.5 text-slate-600 max-w-[320px] truncate" title={x.title || ''}>{x.title || '—'}</td>
-                  <td className="px-4 py-2.5 text-slate-500">{x.sources.join(', ')}</td>
-                </tr>)} />
+              <tr key={x.subdomain} className="hover:bg-slate-50">
+                <td className="px-4 py-2.5"><a href={`https://${x.subdomain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.subdomain}<ExternalLink size={10} /></a>{x.main && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">main</span>}</td>
+                <td className="px-4 py-2.5">{!x.resolves ? <Badge>Not live</Badge> : x.status ? <Badge tone={tone(x.status)}>{x.status}</Badge> : <Badge tone="amber">No answer</Badge>}</td>
+                <td className="px-4 py-2.5 text-slate-600 max-w-[320px] truncate" title={x.title || ''}>{x.title || '—'}</td>
+                <td className="px-4 py-2.5 text-slate-500">{x.sources.join(', ')}</td>
+              </tr>)} />
           ) : <p className="px-5 py-8 text-13 text-slate-500">No subdomain was found.</p>}
     </Card>
   );
@@ -388,7 +394,7 @@ function SubdomainsCard({ intel, research, full }) {
     return (
       <Card title="Your subdomains in Google's top 10" pad={false}>
         {r.own_hosts.length ? (
-          <RowsTable exportName={`ranking-subdomains-${siteOf(intel, research)}`} exportCols={[['Subdomain', h => h.subdomain], ['Ranking keywords', h => h.keywords]]} rows={r.own_hosts} cols={[{ id: 'subdomain', label: 'Subdomain', value: h => h.subdomain }, { id: 'keywords', label: 'Ranking keywords', value: h => h.keywords, right: true }]} label="subdomains" searchText={h => h.subdomain} row={h => <tr key={h.subdomain}><td className="px-4 py-2.5 text-indigo-700">{h.subdomain}</td><td className="px-4 py-2.5 text-right tabular-nums">{h.keywords}</td></tr>} />
+          <RowsTable exportName={`ranking-subdomains-${siteOf(intel, research)}`} exportCols={[['Subdomain', h => h.subdomain], ['Ranking keywords', h => h.keywords]]} rows={r.own_hosts} cols={[{ id: 'subdomain', label: 'Subdomain', value: h => h.subdomain }, { id: 'keywords', label: 'Ranking keywords', value: h => h.keywords, right: true }]} label="subdomains" searchText={h => h.subdomain} row={h => <tr key={h.subdomain}><td className="px-4 py-2.5 text-indigo-700">{h.subdomain}</td><td className="px-4 py-2.5  tabular-nums">{h.keywords}</td></tr>} />
         ) : <Empty>No subdomain of your site is in Google&apos;s top 10 for a tracked keyword yet.</Empty>}
       </Card>
     );
@@ -396,7 +402,7 @@ function SubdomainsCard({ intel, research, full }) {
   return (
     <Card title="Top subdomains" pad={false}>
       {rows.length ? (
-        <RowsTable exportName={`subdomains-${siteOf(intel, research)}`} exportCols={[['Subdomain', x => x.subdomain], ['Share of traffic (%)', x => x.share], ['Keywords', x => x.keywords], ...(full ? [['Traffic', x => x.traffic]] : [])]} rows={rows} cols={[{ id: 'subdomain', label: 'Subdomain', value: x => x.subdomain }, { id: 'share', label: 'Traffic %', value: x => x.share, right: true }, { id: 'keywords', label: 'Keywords', value: x => x.keywords, right: true }, ...(full ? [{ id: 'traffic', label: 'Traffic', value: x => x.traffic, right: true }] : [])]} label="subdomains" searchText={x => x.subdomain} row={x => <tr key={x.subdomain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${x.subdomain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.subdomain}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 text-right tabular-nums">{x.share.toFixed(2)}</td><td className="px-4 py-2.5 text-right tabular-nums">{fmt(x.keywords)}</td>{full && <td className="px-4 py-2.5 text-right tabular-nums">{compact(x.traffic)}</td>}</tr>} />
+        <RowsTable exportName={`subdomains-${siteOf(intel, research)}`} exportCols={[['Subdomain', x => x.subdomain], ['Share of traffic (%)', x => x.share], ['Keywords', x => x.keywords], ...(full ? [['Traffic', x => x.traffic]] : [])]} rows={rows} cols={[{ id: 'subdomain', label: 'Subdomain', value: x => x.subdomain }, { id: 'share', label: 'Traffic %', value: x => x.share, right: true }, { id: 'keywords', label: 'Keywords', value: x => x.keywords, right: true }, ...(full ? [{ id: 'traffic', label: 'Traffic', value: x => x.traffic, right: true }] : [])]} label="subdomains" searchText={x => x.subdomain} row={x => <tr key={x.subdomain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${x.subdomain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.subdomain}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5  tabular-nums">{x.share.toFixed(2)}</td><td className="px-4 py-2.5  tabular-nums">{fmt(x.keywords)}</td>{full && <td className="px-4 py-2.5  tabular-nums">{compact(x.traffic)}</td>}</tr>} />
       ) : <Empty>{whyIntel(intel, s, 'subdomains')}</Empty>}
     </Card>
   );
@@ -436,15 +442,15 @@ function Positions({ intel, research, days, setDays }) {
           <label className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter" className="h-8 pl-8 pr-3 text-13 rounded border border-slate-200 bg-white outline-none focus:border-indigo-400" /></label></div>}>
         {s.data?.rows?.length ? (
           <RowsTable exportName={`organic-keywords-${siteOf(intel, research)}`} exportCols={[['Keyword', r => r.keyword], ['Intent', r => (INTENT[r.intent] || INTENT.unknown)[0]], ['Position', r => r.position], ['Searches per month', r => r.volume], ['Cost per click (USD)', r => r.cpc], ['Share of traffic (%)', r => (total ? Math.round((r.traffic / total) * 10000) / 100 : '')], ['Ranking page', r => r.url || '']]} rows={rows} cols={[{ id: 'keyword', label: 'Keyword', value: r => r.keyword }, { id: 'intent', label: 'Intent', value: r => (INTENT[r.intent] || INTENT.unknown)[0] }, { id: 'position', label: 'Position', value: r => r.position, right: true, first: 'asc' }, { id: 'volume', label: 'Volume', value: r => r.volume, right: true }, { id: 'cpc', label: 'CPC (USD)', value: r => r.cpc, right: true }, { id: 'traffic', label: 'Traffic %', value: r => r.traffic, right: true }, { id: 'page', label: 'Page', value: r => path(r.url) }]} size={25} sticky wrap="overflow-auto max-h-[520px]" resetKey={`${q}|${intent}`} empty="No keyword matches." label="keywords" row={r => (
-              <tr key={r.keyword + r.position} className="hover:bg-slate-50">
-                <td className="px-4 py-2.5 font-medium text-indigo-700 max-w-[260px] truncate" title={r.keyword}>{r.keyword}</td>
-                <td className="px-4 py-2.5"><Badge tone="gray">{(INTENT[r.intent] || INTENT.unknown)[0]}</Badge></td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.position ?? '—'}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.cpc != null ? r.cpc.toFixed(2) : '—'}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{total ? (r.traffic / total * 100).toFixed(2) : '—'}</td>
-                <td className="px-4 py-2.5 max-w-[220px] truncate text-slate-500" title={r.url}>{path(r.url)}</td>
-              </tr>)} />
+            <tr key={r.keyword + r.position} className="hover:bg-slate-50">
+              <td className="px-4 py-2.5 font-medium text-indigo-700 max-w-[260px] truncate" title={r.keyword}>{r.keyword}</td>
+              <td className="px-4 py-2.5"><Badge tone="gray">{(INTENT[r.intent] || INTENT.unknown)[0]}</Badge></td>
+              <td className="px-4 py-2.5  tabular-nums">{r.position ?? '—'}</td>
+              <td className="px-4 py-2.5  tabular-nums">{r.volume != null ? fmt(r.volume) : '—'}</td>
+              <td className="px-4 py-2.5  tabular-nums">{r.cpc != null ? r.cpc.toFixed(2) : '—'}</td>
+              <td className="px-4 py-2.5  tabular-nums">{total ? (r.traffic / total * 100).toFixed(2) : '—'}</td>
+              <td className="px-4 py-2.5 max-w-[220px] truncate text-slate-500" title={r.url}>{path(r.url)}</td>
+            </tr>)} />
         ) : <Empty>{whyIntel(intel, s, 'organic keywords')}</Empty>}
       </Card>
     </div>
@@ -468,11 +474,11 @@ function Competitors({ intel, research }) {
     return (
       <Card title={`Domains in the results (${r.competitor_total})`} subtitle="Who appears in Google's top 10 for your tracked keywords, from your saved checks" pad={false} action={links}>
         <RowsTable exportName={`domains-in-the-results-${siteOf(intel, research)}`} exportCols={[['Rank', c => c.rank], ['Domain', c => c.domain], ['Keywords', c => c.keywords], ['Average position', c => c.avg_position], ['Visibility', c => c.visibility]]} rows={r.competitors} cols={[{ id: 'rank', label: '#', value: c => c.rank, first: 'asc' }, { id: 'domain', label: 'Domain', value: c => c.domain }, { id: 'keywords', label: 'Keywords', value: c => c.keywords, right: true }, { id: 'avg', label: 'Avg. position', value: c => c.avg_position, right: true, first: 'asc' }, { id: 'visibility', label: 'Visibility', value: c => c.visibility, right: true }]} label="domains" searchText={c => c.domain} row={c => (
-            <tr key={c.domain} className={c.you ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}>
-              <td className="px-4 py-2.5 text-slate-500 tabular-nums">{c.rank}</td>
-              <td className="px-4 py-2.5"><a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.domain}<ExternalLink size={10} /></a>{c.you && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">You</span>}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums">{c.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.avg_position}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.visibility}%</td>
-            </tr>)} />
+          <tr key={c.domain} className={c.you ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}>
+            <td className="px-4 py-2.5 text-slate-500 tabular-nums">{c.rank}</td>
+            <td className="px-4 py-2.5"><a href={`https://${c.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{c.domain}<ExternalLink size={10} /></a>{c.you && <span className="ml-2 text-11 text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">You</span>}</td>
+            <td className="px-4 py-2.5  tabular-nums">{c.keywords}</td><td className="px-4 py-2.5  tabular-nums">{c.avg_position}</td><td className="px-4 py-2.5  tabular-nums">{c.visibility}%</td>
+          </tr>)} />
         {!r.competitors.some(c => c.you) && <p className="px-4 py-3 text-12 text-slate-500 border-t border-slate-100">Your site is not in the top 10 for any tracked keyword yet, so it is not listed.</p>}
       </Card>
     );
@@ -481,8 +487,8 @@ function Competitors({ intel, research }) {
     <Card title={`Main organic competitors ${rows.length ? `(${rows.length})` : ''}`} subtitle="Domains that rank for the same keywords (data provider)" pad={false} action={links}>
       {rows.length ? (
         <RowsTable exportName={`organic-competitors-${siteOf(intel, research)}`} exportCols={[['Competitor', x => x.domain], ['Common keywords', x => x.common], ['Organic keywords', x => x.keywords], ['Traffic', x => x.traffic], ['Average position', x => x.avg_position]]} rows={rows} cols={[{ id: 'domain', label: 'Competitor', value: x => x.domain }, { id: 'level', label: 'Com. level', value: x => x.common }, { id: 'common', label: 'Common keywords', value: x => x.common, right: true }, { id: 'keywords', label: 'Organic keywords', value: x => x.keywords, right: true }, { id: 'traffic', label: 'Traffic', value: x => x.traffic, right: true }, { id: 'avg', label: 'Avg. position', value: x => x.avg_position, right: true, first: 'asc' }]} label="competitors" searchText={x => x.domain} row={x => <tr key={x.domain} className="hover:bg-slate-50"><td className="px-4 py-2.5"><a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1">{x.domain}<ExternalLink size={10} /></a></td>
-            <td className="px-4 py-2.5 w-32"><span className="block h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400" style={{ width: `${(x.common / max) * 100}%` }} /></span></td>
-            <td className="px-4 py-2.5 text-right tabular-nums">{fmt(x.common)}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{fmt(x.keywords)}</td><td className="px-4 py-2.5 text-right tabular-nums">{compact(x.traffic)}</td><td className="px-4 py-2.5 text-right tabular-nums">{x.avg_position ?? '—'}</td></tr>} />
+          <td className="px-4 py-2.5 w-32"><span className="block h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-indigo-400" style={{ width: `${(x.common / max) * 100}%` }} /></span></td>
+          <td className="px-4 py-2.5  tabular-nums">{fmt(x.common)}</td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{fmt(x.keywords)}</td><td className="px-4 py-2.5  tabular-nums">{compact(x.traffic)}</td><td className="px-4 py-2.5  tabular-nums">{x.avg_position ?? '—'}</td></tr>} />
       ) : <Empty>{whyIntel(intel, s, 'competitors')}</Empty>}
     </Card>
   );
@@ -500,7 +506,7 @@ function Topics({ b }) {
   return (
     <Card title={`Topics (${rows.length})`} subtitle="Your keywords grouped by topic (cluster), with how they rank" pad={false}>
       {rows.length ? (
-        <RowsTable exportName={`keyword-topics-${b.name}`} exportCols={[['Topic', r => r.name], ['Keywords', r => r.keywords], ['Tracked', r => r.tracked], ['Ranking', r => r.ranking], ['Average position', r => r.avg], ['Searches per month', r => r.volume], ['Pages mapped', r => r.mapped]]} rows={rows} cols={[{ id: 'name', label: 'Topic', value: r => r.name }, { id: 'keywords', label: 'Keywords', value: r => r.keywords, right: true }, { id: 'tracked', label: 'Tracked', value: r => r.tracked, right: true }, { id: 'ranking', label: 'Ranking', value: r => r.ranking, right: true }, { id: 'avg', label: 'Avg. position', value: r => r.avg, right: true, first: 'asc' }, { id: 'volume', label: 'Volume', value: r => r.volume, right: true }, { id: 'mapped', label: 'Pages mapped', value: r => r.mapped, right: true }]} label="topics" searchText={r => r.name} row={r => <tr key={r.name} className="hover:bg-slate-50"><td className="px-4 py-2.5 font-medium text-slate-900">{r.name}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.tracked}</td><td className="px-4 py-2.5 text-right tabular-nums text-indigo-700">{r.ranking}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.avg ?? '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.volume ? fmt(r.volume) : '—'}</td><td className="px-4 py-2.5 text-right tabular-nums">{r.mapped}</td></tr>} />
+        <RowsTable exportName={`keyword-topics-${b.name}`} exportCols={[['Topic', r => r.name], ['Keywords', r => r.keywords], ['Tracked', r => r.tracked], ['Ranking', r => r.ranking], ['Average position', r => r.avg], ['Searches per month', r => r.volume], ['Pages mapped', r => r.mapped]]} rows={rows} cols={[{ id: 'name', label: 'Topic', value: r => r.name }, { id: 'keywords', label: 'Keywords', value: r => r.keywords, right: true }, { id: 'tracked', label: 'Tracked', value: r => r.tracked, right: true }, { id: 'ranking', label: 'Ranking', value: r => r.ranking, right: true }, { id: 'avg', label: 'Avg. position', value: r => r.avg, right: true, first: 'asc' }, { id: 'volume', label: 'Volume', value: r => r.volume, right: true }, { id: 'mapped', label: 'Pages mapped', value: r => r.mapped, right: true }]} label="topics" searchText={r => r.name} row={r => <tr key={r.name} className="hover:bg-slate-50"><td className="px-4 py-2.5 font-medium text-slate-900">{r.name}</td><td className="px-4 py-2.5  tabular-nums">{r.keywords}</td><td className="px-4 py-2.5  tabular-nums">{r.tracked}</td><td className="px-4 py-2.5  tabular-nums text-indigo-700">{r.ranking}</td><td className="px-4 py-2.5  tabular-nums">{r.avg ?? '—'}</td><td className="px-4 py-2.5  tabular-nums">{r.volume ? fmt(r.volume) : '—'}</td><td className="px-4 py-2.5  tabular-nums">{r.mapped}</td></tr>} />
       ) : <Empty>No keywords yet. Add some in the Keyword Magic Tool; group them in the Keyword Strategy Builder to see topics here.</Empty>}
     </Card>
   );
@@ -515,7 +521,7 @@ function PagesTab({ intel, research }) {
     return (
       <Card title={`Your ranking pages (${own.length})`} subtitle="Pages of your site in Google's top 10 for a tracked keyword (saved checks)" pad={false}>
         {own.length ? (
-          <RowsTable exportName={`ranking-pages-${siteOf(intel, research)}`} exportCols={[['Page address', p => p.url], ['Keywords', p => p.keywords], ['Average position', p => p.avg_position]]} rows={own} cols={[{ id: 'url', label: 'URL', value: p => p.url }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }, { id: 'avg', label: 'Avg. position', value: p => p.avg_position, right: true, first: 'asc' }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[520px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline" title={p.url}>{p.url.replace(/^https?:\/\//, '')}</a></td><td className="px-4 py-2.5 text-right tabular-nums">{p.keywords}</td><td className="px-4 py-2.5 text-right tabular-nums">{p.avg_position}</td></tr>} />
+          <RowsTable exportName={`ranking-pages-${siteOf(intel, research)}`} exportCols={[['Page address', p => p.url], ['Keywords', p => p.keywords], ['Average position', p => p.avg_position]]} rows={own} cols={[{ id: 'url', label: 'URL', value: p => p.url }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }, { id: 'avg', label: 'Avg. position', value: p => p.avg_position, right: true, first: 'asc' }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[520px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline" title={p.url}>{p.url.replace(/^https?:\/\//, '')}</a></td><td className="px-4 py-2.5  tabular-nums">{p.keywords}</td><td className="px-4 py-2.5  tabular-nums">{p.avg_position}</td></tr>} />
         ) : <Empty>None of your pages is in Google&apos;s top 10 for a tracked keyword yet.</Empty>}
       </Card>
     );
@@ -524,7 +530,7 @@ function PagesTab({ intel, research }) {
   return (
     <Card title={`Top pages ${rows.length ? `(${rows.length})` : ''}`} subtitle="Pages with the most estimated organic traffic (data provider)" pad={false}>
       {rows.length ? (
-        <RowsTable exportName={`top-pages-${siteOf(intel, research)}`} exportCols={[['Page address', p => p.url], ['Share of traffic (%)', p => (total ? Math.round((p.traffic / total) * 10000) / 100 : '')], ['Traffic', p => p.traffic], ['Keywords', p => p.keywords]]} rows={rows} cols={[{ id: 'url', label: 'URL', value: p => p.url }, { id: 'share', label: 'Traffic %', value: p => p.traffic, right: true }, { id: 'traffic', label: 'Traffic', value: p => p.traffic, right: true }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[520px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={p.url}>{p.url.replace(/^https?:\/\//, '')}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5 text-right tabular-nums">{(p.traffic / total * 100).toFixed(2)}</td><td className="px-4 py-2.5 text-right tabular-nums">{compact(p.traffic)}</td><td className="px-4 py-2.5 text-right tabular-nums">{p.keywords}</td></tr>} />
+        <RowsTable exportName={`top-pages-${siteOf(intel, research)}`} exportCols={[['Page address', p => p.url], ['Share of traffic (%)', p => (total ? Math.round((p.traffic / total) * 10000) / 100 : '')], ['Traffic', p => p.traffic], ['Keywords', p => p.keywords]]} rows={rows} cols={[{ id: 'url', label: 'URL', value: p => p.url }, { id: 'share', label: 'Traffic %', value: p => p.traffic, right: true }, { id: 'traffic', label: 'Traffic', value: p => p.traffic, right: true }, { id: 'keywords', label: 'Keywords', value: p => p.keywords, right: true }]} label="pages" searchText={p => p.url} row={p => <tr key={p.url} className="hover:bg-slate-50"><td className="px-4 py-2.5 max-w-[520px] truncate"><a href={p.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline inline-flex items-center gap-1" title={p.url}>{p.url.replace(/^https?:\/\//, '')}<ExternalLink size={10} /></a></td><td className="px-4 py-2.5  tabular-nums">{(p.traffic / total * 100).toFixed(2)}</td><td className="px-4 py-2.5  tabular-nums">{compact(p.traffic)}</td><td className="px-4 py-2.5  tabular-nums">{p.keywords}</td></tr>} />
       ) : <Empty>{whyIntel(intel, s, 'pages')}</Empty>}
     </Card>
   );

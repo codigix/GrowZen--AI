@@ -18,8 +18,19 @@ from typing import Any
 
 log = logging.getLogger("seo.relevance")
 
-# The weights: "very high" criteria 30/20/20/15, "high" 10, "medium" 5 (a factor that could not be measured is left out and the rest are scaled up)
-WEIGHTS = {"services": 30, "area": 20, "keywords": 20, "serp": 15, "intent": 10, "authority": 5}
+# The nine factors and their weights (a factor that could not be measured is left out and the rest are scaled up):
+#   services     product relevance          do they sell what this business sells
+#   area         location relevance         how near they are to the place searched
+#   keywords     keyword overlap            the share of this business's searches they show up for
+#   serp         SERP overlap               how high they rank on those same results pages
+#   category     category relevance         their Google category against this business's categories
+#   intent       search intent match        would a customer searching these words be satisfied by them
+#   page         top-page relevance         what their own home page says against this business's services and searches
+#   opportunity  missing keyword opportunity  searches they rank for that this business does not (from their kept keyword read)
+#   traffic      organic traffic strength   estimated organic visits from their kept keyword read, else the strength of their site
+WEIGHTS = {"services": 18, "area": 18, "keywords": 14, "serp": 10, "category": 10, "intent": 10, "page": 8, "opportunity": 6, "traffic": 6}
+LABELS = {"services": "Product relevance", "area": "Location relevance", "keywords": "Keyword overlap", "serp": "SERP overlap", "category": "Category relevance", "intent": "Search intent match",
+          "page": "Top-page relevance", "opportunity": "Missing keyword opportunity", "traffic": "Organic traffic strength"}
 DIRECT_AT, RELATED_AT = 65, 40
 LABEL = {"direct": "Direct competitor", "related": "Related business", "unrelated": "Not a real competitor"}
 
@@ -44,6 +55,34 @@ def area_score(distance_m: float | None, same_place: bool) -> int:
 def keyword_score(appearances: int, n_keywords: int) -> int:
     """Whether they show up for the same searches: the share of this business's searches they appear in."""
     return round(min(1.0, appearances / max(1, n_keywords)) * 100)
+
+
+def category_score(own: list[str], cand: str | None) -> int | None:
+    """Their Google category against this business's categories: the same category is 100, a shared word is partial, nothing shared is low. None when either has no category."""
+    own = [o for o in own if o]
+    if not cand or not own:
+        return None
+    c = _words(cand)
+    if not c:
+        return None
+    best = 0.0
+    for o in own:
+        w = _words(o)
+        if not w:
+            continue
+        if o.strip().lower() == cand.strip().lower():
+            return 100
+        best = max(best, len(w & c) / max(1, min(len(w), len(c))))
+    return round(15 + best * 85) if best else 15
+
+
+def page_score(own_words: set[str], cand: dict[str, Any]) -> int | None:
+    """What their home page says (title and description) against the words of this business's services and searches. None when the page could not be read."""
+    text = f"{cand.get('site_title') or ''} {cand.get('site_description') or ''}"
+    theirs = _words(text)
+    if not theirs or not own_words:
+        return None
+    return round(min(1.0, len(own_words & theirs) / max(1, min(len(own_words), 6))) * 100)
 
 
 def serp_score(best: int | None, avg: float | None) -> int:
@@ -121,9 +160,10 @@ def _site_text(cands: list[dict[str, Any]], fetch) -> None:
         list(pool.map(one, cands))
 
 
-def rate(b: Any, candidates: list[dict[str, Any]], keywords: list[str], authority: dict[str, int] | None = None, fetch_site=None, own_rental: bool = False) -> dict[str, Any]:
+def rate(b: Any, candidates: list[dict[str, Any]], keywords: list[str], authority: dict[str, int] | None = None, fetch_site=None, own_rental: bool = False, extra: dict[str, dict[str, int]] | None = None) -> dict[str, Any]:
     """Rate every candidate Maps business (the dicts are given a "relevance" entry). Returns the counts and how the services and intent were judged."""
     authority = authority or {}
+    extra = extra or {}
     cands = candidates[:20]
     if fetch_site:
         _site_text(cands, fetch_site)
@@ -135,6 +175,8 @@ def rate(b: Any, candidates: list[dict[str, Any]], keywords: list[str], authorit
         log.warning("AI relevance step failed: %s", exc)
         ai_out = {}
     place_words = _words(f"{getattr(b, 'area', '') or ''} {getattr(b, 'city', '') or ''}")
+    own_cats = [g("primary_category", ""), *(g("secondary_categories") or [])]
+    own_words = _words(" ".join(keywords) + " " + " ".join((s.get("name") or "") for s in (g("services") or [])))
     n_kw = max(1, len(keywords))
     counts = {"direct": 0, "related": 0, "unrelated": 0}
     for i, c in enumerate(cands):
@@ -144,12 +186,24 @@ def rate(b: Any, candidates: list[dict[str, Any]], keywords: list[str], authorit
             fit = {**fit, **ai_out[i]}
         same_place = bool(place_words & _words(c.get("address")))
         factors = {
-            "services": fit["services"], "area": area_score(c.get("distance_m"), same_place), "keywords": keyword_score(c.get("appearances") or 0, n_kw),
-            "serp": serp_score(c.get("best"), c.get("avg_position")), "intent": fit["intent"],
+            "services": fit["services"], "area": area_score(c.get("distance_m"), same_place), "intent": fit["intent"],
         }
-        da = authority.get((c.get("domain") or "").lower())
-        if da is not None:
-            factors["authority"] = max(0, min(100, int(da)))
+        if c.get("appearances") is not None:  # it was part of a research: how many of the searches it showed up for, and how high
+            factors["keywords"] = keyword_score(c.get("appearances") or 0, n_kw)
+            factors["serp"] = serp_score(c.get("best"), c.get("avg_position"))
+        dom = (c.get("domain") or "").lower().removeprefix("www.")
+        cat, page = category_score(own_cats, c.get("category")), page_score(own_words, c)
+        if cat is not None:
+            factors["category"] = cat
+        if page is not None:
+            factors["page"] = page
+        if dom in extra.get("opportunity", {}):
+            factors["opportunity"] = extra["opportunity"][dom]
+        da = authority.get(dom)
+        if dom in extra.get("traffic", {}):
+            factors["traffic"] = extra["traffic"][dom]
+        elif da is not None:
+            factors["traffic"] = max(0, min(100, int(da)))  # no keyword read of this competitor: the strength of its site stands in
         weight = {k: WEIGHTS[k] for k in factors}
         total = round(sum(factors[k] * weight[k] for k in factors) / sum(weight.values()))
         # What a business is decides first: one that does not offer the same thing (or serve the same need) is not a competitor however near or visible it is.
@@ -158,5 +212,5 @@ def rate(b: Any, candidates: list[dict[str, Any]], keywords: list[str], authorit
         label = "direct" if total >= DIRECT_AT else "related" if total >= RELATED_AT else "unrelated"
         counts[label] += 1
         c["relevance"] = {"score": total, "label": label, "label_text": LABEL[label], "factors": factors, "kind": fit.get("kind"), "reason": fit.get("reason"), "judged_by": judged,
-                          "authority_known": da is not None}
-    return {"counts": counts, "ai": bool(ai_out), "weights": WEIGHTS, "rated": len(cands), "rental": own_rental}
+                          "authority_known": da is not None, "traffic_from": "keywords" if dom in extra.get("traffic", {}) else "site strength" if da is not None else None}
+    return {"counts": counts, "ai": bool(ai_out), "weights": WEIGHTS, "labels": LABELS, "rated": len(cands), "rental": own_rental}

@@ -64,21 +64,23 @@ export default function ClientReport({ b, d, diffs = [], onUse, busyUse, print =
           <h3 className={H2}>What is costing you calls and enquiries</h3>
           <p className="text-13 text-slate-500 mt-0.5">Each gap, why it matters to a customer, and how we fix it for you. Start at the top: the first ones matter most.</p>
           <div className="mt-3 grid gap-3">
-            {gaps.map((c, i) => { const [lab, t] = IMPACT[impactOf(c)]; return (
-              <div key={c.key} className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm overflow-hidden">
-                <div className="flex items-start gap-3 p-4">
-                  <span className="mt-0.5 w-7 h-7 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-13 font-bold shrink-0">{i + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold text-slate-900">{c.label}</h4><Badge tone={t}>{lab}</Badge></div>
-                    <p className="mt-1 text-13 text-slate-600"><b className="text-slate-800">What we found:</b> {c.detail}</p>
-                    {c.why_it_matters && <p className="mt-1 text-13 text-slate-600"><b className="text-slate-800">Why it matters:</b> {c.why_it_matters}</p>}
+            {gaps.map((c, i) => {
+              const [lab, t] = IMPACT[impactOf(c)]; return (
+                <div key={c.key} className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm overflow-hidden">
+                  <div className="flex items-start gap-3 p-4">
+                    <span className="mt-0.5 w-7 h-7 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-13 font-bold shrink-0">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold text-slate-900">{c.label}</h4><Badge tone={t}>{lab}</Badge></div>
+                      <p className="mt-1 text-13 text-slate-600"><b className="text-slate-800">What we found:</b> {c.detail}</p>
+                      {c.why_it_matters && <p className="mt-1 text-13 text-slate-600"><b className="text-slate-800">Why it matters:</b> {c.why_it_matters}</p>}
+                    </div>
                   </div>
-                </div>
-                <div className="bg-indigo-50/70 px-4 py-3 border-t border-indigo-100 text-13 flex gap-2.5">
-                  <Sparkles size={16} className="text-indigo-600 mt-0.5 shrink-0" />
-                  <div className="min-w-0"><b className="text-indigo-900">What to do:</b> <span className="text-slate-700">{c.fix}</span>{c.help && <div className="mt-1 text-slate-600"><b className="text-indigo-900">With {c.help.title}:</b> {c.help.text}</div>}</div>
-                </div>
-              </div>); })}
+                  <div className="bg-indigo-50/70 px-4 py-3 border-t border-indigo-100 text-13 flex gap-2.5">
+                    <Sparkles size={16} className="text-indigo-600 mt-0.5 shrink-0" />
+                    <div className="min-w-0"><b className="text-indigo-900">What to do:</b> <span className="text-slate-700">{c.fix}</span>{c.help && <div className="mt-1 text-slate-600"><b className="text-indigo-900">With {c.help.title}:</b> {c.help.text}</div>}</div>
+                  </div>
+                </div>);
+            })}
           </div>
         </section>
       )}
@@ -103,14 +105,16 @@ export default function ClientReport({ b, d, diffs = [], onUse, busyUse, print =
         <h3 className={H2}>Where you stand</h3>
         <p className="text-13 text-slate-500 mt-0.5">Four things decide whether a person who finds you picks up the phone.</p>
         <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {a.pillars.map(x => { const I = PILLAR_ICON[x.key] || Star; const c = tone(x.score); return (
-            <div key={x.key} className="rounded-xl bg-white ring-1 ring-slate-200 p-4 shadow-sm">
-              <div className="flex items-center gap-2.5"><span className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${c}1a`, color: c }}><I size={18} /></span>
-                <div className="min-w-0"><div className="font-semibold text-slate-900 leading-tight">{x.label}</div><div className="text-11.5 text-slate-500 leading-tight">{x.sub}</div></div></div>
-              <div className="mt-3 flex items-baseline gap-1"><span className="text-26 font-bold tabular-nums" style={{ color: c }}>{x.score ?? '—'}</span>{x.score != null && <span className="text-12 text-slate-400">/ 100</span>}</div>
-              <Bar value={x.score} color={c} />
-              {x.missing?.length > 0 && <p className="mt-2 text-11.5 text-slate-500">Not measured yet: {x.missing.join(', ')}. {x.score == null ? 'Connect Search Console and the Google profile to include it.' : 'Connect the Google profile to include it.'}</p>}
-            </div>); })}
+          {a.pillars.map(x => {
+            const I = PILLAR_ICON[x.key] || Star; const c = tone(x.score); return (
+              <div key={x.key} className="rounded-xl bg-white ring-1 ring-slate-200 p-4 shadow-sm">
+                <div className="flex items-center gap-2.5"><span className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${c}1a`, color: c }}><I size={18} /></span>
+                  <div className="min-w-0"><div className="font-semibold text-slate-900 leading-tight">{x.label}</div><div className="text-11.5 text-slate-500 leading-tight">{x.sub}</div></div></div>
+                <div className="mt-3 flex items-baseline gap-1"><span className="text-26 font-bold tabular-nums" style={{ color: c }}>{x.score ?? '—'}</span>{x.score != null && <span className="text-12 text-slate-400">/ 100</span>}</div>
+                <Bar value={x.score} color={c} />
+                {x.missing?.length > 0 && <p className="mt-2 text-11.5 text-slate-500">Not measured yet: {x.missing.join(', ')}. {x.score == null ? 'Connect Search Console and the Google profile to include it.' : 'Connect the Google profile to include it.'}</p>}
+              </div>);
+          })}
         </div>
       </section>
 
@@ -124,7 +128,7 @@ export default function ClientReport({ b, d, diffs = [], onUse, busyUse, print =
               <div key={`${x.name}${i}`} className="flex items-center gap-3 text-13">
                 <span className={`w-44 shrink-0 truncate ${x.you ? 'font-bold text-indigo-700' : 'text-slate-700'}`} title={x.name}>{x.you ? 'You' : x.name}</span>
                 <div className="flex-1"><Bar value={((x.rating || 0) / 5) * 100} color={x.you ? INDIGO : '#94a3b8'} h={10} /></div>
-                <span className="w-24 text-right tabular-nums"><b>{x.rating}</b> <span className="text-slate-400">{x.reviews ? `· ${x.reviews}` : ''}</span></span>
+                <span className="w-24  tabular-nums"><b>{x.rating}</b> <span className="text-slate-400">{x.reviews ? `· ${x.reviews}` : ''}</span></span>
               </div>))}
           </div>
         </section>
@@ -143,7 +147,7 @@ export default function ClientReport({ b, d, diffs = [], onUse, busyUse, print =
             {sc.timeline?.length > 0 && <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4"><div className="text-12 font-semibold uppercase tracking-wide text-slate-500 mb-2">Visits per day, last 28 days</div><Daily points={sc.timeline} /></div>}
             <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200 bg-white">
               <table className="w-full min-w-[520px] text-13"><thead className="bg-slate-50 text-12 uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2.5 text-left font-medium">What people typed</th><th className="px-3 py-2.5 text-right font-medium">Times shown</th><th className="px-3 py-2.5 text-right font-medium">Visits</th><th className="px-3 py-2.5 text-right font-medium">Position</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{sc.keywords.slice(0, 8).map(k => <tr key={k.query}><td className="px-3 py-2 text-slate-800">{k.query}</td><td className="px-3 py-2 text-right tabular-nums">{k.impressions}</td><td className="px-3 py-2 text-right tabular-nums">{k.clicks}</td><td className="px-3 py-2 text-right tabular-nums">{k.position}</td></tr>)}</tbody></table>
+                <tbody className="divide-y divide-slate-100">{sc.keywords.slice(0, 8).map(k => <tr key={k.query}><td className="px-3 py-2 text-slate-800">{k.query}</td><td className="px-3 py-2  tabular-nums">{k.impressions}</td><td className="px-3 py-2  tabular-nums">{k.clicks}</td><td className="px-3 py-2  tabular-nums">{k.position}</td></tr>)}</tbody></table>
             </div>
             <p className="text-12 text-slate-500">From Google Search Console, {sc.period.start} to {sc.period.end}.</p>
           </div>

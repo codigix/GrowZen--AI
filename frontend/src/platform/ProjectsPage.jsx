@@ -53,55 +53,55 @@ function ProjectsTable({ rows: allRows, busy, onOpen, onRemove, onAdd, onDelete 
   const rows = pager.rows;
   return (
     <>
-    <div className="overflow-x-auto">
-      <table className="w-full text-13 min-w-[860px]">
-        <thead>
-          <tr className="text-left text-11 uppercase tracking-wide text-slate-500 border-b border-slate-200">
-            <SortTh id="name" sort={sort} onSort={onSort} className="py-2.5 px-3">Project</SortTh>
-            <SortTh id="plan" sort={sort} onSort={onSort} className="py-2.5 px-3">Plan</SortTh>
-            <SortTh id="services" sort={sort} onSort={onSort} first="desc" className="py-2.5 px-3">Services</SortTh>
-            <SortTh id="health" sort={sort} onSort={onSort} right first="desc" className="py-2.5 px-3">Health</SortTh>
-            <SortTh id="added" sort={sort} onSort={onSort} first="desc" className="py-2.5 px-3">Added</SortTh>
-            <th className="py-2.5 px-3 font-semibold text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(p => (
-            <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50/60 align-middle">
-              <td className="py-3 px-3 min-w-[220px]">
-                <div className="flex items-center gap-3">
-                  <span className="w-9 h-9 rounded bg-gradient-to-br from-indigo-500 to-violet-500 text-white text-14 font-bold flex items-center justify-center shrink-0">{(p.name || '?').slice(0, 1).toUpperCase()}</span>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-slate-900 truncate max-w-[260px]">{p.name}</div>
-                    <div className="text-12 text-slate-500 truncate max-w-[260px] flex items-center gap-1.5">
-                      {p.website && <span className="inline-flex items-center gap-1 truncate"><Globe size={11} />{String(p.website).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>}
-                      {p.city && <span className="inline-flex items-center gap-1 shrink-0"><MapPin size={11} />{p.city}</span>}
-                    </div>
-                    {targetText(p) && <div className="text-11.5 text-indigo-700 truncate max-w-[260px]" title={targetText(p)}>Target: {targetText(p)}</div>}
-                  </div>
-                </div>
-              </td>
-              <td className="py-3 px-3 text-slate-700">{p.plan || '—'}</td>
-              <td className="py-3 px-3">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {MODULES.map(m => <Chip key={m} mod={m} on={p.modules.includes(m)} canManage={p.can_manage} busy={busy === `${p.id}-${m}`} onRemove={() => onRemove(p, m)} onAdd={() => onAdd(p, m)} />)}
-                </div>
-                {!p.modules.length && <div className="text-12 text-amber-700 mt-1">No service is set up for this project.</div>}
-              </td>
-              <td className="py-3 px-3 text-right tabular-nums">{p.health == null ? <span className="text-slate-400">—</span> : <b className={p.health >= 80 ? 'text-emerald-600' : p.health >= 60 ? 'text-amber-600' : 'text-rose-600'}>{p.health}</b>}</td>
-              <td className="py-3 px-3 text-slate-500 whitespace-nowrap">{fmtDate(p.created_at)}</td>
-              <td className="py-3 px-3">
-                <div className="flex items-center justify-end gap-1.5">
-                  <Button size="sm" onClick={() => onOpen(p)}>Open <ArrowRight size={12} /></Button>
-                  {p.can_manage && <Button size="sm" variant="danger" onClick={() => onDelete(p)} title="Delete this project permanently"><Trash2 size={12} /> Delete</Button>}
-                </div>
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-13 min-w-[860px]">
+          <thead>
+            <tr className="text-left text-11 uppercase tracking-wide text-slate-500 border-b border-slate-200">
+              <SortTh id="name" sort={sort} onSort={onSort} className="py-2.5 px-3">Project</SortTh>
+              <SortTh id="plan" sort={sort} onSort={onSort} className="py-2.5 px-3">Plan</SortTh>
+              <SortTh id="services" sort={sort} onSort={onSort} first="desc" className="py-2.5 px-3">Services</SortTh>
+              <SortTh id="health" sort={sort} onSort={onSort} right first="desc" className="py-2.5 px-3">Health</SortTh>
+              <SortTh id="added" sort={sort} onSort={onSort} first="desc" className="py-2.5 px-3">Added</SortTh>
+              <th className="py-2.5 px-3 font-semibold ">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-    <Pager p={pager} label="projects" />
+          </thead>
+          <tbody>
+            {rows.map(p => (
+              <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50/60 align-middle">
+                <td className="py-3 px-3 min-w-[220px]">
+                  <div className="flex items-center gap-3">
+                    <span className="w-9 h-9 rounded bg-gradient-to-br from-indigo-500 to-violet-500 text-white text-14 font-bold flex items-center justify-center shrink-0">{(p.name || '?').slice(0, 1).toUpperCase()}</span>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-900 truncate max-w-[260px]">{p.name}</div>
+                      <div className="text-12 text-slate-500 truncate max-w-[260px] flex items-center gap-1.5">
+                        {p.website && <span className="inline-flex items-center gap-1 truncate"><Globe size={11} />{String(p.website).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>}
+                        {p.city && <span className="inline-flex items-center gap-1 shrink-0"><MapPin size={11} />{p.city}</span>}
+                      </div>
+                      {targetText(p) && <div className="text-11.5 text-indigo-700 truncate max-w-[260px]" title={targetText(p)}>Target: {targetText(p)}</div>}
+                    </div>
+                  </div>
+                </td>
+                <td className="py-3 px-3 text-slate-700">{p.plan || '—'}</td>
+                <td className="py-3 px-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {MODULES.map(m => <Chip key={m} mod={m} on={p.modules.includes(m)} canManage={p.can_manage} busy={busy === `${p.id}-${m}`} onRemove={() => onRemove(p, m)} onAdd={() => onAdd(p, m)} />)}
+                  </div>
+                  {!p.modules.length && <div className="text-12 text-amber-700 mt-1">No service is set up for this project.</div>}
+                </td>
+                <td className="py-3 px-3  tabular-nums">{p.health == null ? <span className="text-slate-400">—</span> : <b className={p.health >= 80 ? 'text-emerald-600' : p.health >= 60 ? 'text-amber-600' : 'text-rose-600'}>{p.health}</b>}</td>
+                <td className="py-3 px-3 text-slate-500 whitespace-nowrap">{fmtDate(p.created_at)}</td>
+                <td className="py-3 px-3">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <Button size="sm" onClick={() => onOpen(p)}>Open <ArrowRight size={12} /></Button>
+                    {p.can_manage && <Button size="sm" variant="danger" onClick={() => onDelete(p)} title="Delete this project permanently"><Trash2 size={12} /> Delete</Button>}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Pager p={pager} label="projects" />
     </>
   );
 }

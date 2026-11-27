@@ -87,6 +87,7 @@ class Business(TimestampMixin, Base):
     connection_id: Mapped[int | None] = mapped_column(ForeignKey("google_connections.id", ondelete="SET NULL"))
     audit_config: Mapped[dict | None] = mapped_column(JSON)  # Site Audit settings: pages to crawl, limit, rules, schedule (routers/businesses.py)
     track_config: Mapped[dict | None] = mapped_column(JSON)  # Position Tracking targeting: engine, device, location, language (routers/seo.py)
+    competitor_config: Mapped[dict | None] = mapped_column(JSON)  # Competitor Analysis automation: what is read by itself, retries, refresh, daily limit (services/competitor_analysis.py)
     gbp_account: Mapped[str | None] = mapped_column(String(120))  # "accounts/123"
     gbp_location: Mapped[str | None] = mapped_column(String(120), unique=True)  # "locations/456"
     place_id: Mapped[str | None] = mapped_column(String(200))
@@ -198,6 +199,52 @@ class Competitor(TimestampMixin, Base):
     listing: Mapped[dict | None] = mapped_column(JSON)  # what was read from that listing: score, checks, the services and keywords the AI found (competitors/listing_audit.py)
     listing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     selected: Mapped[bool | None] = mapped_column(Boolean)  # chosen for Competitor Watch and the later steps. NULL = saved before choosing existed (counts as chosen); False = found but not chosen
+    lat: Mapped[float | None] = mapped_column(Float)  # where it is on the map (from its address), so its distance to any place can be worked out
+    lng: Mapped[float | None] = mapped_column(Float)
+    domain: Mapped[str | None] = mapped_column(String(255), index=True)  # the website's host with no www or path: one competitor per domain
+    kind: Mapped[str | None] = mapped_column(String(10))  # direct | indirect | NULL = not judged yet. A Maps business is not automatically an organic SEO competitor
+    discovery: Mapped[list[str] | None] = mapped_column(JSON)  # every way it was found: google_places | organic_serp | manual
+    # What the last successful analysis found, kept on the competitor itself so the whole record is in one place and survives when the detailed rows change. A figure is only ever replaced by a newer real one, never emptied.
+    da: Mapped[int | None] = mapped_column(Integer)  # Domain Authority
+    pa: Mapped[int | None] = mapped_column(Integer)  # home-page Page Authority
+    spam_score: Mapped[int | None] = mapped_column(Integer)
+    ref_domains: Mapped[int | None] = mapped_column(Integer)  # linking root domains
+    kw_count: Mapped[int | None] = mapped_column(Integer)  # keywords it ranks for (in the kept ranked-keywords read)
+    traffic_est: Mapped[int | None] = mapped_column(Integer)  # estimated organic visits a month
+    top3: Mapped[int | None] = mapped_column(Integer)
+    top10: Mapped[int | None] = mapped_column(Integer)
+    avg_position: Mapped[float | None] = mapped_column(Float)
+    analysis_status: Mapped[str | None] = mapped_column(String(12))  # analyzed | partial
+    analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when these figures were last refreshed
+
+
+class CompetitorAnalysisRun(Base):
+    """One analysis of one competitor domain. A new run is added on every refresh and the older ones stay, so the history of a competitor is never overwritten."""
+    __tablename__ = "competitor_analysis_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    domain: Mapped[str] = mapped_column(String(255), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="analyzing")  # analyzing | analyzed | partial | failed | retry
+    trigger: Mapped[str] = mapped_column(String(10), default="manual")  # manual | auto
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    parts: Mapped[dict | None] = mapped_column(JSON)  # {"authority": {"provider", "status": ok|failed|skipped, "error"}, "keywords": {...}}
+    missing: Mapped[list[str] | None] = mapped_column(JSON)  # metrics that could not be read
+    error: Mapped[str | None] = mapped_column(Text)
+    snapshot: Mapped[dict | None] = mapped_column(JSON)  # the figures as they were at the end of this run
+
+
+class ApiUsageLog(Base):
+    """Every paid or limited provider call: what, for whom, how it ended and what it cost, so quota use can be seen and a failing provider spotted."""
+    __tablename__ = "api_usage_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int | None] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(30), index=True)  # apify_moz | apify_ranked | google_places
+    target: Mapped[str | None] = mapped_column(String(255))
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    detail: Mapped[str | None] = mapped_column(String(300))
+    cost: Mapped[float | None] = mapped_column(Float)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 class LighthouseSiteAudit(TimestampMixin, Base):
@@ -439,6 +486,7 @@ class Keyword(TimestampMixin, Base):
     tracked: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[str | None] = mapped_column(String(10))  # primary | secondary: the page's main keyword or one it supports (services/keyword_mapping.py)
     uses: Mapped[list[str] | None] = mapped_column(JSON)  # where it is meant to be used: blog, gmb_post, aeo, geo, chatgpt, website
+    mapping_status: Mapped[str | None] = mapped_column(String(16))  # a status set by hand: optimization | new_page | completed. NULL = worked out from the page match (services/keyword_mapping.py)
     source: Mapped[dict | None] = mapped_column(JSON)  # where the keyword was taken from: {kind, label, from, pages: [{url, in}], searches, at}
 
 
@@ -636,6 +684,7 @@ class KeywordRankLog(Base):
     clicks: Mapped[int | None] = mapped_column(Integer)  # Search Console clicks for the keyword over the days read
     impressions: Mapped[int | None] = mapped_column(Integer)  # Search Console impressions for the keyword over the days read
     source: Mapped[str | None] = mapped_column(String(30))  # search_console | (older rows: null)
+    serp_extra: Mapped[dict | None] = mapped_column(JSON)  # what a live read of the results page showed that day: {features: {name: bool}, ads: [titles], questions: [..], related: [..], read_at}
 
 
 
@@ -955,3 +1004,27 @@ class SearchSnapshot(TimestampMixin, Base):
     payload: Mapped[dict | None] = mapped_column(JSON)
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)  # why the last refresh failed (the stored payload is kept)
+
+
+class CompetitorKeyword(Base):
+    """A keyword a competitor ranks for on Google, read from a ranked-keywords report: its position, the searches, the page that ranks. One row per competitor and keyword, replaced when that
+    competitor is read again. Only keywords are kept: nothing about the competitor's website is audited."""
+    __tablename__ = "competitor_keywords"
+    __table_args__ = (UniqueConstraint("business_id", "domain", "keyword"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[int] = mapped_column(ForeignKey("businesses.id", ondelete="CASCADE"), index=True)
+    domain: Mapped[str] = mapped_column(String(255), index=True)
+    keyword: Mapped[str] = mapped_column(String(255))
+    position: Mapped[int | None] = mapped_column(Integer)
+    volume: Mapped[int | None] = mapped_column(Integer)
+    cpc: Mapped[float | None] = mapped_column(Float)
+    difficulty: Mapped[int | None] = mapped_column(Integer)
+    intent: Mapped[str | None] = mapped_column(String(20))
+    url: Mapped[str | None] = mapped_column(String(500))
+    traffic: Mapped[float | None] = mapped_column(Float)
+    kd: Mapped[int | None] = mapped_column(Integer)  # the SEO difficulty, 0-100, worked out from the real top 10 on Google (services/keyword_difficulty.py); `difficulty` is Google Ads' competition index
+    kd_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when the SEO difficulty was read
+    page_status: Mapped[int | None] = mapped_column(Integer)  # what the ranking page answered when it was checked: its HTTP status, 0 = could not be reached, empty = not checked
+    page_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    metrics_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when Google Keyword Planner was last asked about this keyword (difficulty, volume, cost per click), whether or not it had a figure
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

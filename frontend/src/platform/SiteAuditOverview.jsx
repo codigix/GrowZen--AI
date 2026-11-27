@@ -102,7 +102,7 @@ export default function SiteAuditOverview({ projectId, onBack, initial }) {
     const md = [`# Site audit report: ${host(d.target)}`, '', `Updated: ${updated}`, `Device: ${d.strategy === 'desktop' ? 'Desktop' : 'Mobile'}`, `Pages crawled: ${d.pages}${d.limit ? ` of ${d.limit}` : ''}`, '',
       '## Scores', '', `- Site Health: ${pct(d.health)}`, `- AI Search Health: ${pct(d.ai)}`, `- Errors: ${d.errors}`, `- Warnings: ${d.warnings}`, `- Crawled pages: ${d.crawled} (broken ${d.broken}, with issues ${d.with_issues})`, '',
       '## Thematic reports', '', `- Crawlability: ${pct(d.crawlability)}`, `- HTTPS: ${pct(d.https)}`, `- International SEO: ${pct(d.intl)}`, `- Site Performance: ${pct(d.performance)}`, `- Internal Linking: ${pct(d.linking)}`, `- Markup: ${pct(d.markups)}`,
-      d.vitals ? `- Core Web Vitals: ${d.vitals.pass} of ${d.vitals.of} pass (LCP ${d.vitals.lcp || 'n/a'}, CLS ${d.vitals.cls || 'n/a'}, TBT ${d.vitals.tbt || 'n/a'})` : '- Core Web Vitals: no Lighthouse data', '',
+    d.vitals ? `- Core Web Vitals: ${d.vitals.pass} of ${d.vitals.of} pass (LCP ${d.vitals.lcp || 'n/a'}, CLS ${d.vitals.cls || 'n/a'}, TBT ${d.vitals.tbt || 'n/a'})` : '- Core Web Vitals: no Lighthouse data', '',
       '## Top issues', '', ...(d.top_issues.length ? d.top_issues.map(g => `- ${g.title} (${g.count}): ${g.fix}`) : ['No issues found.']), '',
       '## Pages to improve', '', ...(d.pages_to_improve.length ? d.pages_to_improve.map(r => `- ${r.url} (${r.issues} issues): ${r.items.map(x => x.title).join('; ')}`) : ['Every crawled page is clean.']), '',
       '## Health trend', '', ...dated.map(x => `- ${x.date}: Site Health ${x.health ?? 'n/a'}%${x.ai != null ? `, AI Search Health ${x.ai}%` : ''}`), ''].join('\n');
@@ -143,91 +143,93 @@ export default function SiteAuditOverview({ projectId, onBack, initial }) {
 
 
       {tabId === 'overview' && <>
-      <Card pad={false}>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 divide-y md:divide-y-0 xl:divide-x divide-slate-100">
-          <Stat title="Site Health" hint="The audit's overall score from the crawl and Lighthouse"><Gauge v={d.health} change={diff('health')} /></Stat>
-          <Stat title="AI Search Health" hint="The on-page facts answer engines rely on: title, description, one H1, structured data, canonical and crawl access" badge={d.ai != null && <Badge tone={d.ai >= 80 ? 'green' : d.ai >= 50 ? 'amber' : 'red'}>{d.ai >= 80 ? 'Good' : d.ai >= 50 ? 'Fair' : 'Poor'}</Badge>}>
-            <Gauge v={d.ai} change={diff('ai')} />
-          </Stat>
-          <Stat title="Errors" hint="Issues that most hurt crawling, indexing and ranking">
-            <div className="text-26 font-bold text-red-600 tabular-nums mt-2">{d.errors}</div>
-            <div className="mt-3 pt-3 border-t border-slate-100"><div className="text-15 font-semibold text-slate-900">Warnings</div><div className="text-26 font-bold text-amber-600 tabular-nums mt-1">{d.warnings}</div></div>
-          </Stat>
-          <Stat title="Crawled Pages" hint="Pages the audit fetched">
-            <div className="text-26 font-bold tabular-nums mt-2">{d.crawled}</div>
-            <div className="text-13 text-slate-600 mt-2">Broken: <b>{d.broken}</b> &nbsp; Have issues: <b>{d.with_issues}</b></div>
-            {bar.length > 0 && <div className="flex h-3 rounded overflow-hidden mt-2 bg-slate-100">{bar.map(([n, c], i) => n > 0 && <div key={i} style={{ width: `${n / d.crawled * 100}%`, background: c }} />)}</div>}
-          </Stat>
-        </div>
-      </Card>
+        <Card pad={false}>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 divide-y md:divide-y-0 xl:divide-x divide-slate-100">
+            <Stat title="Site Health" hint="The audit's overall score from the crawl and Lighthouse"><Gauge v={d.health} change={diff('health')} /></Stat>
+            <Stat title="AI Search Health" hint="The on-page facts answer engines rely on: title, description, one H1, structured data, canonical and crawl access" badge={d.ai != null && <Badge tone={d.ai >= 80 ? 'green' : d.ai >= 50 ? 'amber' : 'red'}>{d.ai >= 80 ? 'Good' : d.ai >= 50 ? 'Fair' : 'Poor'}</Badge>}>
+              <Gauge v={d.ai} change={diff('ai')} />
+            </Stat>
+            <Stat title="Errors" hint="Issues that most hurt crawling, indexing and ranking">
+              <div className="text-26 font-bold text-red-600 tabular-nums mt-2">{d.errors}</div>
+              <div className="mt-3 pt-3 border-t border-slate-100"><div className="text-15 font-semibold text-slate-900">Warnings</div><div className="text-26 font-bold text-amber-600 tabular-nums mt-1">{d.warnings}</div></div>
+            </Stat>
+            <Stat title="Crawled Pages" hint="Pages the audit fetched">
+              <div className="text-26 font-bold tabular-nums mt-2">{d.crawled}</div>
+              <div className="text-13 text-slate-600 mt-2">Broken: <b>{d.broken}</b> &nbsp; Have issues: <b>{d.with_issues}</b></div>
+              {bar.length > 0 && <div className="flex h-3 rounded overflow-hidden mt-2 bg-slate-100">{bar.map(([n, c], i) => n > 0 && <div key={i} style={{ width: `${n / d.crawled * 100}%`, background: c }} />)}</div>}
+            </Stat>
+          </div>
+        </Card>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        <div className="space-y-4">
-          <Card title="Top Issues" action={<Button size="sm" onClick={() => setTabId('issues')}>View all</Button>} pad={false}>
-            {d.top_issues.length ? (
-              <table className="w-full text-13">
-                <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Description</th><th className="px-5 py-2 text-right font-semibold">Issues</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">{d.top_issues.slice(0, 5).map(g => { const [c, I] = KIND[g.kind]; return (
-                  <tr key={g.code}><td className="px-5 py-3 flex gap-3"><I size={16} className="mt-0.5 shrink-0" style={{ color: c }} /><div><div className="font-semibold text-slate-900">{g.title}</div><div className="text-slate-600">{g.fix}</div></div></td><td className="px-5 py-3 text-right tabular-nums text-indigo-600 align-top">{g.count}</td></tr>); })}</tbody>
-              </table>
-            ) : <p className="px-5 py-8 text-center text-13 text-slate-500">No issues found.</p>}
-          </Card>
-          <Card title="Pages to Improve" action={<Button size="sm" onClick={() => setTabId('pages')}>View all</Button>} pad={false}>
-            {d.pages_to_improve.length ? (
-              <>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          <div className="space-y-4">
+            <Card title="Top Issues" action={<Button size="sm" onClick={() => setTabId('issues')}>View all</Button>} pad={false}>
+              {d.top_issues.length ? (
                 <table className="w-full text-13">
-                  <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Page</th><th className="px-5 py-2 text-right font-semibold">Issues</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">{d.pages_to_improve.slice(0, 5).map(r => (
-                    <tr key={r.url}><td className="px-5 py-3"><a href={r.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:underline break-all">{path(r.url)}</a>
-                      <div className="text-12 text-slate-600 mt-0.5">{r.items.slice(0, 4).map((x, i) => <span key={i} className="mr-3 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: KIND[x.kind][0] }} />{x.title}</span>)}{r.items.length > 4 && `+${r.items.length - 4} more`}</div></td>
-                      <td className="px-5 py-3 text-right tabular-nums text-indigo-600 align-top">{r.issues}</td></tr>))}</tbody>
+                  <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Description</th><th className="px-5 py-2 text-right font-semibold">Issues</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">{d.top_issues.slice(0, 5).map(g => {
+                    const [c, I] = KIND[g.kind]; return (
+                      <tr key={g.code}><td className="px-5 py-3 flex gap-3"><I size={16} className="mt-0.5 shrink-0" style={{ color: c }} /><div><div className="font-semibold text-slate-900">{g.title}</div><div className="text-slate-600">{g.fix}</div></div></td><td className="px-5 py-3  tabular-nums text-indigo-600 align-top">{g.count}</td></tr>);
+                  })}</tbody>
                 </table>
-                <button type="button" onClick={() => setTabId('pages')} className="px-5 py-3 text-13 text-indigo-600 hover:underline cursor-pointer">View all crawled pages</button>
-              </>
-            ) : <p className="px-5 py-8 text-center text-13 text-slate-500">Every crawled page is clean.</p>}
-          </Card>
-        </div>
+              ) : <p className="px-5 py-8 text-center text-13 text-slate-500">No issues found.</p>}
+            </Card>
+            <Card title="Pages to Improve" action={<Button size="sm" onClick={() => setTabId('pages')}>View all</Button>} pad={false}>
+              {d.pages_to_improve.length ? (
+                <>
+                  <table className="w-full text-13">
+                    <thead className="bg-slate-50 text-11.5 text-slate-500"><tr><th className="px-5 py-2 text-left font-semibold">Page</th><th className="px-5 py-2 text-right font-semibold">Issues</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">{d.pages_to_improve.slice(0, 5).map(r => (
+                      <tr key={r.url}><td className="px-5 py-3"><a href={r.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 hover:underline break-all">{path(r.url)}</a>
+                        <div className="text-12 text-slate-600 mt-0.5">{r.items.slice(0, 4).map((x, i) => <span key={i} className="mr-3 whitespace-nowrap"><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: KIND[x.kind][0] }} />{x.title}</span>)}{r.items.length > 4 && `+${r.items.length - 4} more`}</div></td>
+                        <td className="px-5 py-3  tabular-nums text-indigo-600 align-top">{r.issues}</td></tr>))}</tbody>
+                  </table>
+                  <button type="button" onClick={() => setTabId('pages')} className="px-5 py-3 text-13 text-indigo-600 hover:underline cursor-pointer">View all crawled pages</button>
+                </>
+              ) : <p className="px-5 py-8 text-center text-13 text-slate-500">Every crawled page is clean.</p>}
+            </Card>
+          </div>
 
-        <div className="space-y-4">
-          <Card title="Issue Trend" action={(
-            <div className="flex flex-wrap items-center gap-2">
-              <Pick label="Trend of" value={series} onChange={setSeries} options={[{ id: 'health', label: 'Site Health' }, { id: 'ai', label: 'AI Search Health' }]} />
-              <label className="h-9 pl-3 pr-2 inline-flex items-center gap-2 rounded border border-slate-300 bg-white text-14 text-slate-800 hover:border-slate-400">
-                <Calendar size={15} className="text-slate-600" />
-                <Select aria-label="Show the trend up to" value={upTo} onChange={e => setUpTo(e.target.value)} className="bg-transparent outline-none cursor-pointer appearance-none pr-1">
-                  {days.map(x => <option key={x.iso} value={x.iso}>{x.label}</option>)}
-                </Select>
-              </label>
-            </div>
-          )}>
-            {shown.length ? (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={shown} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
-                    <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} />
-                    <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} />
-                    <YAxis tick={AXIS} tickLine={false} axisLine={false} width={40} domain={[0, 100]} unit="%" allowDecimals={false} />
-                    <Tooltip formatter={(v) => [v == null ? 'no data' : `${v}%`, series === 'ai' ? 'AI Search Health' : 'Site Health']} />
-                    <Line type="monotone" dataKey={series} stroke="#6658dd" strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
-                  </LineChart>
-                </ResponsiveContainer>
+          <div className="space-y-4">
+            <Card title="Issue Trend" action={(
+              <div className="flex flex-wrap items-center gap-2">
+                <Pick label="Trend of" value={series} onChange={setSeries} options={[{ id: 'health', label: 'Site Health' }, { id: 'ai', label: 'AI Search Health' }]} />
+                <label className="h-9 pl-3 pr-2 inline-flex items-center gap-2 rounded border border-slate-300 bg-white text-14 text-slate-800 hover:border-slate-400">
+                  <Calendar size={15} className="text-slate-600" />
+                  <Select aria-label="Show the trend up to" value={upTo} onChange={e => setUpTo(e.target.value)} className="bg-transparent outline-none cursor-pointer appearance-none pr-1">
+                    {days.map(x => <option key={x.iso} value={x.iso}>{x.label}</option>)}
+                  </Select>
+                </label>
               </div>
-            ) : <p className="py-8 text-center text-13 text-slate-500">{series === 'ai' ? 'AI Search Health appears once AI visibility checks have run.' : 'The trend draws as more audits are run.'}</p>}
-          </Card>
-          <Card title="Thematic Reports">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Theme title="Robots.txt" note={d.robots.blocks_all ? 'robots.txt blocks the whole site' : d.robots.found ? (d.previous ? 'No changes' : 'Found and not blocking crawlers') : 'No robots.txt found'} />
-              <Theme title="Crawlability" value={d.crawlability} change={diff('crawlability')} />
-              <Theme title="HTTPS" value={d.https} change={diff('https')} />
-              <Theme title="International SEO" value={d.intl} note={d.intl == null ? 'International SEO is not implemented on this site.' : null} />
-              <Theme title="Core Web Vitals" note={d.vitals ? `${d.vitals.pass} of ${d.vitals.of} pass · LCP ${d.vitals.lcp || '—'} · CLS ${d.vitals.cls || '—'} · TBT ${d.vitals.tbt || '—'}` : 'No Lighthouse data for this audit.'} />
-              <Theme title="Site Performance" value={d.performance} change={diff('performance')} note={d.performance == null ? 'No Lighthouse data for this audit.' : null} />
-              <Theme title="Internal Linking" value={d.linking} change={diff('linking')} />
-              <Theme title="Markup" value={d.markups} note={d.markups == null ? "It seems that your website doesn't use any markup" : null} />
-            </div>
-          </Card>
+            )}>
+              {shown.length ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={shown} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 4" vertical={false} />
+                      <XAxis dataKey="date" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} />
+                      <YAxis tick={AXIS} tickLine={false} axisLine={false} width={40} domain={[0, 100]} unit="%" allowDecimals={false} />
+                      <Tooltip formatter={(v) => [v == null ? 'no data' : `${v}%`, series === 'ai' ? 'AI Search Health' : 'Site Health']} />
+                      <Line type="monotone" dataKey={series} stroke="#6658dd" strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <p className="py-8 text-center text-13 text-slate-500">{series === 'ai' ? 'AI Search Health appears once AI visibility checks have run.' : 'The trend draws as more audits are run.'}</p>}
+            </Card>
+            <Card title="Thematic Reports">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Theme title="Robots.txt" note={d.robots.blocks_all ? 'robots.txt blocks the whole site' : d.robots.found ? (d.previous ? 'No changes' : 'Found and not blocking crawlers') : 'No robots.txt found'} />
+                <Theme title="Crawlability" value={d.crawlability} change={diff('crawlability')} />
+                <Theme title="HTTPS" value={d.https} change={diff('https')} />
+                <Theme title="International SEO" value={d.intl} note={d.intl == null ? 'International SEO is not implemented on this site.' : null} />
+                <Theme title="Core Web Vitals" note={d.vitals ? `${d.vitals.pass} of ${d.vitals.of} pass · LCP ${d.vitals.lcp || '—'} · CLS ${d.vitals.cls || '—'} · TBT ${d.vitals.tbt || '—'}` : 'No Lighthouse data for this audit.'} />
+                <Theme title="Site Performance" value={d.performance} change={diff('performance')} note={d.performance == null ? 'No Lighthouse data for this audit.' : null} />
+                <Theme title="Internal Linking" value={d.linking} change={diff('linking')} />
+                <Theme title="Markup" value={d.markups} note={d.markups == null ? "It seems that your website doesn't use any markup" : null} />
+              </div>
+            </Card>
+          </div>
         </div>
-      </div>
       </>}
     </div>
   );

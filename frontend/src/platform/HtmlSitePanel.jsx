@@ -3,6 +3,8 @@ import { CheckCircle2, XCircle, Loader2, Send, Save, Unplug, ExternalLink, Setti
 import { Badge, Button, Field, inputCls, useDoubleConfirm } from './SeoUi';
 import { api, fmtDateTime, usePoll } from './seoApi';
 import Select from '../components/Select';
+import DateTimeAmPm, { nowLocal } from './ScheduleTime';
+
 
 /**
  * Publishing destination: a plain HTML website on FTP / FTPS / SFTP hosting (same layout as the React.js panel).
@@ -76,6 +78,11 @@ export default function HtmlSitePanel({ b, article = null, toast = console.log, 
   const [ask, confirmNode] = useDoubleConfirm();
   const [mode, setMode] = useState('publish');
   const [when, setWhen] = useState(defaultWhen || '');
+  const whenTouched = useRef(false);  // the user picked their own date/time: don't overwrite it when Schedule is clicked again
+  const selectMode = (id) => {
+    if (id === 'schedule' && !whenTouched.current) setWhen(nowLocal());  // default to right now, every time Schedule is first chosen
+    setMode(id);
+  };
   const [pubSteps, setPubSteps] = useState([]);
   const [post, setPost] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -103,14 +110,14 @@ export default function HtmlSitePanel({ b, article = null, toast = console.log, 
       setSteps(st => [...st.filter(x => x.step !== 'Test deployment'), { step: 'Test deployment', ok, detail: s.deploy_test?.detail }]);
       if (ok) { setEditing(false); toast('HTML website connected.'); }
     }
-  }).catch(() => {}), testing, 3000);  // pauses on a hidden tab and never stacks requests
+  }).catch(() => { }), testing, 3000);  // pauses on a hidden tab and never stacks requests
 
   // the article's publish status on the HTML website (followed while it is being published)
   const postBusy = ['publishing', 'uploading', 'deploying'].includes(post?.status);
   useEffect(() => {
     if (!article?.id) { setPost(null); return undefined; }
     let stop = false;
-    const get = () => api(`/businesses/${b.id}/html-site/articles/${article.id}`).then(p => { if (!stop) { setPost(p); if (p.steps?.length) setPubSteps(p.steps); } }).catch(() => {});
+    const get = () => api(`/businesses/${b.id}/html-site/articles/${article.id}`).then(p => { if (!stop) { setPost(p); if (p.steps?.length) setPubSteps(p.steps); } }).catch(() => { });
     get();
     let busy = false;
     const t = postBusy ? setInterval(() => { if (busy || document.visibilityState === 'hidden') return; busy = true; Promise.resolve(get()).finally(() => { busy = false; }); }, 4000) : null;  // not while the tab is hidden, and never two at once
@@ -125,12 +132,18 @@ export default function HtmlSitePanel({ b, article = null, toast = console.log, 
     setBusy('save'); setError(''); setSteps([]);
     const out = [];
     try {
-      let s = await api(`/businesses/${b.id}/html-site`, { method: 'PUT', body: {
-        website_name: form.website_name, website_url: form.website_url, listing_file: form.listing_file, articles_folder: form.articles_folder } });
+      let s = await api(`/businesses/${b.id}/html-site`, {
+        method: 'PUT', body: {
+          website_name: form.website_name, website_url: form.website_url, listing_file: form.listing_file, articles_folder: form.articles_folder
+        }
+      });
       out.push({ step: 'Read the blog page', ok: Boolean(s.site_check?.ok), detail: s.site_check?.detail });
-      s = await api(`/businesses/${b.id}/html-site/deploy`, { method: 'PUT', body: {
-        adapter: form.adapter, host: form.host.trim(), port: Number(form.port) || null, user: form.user.trim(),
-        password: form.password || null, tls: form.adapter === 'ftp' && form.tls, root: form.root.trim() || null } });
+      s = await api(`/businesses/${b.id}/html-site/deploy`, {
+        method: 'PUT', body: {
+          adapter: form.adapter, host: form.host.trim(), port: Number(form.port) || null, user: form.user.trim(),
+          password: form.password || null, tls: form.adapter === 'ftp' && form.tls, root: form.root.trim() || null
+        }
+      });
       out.push({ step: 'Save the server login', ok: true, detail: `${form.adapter === 'sftp' ? 'SFTP' : form.tls ? 'FTPS' : 'FTP'} ${form.user.trim()}@${form.host.trim()}:${Number(form.port) || (form.adapter === 'sftp' ? 22 : 21)} (password stored encrypted)` });
       setSite(s); setSteps([...out]);
       const r = await api(`/businesses/${b.id}/html-site/deploy/test-connection`, { method: 'POST' });
@@ -295,14 +308,14 @@ export default function HtmlSitePanel({ b, article = null, toast = console.log, 
         <Num n={2} done={onSite}>Publish this article</Num>
         <div className="grid grid-cols-2 gap-2">
           {modes.map(m => (
-            <button key={m.id} type="button" onClick={() => setMode(m.id)}
+            <button key={m.id} type="button" onClick={() => selectMode(m.id)}
               className={`text-left p-2.5 rounded-xl border cursor-pointer ${mode === m.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-200 bg-slate-50'}`}>
               <span className="block font-bold text-slate-800">{m.title}</span>
               <span className="block text-[11px] text-slate-500">{m.hint}</span>
             </button>
           ))}
         </div>
-        {mode === 'schedule' && <Field label="Publish at"><input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} className={inputCls} /></Field>}
+        {mode === 'schedule' && <Field label="Publish at"><DateTimeAmPm value={when} onChange={v => { whenTouched.current = true; setWhen(v); }} /></Field>}
         {onSite && <p className="text-slate-600">Already on the website. Publishing again updates the same article instead of creating a duplicate.</p>}
         <div className="flex items-center gap-2">
           <Button variant="primary" icon={Send} busy={busy === 'publish' || postBusy} disabled={!article || postBusy || (mode === 'schedule' && !when)} onClick={publish}>

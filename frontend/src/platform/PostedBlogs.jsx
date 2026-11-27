@@ -24,7 +24,7 @@ export default function PostedBlogs({ b, toast, onWrite }) {
   const drafts = useMemo(() => all.filter(a => a.status === 'completed' && a.wp_status !== 'publish' && a.react_status !== 'publish' && a.wp_status !== 'deleted' && a.react_status !== 'deleted'), [all]);
   const found = site.data?.blogs || [];
   const rows = only === 'live' ? live : only === 'drafts' ? drafts : only === 'removed' ? removed : found;
-  const say = toast || (() => {});
+  const say = toast || (() => { });
   const [note, setNote] = useState('');
   // The connected WordPress site's posts are fetched into the list (WordPress does not say which tool made a post, so all of them come in): on the first visit, when the list is empty, and then on the button.
   const fetchPosted = (quiet) => run('sync', async () => {
@@ -45,17 +45,23 @@ export default function PostedBlogs({ b, toast, onWrite }) {
     const r = await api(`/businesses/${b.id}/articles/existing/bulk`, { method: 'POST', body: { urls }, timeout: 120000 });
     setPicked([]); say(`${r.added} blog${r.added === 1 ? '' : 's'} added to the list`); await list.reload(true); site.reload(true);
   });
-  const takeDown = (a) => ask({ what: 'this blog from your website', effect: 'It is deleted from your website, so visitors can no longer read it. The text stays in bevisibe and you can post it again.', onConfirm: () => run(`d${a.id}`, async () => {
-    await api(`/businesses/${b.id}/articles/${a.id}/${a.react_status === 'publish' && a.wp_status !== 'publish' ? 'react-post' : 'website-post'}`, { method: 'DELETE' });
-    say('Taken down from the website'); list.reload(true);
-  }) });
+  const takeDown = (a) => ask({
+    what: 'this blog from your website', effect: 'It is deleted from your website, so visitors can no longer read it. The text stays in bevisibe and you can post it again.', onConfirm: () => run(`d${a.id}`, async () => {
+      await api(`/businesses/${b.id}/articles/${a.id}/${a.react_status === 'publish' && a.wp_status !== 'publish' ? 'react-post' : 'website-post'}`, { method: 'DELETE' });
+      say('Taken down from the website'); list.reload(true);
+    })
+  });
   const isLive = (a) => a.wp_status === 'publish' || a.react_status === 'publish';
-  const remove = (a) => ask({ what: isLive(a) ? 'this blog from your website and from the list' : 'this blog from the list', effect: isLive(a) ? 'It is deleted from your connected website, so visitors can no longer read it, and it is removed from this list. This cannot be undone.' : 'The saved text and its history are removed from bevisibe.', onConfirm: () => run(`r${a.id}`, async () => {
-    const r = await api(`/businesses/${b.id}/articles/${a.id}/with-website`, { method: 'DELETE' }); say(r.from_website ? 'Deleted from your website and from the list' : 'Removed from the list'); list.reload(true);
-  }) });
-  const removeListOnly = (a) => ask({ what: 'this blog from the list only', effect: 'It stays live on your website. Only the list in bevisibe changes.', onConfirm: () => run(`l${a.id}`, async () => {
-    await api(`/businesses/${b.id}/articles/${a.id}/with-website?list_only=true`, { method: 'DELETE' }); say('Removed from the list'); list.reload(true);
-  }) });
+  const remove = (a) => ask({
+    what: isLive(a) ? 'this blog from your website and from the list' : 'this blog from the list', effect: isLive(a) ? 'It is deleted from your connected website, so visitors can no longer read it, and it is removed from this list. This cannot be undone.' : 'The saved text and its history are removed from bevisibe.', onConfirm: () => run(`r${a.id}`, async () => {
+      const r = await api(`/businesses/${b.id}/articles/${a.id}/with-website`, { method: 'DELETE' }); say(r.from_website ? 'Deleted from your website and from the list' : 'Removed from the list'); list.reload(true);
+    })
+  });
+  const removeListOnly = (a) => ask({
+    what: 'this blog from the list only', effect: 'It stays live on your website. Only the list in bevisibe changes.', onConfirm: () => run(`l${a.id}`, async () => {
+      await api(`/businesses/${b.id}/articles/${a.id}/with-website?list_only=true`, { method: 'DELETE' }); say('Removed from the list'); list.reload(true);
+    })
+  });
   const canTakeDown = (a) => (a.publish_method || 'wordpress') === 'wordpress' && a.wp_status === 'publish' ? true : a.react_status === 'publish';
 
   return (
@@ -89,20 +95,24 @@ export default function PostedBlogs({ b, toast, onWrite }) {
           <DataTable bare rows={rows} rowKey={a => a.id} pageSize={10} sizes={[10, 25, 50]} exportName="posted-blogs" label="blogs" searchPlaceholder="Search blogs" minWidth={900} columnsMenu={false} headClass="bg-slate-100 text-slate-700"
             empty={only === 'live' ? 'No blog is posted yet. Write one, or press Found on my website to add the ones already there.' : only === 'drafts' ? 'No written blog is waiting to be posted.' : 'Nothing was taken down.'}
             columns={[
-              { id: 'title', header: 'Blog', value: a => a.title || a.keyword, className: 'px-3 py-2.5 min-w-[260px] max-w-[420px]', cell: a => (
-                <div className="min-w-0"><div className="text-13 font-semibold text-slate-900 truncate" title={a.title || a.keyword}>{a.title || a.keyword}</div>
-                  {urlOf(a) && <a href={urlOf(a)} target="_blank" rel="noreferrer noopener" className="block text-11.5 text-indigo-600 hover:underline truncate" title={urlOf(a)}>{urlOf(a).replace(/^https?:\/\/(www\.)?/, '')}</a>}</div>) },
+              {
+                id: 'title', header: 'Blog', value: a => a.title || a.keyword, className: 'px-3 py-2.5 min-w-[260px] max-w-[420px]', cell: a => (
+                  <div className="min-w-0"><div className="text-13 font-semibold text-slate-900 truncate" title={a.title || a.keyword}>{a.title || a.keyword}</div>
+                    {urlOf(a) && <a href={urlOf(a)} target="_blank" rel="noreferrer noopener" className="block text-11.5 text-indigo-600 hover:underline truncate" title={urlOf(a)}>{urlOf(a).replace(/^https?:\/\/(www\.)?/, '')}</a>}</div>)
+              },
               { id: 'keyword', header: 'Keyword', value: a => a.keyword || '', className: 'px-3 py-2.5 text-12.5 text-slate-700', cell: a => a.keyword || '—' },
               { id: 'where', header: only === 'drafts' ? 'Status' : 'Posted on', value: a => (only === 'drafts' ? (a.publishing_status || 'draft') : where(a)), className: 'px-3 py-2.5 whitespace-nowrap', cell: a => (only === 'drafts' ? <Badge tone="amber">{a.publishing_status === 'scheduled' ? 'Scheduled' : a.publishing_status === 'failed' ? 'Failed' : 'Written, not posted'}</Badge> : <Badge tone={a.publish_method === 'existing' ? 'gray' : 'blue'}>{where(a)}</Badge>) },
-              { id: 'words', header: 'Words', right: true, first: 'desc', value: a => (a.body ? a.body.split(/\s+/).length : (a.stats?.words ?? null)), className: 'px-3 py-2.5 text-right tabular-nums text-12.5', cell: a => a.stats?.words ?? '—' },
+              { id: 'words', header: 'Words', right: true, first: 'desc', value: a => (a.body ? a.body.split(/\s+/).length : (a.stats?.words ?? null)), className: 'px-3 py-2.5  tabular-nums text-12.5', cell: a => a.stats?.words ?? '—' },
               { id: 'added', header: 'Added', first: 'desc', value: a => Date.parse(a.created_at) || null, className: 'px-3 py-2.5 whitespace-nowrap text-12 text-slate-500', cell: a => fmtDateTime(a.created_at) },
-              { id: 'actions', header: 'Actions', csv: false, right: true, className: 'px-3 py-2.5 text-right whitespace-nowrap', thClass: 'px-3 py-2.5', cell: a => (
-                <span className="inline-flex gap-1.5">
-                  {urlOf(a) && <a href={urlOf(a)} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Open the blog on your website." /></a>}
-                  {only === 'live' && canTakeDown(a) && <Act icon={EyeOff} tone="amber" busy={busy === `d${a.id}`} tip="Take down: delete it from your website but keep the text here, so you can post it again." onClick={() => takeDown(a)}>Take down</Act>}
-                  <Act icon={Trash2} tone="rose" busy={busy === `r${a.id}`} tip={isLive(a) ? 'Delete: removes it from your connected website and from this list.' : 'Delete from the list.'} onClick={() => remove(a)}>Delete</Act>
-                  {isLive(a) && <button type="button" onClick={() => removeListOnly(a)} disabled={busy === `l${a.id}`} title="Remove it from this list only. It stays live on your website." className="text-11.5 text-slate-500 hover:text-slate-800 underline cursor-pointer px-1">List only</button>}
-                </span>) },
+              {
+                id: 'actions', header: 'Actions', csv: false, right: true, className: 'px-3 py-2.5 text-right whitespace-nowrap', thClass: 'px-3 py-2.5', cell: a => (
+                  <span className="inline-flex gap-1.5">
+                    {urlOf(a) && <a href={urlOf(a)} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Open the blog on your website." /></a>}
+                    {only === 'live' && canTakeDown(a) && <Act icon={EyeOff} tone="amber" busy={busy === `d${a.id}`} tip="Take down: delete it from your website but keep the text here, so you can post it again." onClick={() => takeDown(a)}>Take down</Act>}
+                    <Act icon={Trash2} tone="rose" busy={busy === `r${a.id}`} tip={isLive(a) ? 'Delete: removes it from your connected website and from this list.' : 'Delete from the list.'} onClick={() => remove(a)}>Delete</Act>
+                    {isLive(a) && <button type="button" onClick={() => removeListOnly(a)} disabled={busy === `l${a.id}`} title="Remove it from this list only. It stays live on your website." className="text-11.5 text-slate-500 hover:text-slate-800 underline cursor-pointer px-1">List only</button>}
+                  </span>)
+              },
             ]} />
         )}
       </Card>

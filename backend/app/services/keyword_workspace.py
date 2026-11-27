@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from ..db import release_connection
 from ..models import Audit, Business, Keyword, KeywordCandidate
-from . import competitor_keywords as ck, keyword_metrics, market
+from . import ai, competitor_keywords as ck, keyword_fit, keyword_metrics, market
 from .providers.base import intent_of
 
 log = logging.getLogger("seo.keyword_workspace")
@@ -34,6 +34,45 @@ SOURCES = {
     "brief": "Business summary",
     "ai": "AI suggestions",
 }
+GROUPS = {"competitor_keywords": "Competitor Keywords", "competitor_gap": "Competitor Gap", "keyword_research": "Keyword Research", "manual": "Manual Entry"}
+
+
+def group_of(kind: str | None, label: str | None = None) -> str:
+    """Which of the four places a keyword came from: competitor keywords, the competitor gap, keyword research, or typed in by hand."""
+    text = f"{kind or ''} {label or ''}".lower()
+    if "gap" in text:
+        return "competitor_gap"
+    if "competitor" in text:
+        return "competitor_keywords"
+    if "by hand" in text or "manual" in text or "typed" in text:
+        return "manual"
+    return "keyword_research"
+
+
+def merge_sources(k: Keyword, sources: list[dict[str, Any]], competitors: list[str]) -> bool:
+    """Add where a keyword was found again to the keyword it already is, so the same keyword is never saved twice and keeps every place it came from. True when something new was added."""
+    src = dict(k.source or {})
+    have = list(src.get("sources") or [])
+    if not have and src.get("kind"):
+        have = [{"kind": src.get("kind"), "label": src.get("label"), "detail": src.get("from") or "", "group": group_of(src.get("kind"), src.get("label"))}]
+    changed = False
+    for x in sources:
+        item = {"kind": x.get("kind") or x.get("type"), "label": x.get("label"), "detail": x.get("detail") or "", "group": group_of(x.get("kind"), x.get("label"))}
+        if not any(h.get("kind") == item["kind"] and h.get("label") == item["label"] for h in have):
+            have.append(item)
+            changed = True
+    comps = list(src.get("competitors") or [])
+    for c in competitors:
+        if c and c not in comps:
+            comps.append(c)
+            changed = True
+    if changed:
+        src["sources"], src["competitors"] = have, comps
+        src["groups"] = sorted({h.get("group") for h in have if h.get("group")})
+        k.source = src  # assigned again so the JSON change is saved
+    return changed
+
+
 FACTS = {"search_console", "profile"}  # what the owner's own Google searches and services say: facts about the business, never judged by wording
 OWN = {"website", "search_console", "profile"}  # places that show what you already say or rank for
 _SMALL = frozenset({"in", "for", "of", "the", "a", "an", "to", "and", "best", "top"})
@@ -459,6 +498,11 @@ def measure_difficulty(db: Session, b: Business, ids: list[int]) -> list[dict[st
         if res and res.get("score") is not None:
             r.kd = int(res["score"])
             r.kd_detail = {"at": _now().isoformat(), "parts": res["formula"], "sites": res["sites_with_figures"], "of": res["sites"], "weight_used": res["weight_used"]}
+            try:  # the same keyword shows the same difficulty on the competitor tabs
+                from . import competitor_keyword_report as _ck  # noqa: PLC0415
+                _ck.share_kd(db, b, r.keyword, r.kd, _now())
+            except Exception as exc:  # noqa: BLE001
+                log.warning("sharing the difficulty of %s failed: %s", r.keyword, exc)
             out.append({"id": r.id, "kd": r.kd, "detail": r.kd_detail})
         else:
             out.append({"id": r.id, "kd": None, "error": err or "Google gave too few results with figures to score this keyword."})
@@ -546,7 +590,7 @@ def overview(db: Session, b: Business, *, source: str = "", tag: str = "", q: st
             "sources": [{"kind": k, "label": v, "count": counts_src[k]} for k, v in SOURCES.items()],
             "tags": [{"tag": t, "label": v, "count": counts_tag[t]} for t, v in TAGS.items()],
             "totals": {"suggested": sum(1 for i in items if i["suggested"] and not i["picked"] and not i["dismissed"]), "all": len(items), "open": sum(1 for i in items if not i["picked"] and not i["dismissed"]), "picked": sum(1 for i in items if i["picked"]), "dismissed": sum(1 for i in items if i["dismissed"])},
-            "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": shown, "shown": len(out)}
+            "unchecked": len(keyword_fit.unchecked(rows)), "fit_check": ai.is_configured(), "volumes": keyword_metrics.enabled(), "last_collected": last.isoformat() if last else None, "items": shown, "shown": len(out)}
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- Google Search Console: how each keyword performs
@@ -574,21 +618,25 @@ def refresh_performance(db: Session, b: Business) -> dict[str, Any]:
 
 # ----------------------------------------------------------------------------------------------------------------------------- choosing
 def pick(db: Session, b: Business, ids: list[int]) -> dict[str, Any]:
-    """Save the chosen keywords to the project's keyword list with where each came from."""
-    added = 0
+    """Save the chosen keywords to the project's keyword list with where each came from. A keyword that is already saved is not saved again: the new place it was found is added to it."""
+    added, existing, merged = 0, [], 0
     for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id, KeywordCandidate.id.in_(ids))):
         first = (r.sources or [{}])[0]
         src = {"kind": first.get("kind") or "workspace", "label": first.get("label") or "Keyword workspace", "from": "keyword_workspace", "searches": r.volume, "at": date.today().isoformat(),
-               "pages": [], "sources": [{"kind": s.get("kind"), "label": s.get("label"), "detail": s.get("detail")} for s in r.sources or []], "competitors": r.competitors or []}
+               "pages": [], "sources": [{"kind": s.get("kind"), "label": s.get("label"), "detail": s.get("detail"), "group": group_of(s.get("kind"), s.get("label"))} for s in r.sources or []], "competitors": r.competitors or []}
+        src["groups"] = sorted({x["group"] for x in src["sources"]})
         k = db.scalar(select(Keyword).where(Keyword.business_id == b.id, Keyword.keyword == r.keyword))
         if k is None:
             k = Keyword(business_id=b.id, keyword=r.keyword, volume=r.volume, difficulty=r.difficulty, cpc=r.cpc, intent=r.intent or intent_of(r.keyword), tracked=True, source=src,
                         priority="High" if score_of(r, tag_of(r)) >= 70 else "Medium")
             db.add(k)
             added += 1
+        else:
+            existing.append(r.keyword)
+            merged += 1 if merge_sources(k, src["sources"], src["competitors"]) else 0
         r.picked, r.dismissed = True, False
     db.commit()
-    return {"picked": added}
+    return {"picked": added, "existing": existing, "updated": merged}
 
 
 def dismiss(db: Session, b: Business, ids: list[int], on: bool = True) -> int:
@@ -622,6 +670,11 @@ def add_ideas(db: Session, b: Business, ideas: list[dict[str, Any]], label: str)
     existing = {r.norm: r for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))}
     n = _add(db, b, [{"keyword": i.get("keyword"), "kind": "google_ideas", "label": label, "detail": i.get("detail") or label, "volume": i.get("volume")} for i in ideas if i.get("keyword")], existing)
     db.commit()
+    try:  # what was just added is checked against the business at once: another company's keywords do not stay in this project's list
+        keyword_fit.judge(db, b, list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id))), limit=60)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 -- the check never blocks adding
+        log.warning("relevance check after add skipped: %s", exc)
     return n
 
 
@@ -632,3 +685,15 @@ def summary(db: Session, b: Business) -> dict[str, Any]:
     cands = list(db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)))
     return {"competitors": len(_competitor_domains(db, b)), "workspace": sum(1 for r in cands if merge_key(r.keyword) not in keys and not r.dismissed), "saved": len(saved),
             "ranking": sum(1 for k in saved if k.rank and k.rank <= 10)}
+
+
+def mark_picked(db: Session, b: Business, keywords: list[str]) -> int:
+    """Keywords saved from another page (Prepare Keywords) are marked picked in the workspace, so they leave the open list."""
+    keys = {merge_key(k) for k in keywords}
+    n = 0
+    for r in db.scalars(select(KeywordCandidate).where(KeywordCandidate.business_id == b.id)):
+        if r.norm in keys and not r.picked:
+            r.picked, r.dismissed = True, False
+            n += 1
+    db.commit()
+    return n

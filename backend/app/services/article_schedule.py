@@ -218,10 +218,32 @@ def recover_stuck(db: Session, now: datetime) -> int:
     for p in db.scalars(select(ScheduledPost).where(ScheduledPost.status == "publishing", ScheduledPost.updated_at < now - STUCK_AFTER)):
         p.status, p.finished_at = "failed", now
         p.error = "Publishing was interrupted (the server stopped). Check the website, then click Retry."
+        _notify(db, db.get(Business, p.business_id), db.get(Article, p.article_id), False, p.method, p.error)
         n += 1
     if n:
         db.commit()
     return n
+
+
+_DEST_LABEL = {"wordpress": "WordPress", "react": "your React.js website", "html": "your website", "github": "GitHub", "ghost": "Ghost", "shopify": "Shopify", "webhook": "your website"}
+
+
+def _notify(db: Session, b: Business | None, a: Article | None, ok: bool, method: str, error: str = "") -> None:
+    """The scheduled publish went out, or could not: the owner is told in the bell (same as a Google post's own notice)."""
+    if b is None or a is None:
+        return
+    try:
+        from ..models import Notification
+        what = (a.title or a.keyword or "Article")[:70]
+        where = _DEST_LABEL.get(method, method)
+        if ok:
+            title, body = f"Your blog post is live: {what}", f"It was published on {where} at the time you scheduled."
+        else:
+            title, body = f"Your scheduled blog post could not be published: {what}", f"{where} did not accept it ({(error or 'unknown error')[:200]}). Open the article to retry."
+        db.add(Notification(business_id=b.id, owner_id=b.owner_id, kind="blog_post_published" if ok else "blog_post_failed",
+                             title=title, body=body, link=f"/ai-content-generation/blog?article={a.id}"))
+    except Exception:  # noqa: BLE001 - telling the owner must never undo or block the publish
+        log.warning("Schedule notification skipped for article %s", a.id if a else None)
 
 
 def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
@@ -255,6 +277,7 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
         p.status, p.error, p.finished_at = "published", None, now
         p.result = {"id": out.get("id"), "url": out.get("url"), "status": out.get("status"), "steps": out.get("steps"), "published_at": now.isoformat()}
         activity(db, "scheduler", "post_published", p.business_id, article_id=p.article_id, url=out.get("url"), destination=p.method)
+        _notify(db, b, a, True, p.method)
         db.commit()
         from . import blog_flow
         blog_flow.after_published(db, b, a)
@@ -277,6 +300,7 @@ def _run_one(db: Session, p: ScheduledPost, now: datetime) -> int:
             p.status, p.due_at = "pending", now + RETRY_AFTER  # tried again in ten minutes
     if p.status == "failed":
         activity(db, "scheduler", "post_publish_failed", p.business_id, article_id=p.article_id, error=(p.error or "")[:200])
+        _notify(db, b, a, False, p.method, p.error or "")  # only the final failure is told; a retry still pending stays quiet
     db.commit()
     return 0
 

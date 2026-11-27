@@ -207,9 +207,9 @@ function TargetsTable({ items }) {
                   return (
                     <tr key={t.id} className="align-top border-b border-slate-100 hover:bg-slate-50/60">
                       <td className="px-3 py-3 min-w-[220px]"><div className="font-semibold text-slate-900 leading-snug">{t.label}</div><div className="text-11.5 text-slate-400 mt-0.5">{fmtDay(t.window_start)} – {fmtDay(t.window_end)}</div></td>
-                      <td className="px-3 py-3 text-right tabular-nums text-slate-600 whitespace-nowrap">{fmtVal(t.baseline, t.unit)}</td>
-                      <td className="px-3 py-3 text-right tabular-nums font-bold text-slate-900 whitespace-nowrap">{fmtVal(t.current, t.unit)}</td>
-                      <td className="px-3 py-3 text-right tabular-nums font-semibold text-indigo-700 whitespace-nowrap">{fmtVal(t.target, t.unit)}{t.direction === 'down' ? <span className="block text-11 font-normal text-slate-400">lower is better</span> : t.direction === 'keep' ? <span className="block text-11 font-normal text-slate-400">keep it</span> : null}</td>
+                      <td className="px-3 py-3  tabular-nums text-slate-600 whitespace-nowrap">{fmtVal(t.baseline, t.unit)}</td>
+                      <td className="px-3 py-3  tabular-nums font-bold text-slate-900 whitespace-nowrap">{fmtVal(t.current, t.unit)}</td>
+                      <td className="px-3 py-3  tabular-nums font-semibold text-indigo-700 whitespace-nowrap">{fmtVal(t.target, t.unit)}{t.direction === 'down' ? <span className="block text-11 font-normal text-slate-400">lower is better</span> : t.direction === 'keep' ? <span className="block text-11 font-normal text-slate-400">keep it</span> : null}</td>
                       <td className="px-3 py-3">
                         <div className="h-2 rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuenow={pr} aria-valuemin={0} aria-valuemax={100} aria-label={`${t.label}: ${pr}% of the way to the target`}>
                           <div className={`h-full rounded-full ${t.status === 'met' ? 'bg-emerald-500' : t.status === 'at_risk' ? 'bg-amber-400' : t.status === 'missed' ? 'bg-red-400' : t.status === 'blocked' ? 'bg-slate-300' : 'bg-indigo-500'}`} style={{ width: `${Math.max(pr, pr > 0 ? 4 : 0)}%` }} />
@@ -256,11 +256,11 @@ function TaskRow({ a, bid, onChanged }) {
   const ev = typeof a.evidence === 'string' ? a.evidence : '';
   const check = st === 'verified' ? <><b className="text-emerald-700">Verified</b> {fmtWhen(a.verified_at)}{(result?.before != null || result?.after != null) ? <span className="tabular-nums"> · {dash(result.before)} → {dash(result.after)}</span> : null}{ev ? <span className="block text-slate-500">{ev}</span> : null}</>
     : st === 'unverified' ? <>{result?.details || ev || 'The live data does not show this change yet. Some changes take a few hours to appear.'}</>
-    : st === 'failed' ? <>{ev || 'This task failed its live check.'}</>
-    : st === 'blocked' ? <>{ev || 'Blocked until something it depends on is done.'}</>
-    : st === 'skipped' ? <>Skipped{a.note ? `: ${a.note}` : ''}</>
-    : st === 'done' ? <>Marked done{a.note ? `: ${a.note}` : ''}. Counted only once live data confirms it.</>
-    : <span className="text-slate-400">Not checked yet: it is checked against live data after you finish</span>;
+      : st === 'failed' ? <>{ev || 'This task failed its live check.'}</>
+        : st === 'blocked' ? <>{ev || 'Blocked until something it depends on is done.'}</>
+          : st === 'skipped' ? <>Skipped{a.note ? `: ${a.note}` : ''}</>
+            : st === 'done' ? <>Marked done{a.note ? `: ${a.note}` : ''}. Counted only once live data confirms it.</>
+              : <span className="text-slate-400">Not checked yet: it is checked against live data after you finish</span>;
   const open = steps || panel || error;
   return (
     <>
@@ -453,7 +453,7 @@ function HistoryTable({ rows }) {
             <SortTh id="total" sort={sort} onSort={onSort} right first="desc" className="px-5 py-3 font-medium">Set</SortTh>
             <SortTh id="rate" sort={sort} onSort={onSort} right first="desc" className="px-5 py-3 font-medium">Rate</SortTh></tr></thead>
           <tbody className="divide-y divide-slate-100">
-            {pager.rows.map((h, i) => <tr key={pager.from + i} className="h-12"><td className="px-5 capitalize text-slate-800">{h.period}</td><td className="px-5 text-slate-600">{fmtDay(h.start)}</td><td className="px-5 text-right tabular-nums">{dash(h.met)}</td><td className="px-5 text-right tabular-nums">{dash(h.total)}</td><td className={`px-5 text-right tabular-nums font-semibold ${h.total ? tone(Math.round((h.met / h.total) * 100)) : 'text-slate-400'}`}>{h.total ? `${Math.round((h.met / h.total) * 100)}%` : '—'}</td></tr>)}
+            {pager.rows.map((h, i) => <tr key={pager.from + i} className="h-12"><td className="px-5 capitalize text-slate-800">{h.period}</td><td className="px-5 text-slate-600">{fmtDay(h.start)}</td><td className="px-5  tabular-nums">{dash(h.met)}</td><td className="px-5  tabular-nums">{dash(h.total)}</td><td className={`px-5  tabular-nums font-semibold ${h.total ? tone(Math.round((h.met / h.total) * 100)) : 'text-slate-400'}`}>{h.total ? `${Math.round((h.met / h.total) * 100)}%` : '—'}</td></tr>)}
           </tbody>
         </table>
       </div>
@@ -520,10 +520,10 @@ function ProjectsTable({ rows, onPick }) {
             {pager.rows.map(r => (
               <tr key={r.business_id} tabIndex={0} onClick={() => onPick(r.business_id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(r.business_id); } }} className="h-14 cursor-pointer hover:bg-indigo-50/50 focus:outline-none focus-visible:bg-indigo-50">
                 <td className="px-4"><div className="font-medium text-slate-900">{r.name}</div><div className="text-11 text-slate-400">Updated {fmtWhen(r.updated_at)}</div></td>
-                <td className={`px-4 text-right tabular-nums font-semibold ${tone(r.presence)}`}>{isNum(r.presence) ? Math.round(r.presence) : '—'}</td>
-                <td className={`px-4 text-right tabular-nums ${!isNum(r.delta_30d) ? 'text-slate-400' : r.delta_30d > 0 ? 'text-emerald-600' : r.delta_30d < 0 ? 'text-red-600' : 'text-slate-600'}`}>{isNum(r.delta_30d) ? `${r.delta_30d > 0 ? '+' : ''}${r.delta_30d}` : '—'}</td>
-                <td className="px-4 text-right tabular-nums text-slate-800">{dash(r.actions_today_open)}</td>
-                <td className={`px-4 text-right tabular-nums ${r.targets_at_risk > 0 ? 'text-amber-600 font-semibold' : 'text-slate-600'}`}>{dash(r.targets_at_risk)}</td>
+                <td className={`px-4  tabular-nums font-semibold ${tone(r.presence)}`}>{isNum(r.presence) ? Math.round(r.presence) : '—'}</td>
+                <td className={`px-4  tabular-nums ${!isNum(r.delta_30d) ? 'text-slate-400' : r.delta_30d > 0 ? 'text-emerald-600' : r.delta_30d < 0 ? 'text-red-600' : 'text-slate-600'}`}>{isNum(r.delta_30d) ? `${r.delta_30d > 0 ? '+' : ''}${r.delta_30d}` : '—'}</td>
+                <td className="px-4  tabular-nums text-slate-800">{dash(r.actions_today_open)}</td>
+                <td className={`px-4  tabular-nums ${r.targets_at_risk > 0 ? 'text-amber-600 font-semibold' : 'text-slate-600'}`}>{dash(r.targets_at_risk)}</td>
               </tr>
             ))}
             {!pager.rows.length && <tr><td colSpan={5} className="px-4 py-8 text-center text-13 text-slate-500">No project matches.</td></tr>}

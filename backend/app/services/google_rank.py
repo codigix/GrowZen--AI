@@ -39,8 +39,8 @@ def organic_positions(db: Session, b: Business, keywords: list[str], days: int =
     state, message, sc, site = gsc_access.search_console(db, b, host)
     if state != "ok":
         raise RankCheckError(message)
-    end = date.today() - timedelta(days=gsc.LAG_DAYS)
-    start = end - timedelta(days=days - 1)
+    from . import report_filter  # noqa: PLC0415
+    start, end = report_filter.period(days, gsc.LAG_DAYS)
     try:
         rows = sc.query(site, gsc._body(start, end, ["query", "page"], 25000, market.serp_country(b)))
     except Exception as exc:  # noqa: BLE001 - the reason (API not enabled, no permission) is Google's own message
@@ -91,9 +91,9 @@ def device_positions(db: Session, b: Business, keywords: list[str], days: int = 
     state, message, sc, site = gsc_access.search_console(db, b, host)
     if state != "ok":
         raise RankCheckError(message)
-    end = date.today() - timedelta(days=gsc.LAG_DAYS)
-    start = end - timedelta(days=days - 1)
-    key = (b.id, site, start, end, tuple(sorted(norm(k) for k in keywords)))
+    from . import report_filter  # noqa: PLC0415
+    start, end = report_filter.period(days, gsc.LAG_DAYS)
+    key = (b.id, site, start, end, market.serp_country(b), tuple(sorted(norm(k) for k in keywords)))
     hit = _device_cache.get(key)
     if hit and time.time() - hit[0] < 600:
         return hit[1]
@@ -121,4 +121,59 @@ def device_positions(db: Session, b: Business, keywords: list[str], days: int = 
                      "position": round(d["pos"] / d["imp"], 1) if d["imp"] else None} for dev, d in per_device.items()}
     out = {"devices": devices, "keywords": per_keyword, "days": days, "country": market.serp_country(b)}
     _device_cache[key] = (time.time(), out)
+    return out
+
+
+_kw_cache: dict[tuple, tuple[float, dict]] = {}
+
+
+def keyword_report(db: Session, b: Business, keyword: str, days: int = 180) -> dict[str, Any]:
+    """Everything Search Console knows about one search: per day (clicks, impressions, click rate, average position), per page, per device and per country, for the last `days` days
+    and the same number before them (to show growth). Google's own figures, not kept. Cached for ten minutes."""
+    import time  # noqa: PLC0415
+    host = host_of(b.website)
+    if not host:
+        raise RankCheckError("Add the project's website first: positions are read from its Search Console property.")
+    state, message, sc, site = gsc_access.search_console(db, b, host)
+    if state != "ok":
+        raise RankCheckError(message)
+    from . import report_filter  # noqa: PLC0415
+    q = norm(keyword)
+    first, end = report_filter.period(days, gsc.LAG_DAYS)
+    days = (end - first).days + 1
+    start = end - timedelta(days=days * 2 - 1)
+    key = (b.id, site, q, end, days, market.serp_country(b))
+    hit = _kw_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+
+    def ask(dims: list[str], limit: int = 5000, since: date = start) -> list[dict[str, Any]]:
+        body = {"startDate": since.isoformat(), "endDate": end.isoformat(), "dimensions": dims, "rowLimit": limit, "dataState": "final",
+                "dimensionFilterGroups": [{"groupType": "and", "filters": [{"dimension": "query", "operator": "equals", "expression": q}]}]}
+        try:
+            return sc.query(site, body)
+        except Exception as exc:  # noqa: BLE001
+            raise RankCheckError(str(exc)) from exc
+
+    def agg(rows: list[dict[str, Any]], pick) -> dict[str, float]:
+        imp = sum(float(r.get("impressions") or 0) for r in rows)
+        clk = sum(float(r.get("clicks") or 0) for r in rows)
+        pos = sum(float(r.get("position") or 0) * float(r.get("impressions") or 0) for r in rows)
+        return {"impressions": int(imp), "clicks": int(clk), "ctr": round(clk * 100 / imp, 2) if imp else None, "position": round(pos / imp, 1) if imp else None}
+
+    daily = ask(["date"])
+    cut = (end - timedelta(days=days - 1)).isoformat()
+    series = [{"day": r["keys"][0], "clicks": int(r.get("clicks") or 0), "impressions": int(r.get("impressions") or 0), "ctr": round(float(r.get("ctr") or 0) * 100, 2), "position": round(float(r.get("position") or 0), 1)}
+              for r in sorted(daily, key=lambda r: r["keys"][0])]
+    now_rows = [r for r in daily if r["keys"][0] >= cut]
+    before_rows = [r for r in daily if r["keys"][0] < cut]
+    pages = [{"page": r["keys"][0], "clicks": int(r.get("clicks") or 0), "impressions": int(r.get("impressions") or 0), "ctr": round(float(r.get("ctr") or 0) * 100, 2), "position": round(float(r.get("position") or 0), 1)}
+             for r in sorted(ask(["page"], 100, date.fromisoformat(cut)), key=lambda r: -float(r.get("impressions") or 0))]
+    devices = [{"device": str(r["keys"][0]).lower(), "clicks": int(r.get("clicks") or 0), "impressions": int(r.get("impressions") or 0), "ctr": round(float(r.get("ctr") or 0) * 100, 2), "position": round(float(r.get("position") or 0), 1)}
+               for r in sorted(ask(["device"], 10, date.fromisoformat(cut)), key=lambda r: -float(r.get("impressions") or 0))]
+    countries = [{"country": str(r["keys"][0]).upper(), "clicks": int(r.get("clicks") or 0), "impressions": int(r.get("impressions") or 0), "ctr": round(float(r.get("ctr") or 0) * 100, 2), "position": round(float(r.get("position") or 0), 1)}
+                 for r in sorted(ask(["country"], 25, date.fromisoformat(cut)), key=lambda r: -float(r.get("impressions") or 0))]
+    out = {"days": days, "from": cut, "to": end.isoformat(), "series": [s for s in series if s["day"] >= cut], "now": agg(now_rows, None), "before": agg(before_rows, None),
+           "pages": pages, "devices": devices, "countries": countries}
+    _kw_cache[key] = (time.time(), out)
     return out

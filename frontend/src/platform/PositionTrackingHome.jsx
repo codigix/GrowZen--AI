@@ -20,8 +20,10 @@ const range = (p) => {
 };
 
 // Where a click on each column leads: tabs this app already has
-const SEO = { name: '/rank-tracking?tab=landscape', place: '/rank-tracking?tab=devices', visibility: '/rank-tracking?tab=landscape', diff: '/rank-tracking?tab=overview',
-  improved: '/organic-rankings?tab=changes', declined: '/organic-rankings?tab=changes', keywords: '/rank-tracking?tab=positions', updated: '/rank-tracking?tab=positions' };
+const SEO = {
+  name: '/rank-tracking?tab=landscape', place: '/rank-tracking?tab=devices', visibility: '/rank-tracking?tab=landscape', diff: '/rank-tracking?tab=overview',
+  improved: '/organic-rankings?tab=changes', declined: '/organic-rankings?tab=changes', keywords: '/rank-tracking?tab=positions', updated: '/rank-tracking?tab=positions'
+};
 const AI = { name: '/geo-optimization', place: '/geo-optimization', visibility: '/geo-optimization', diff: '/geo-optimization', improved: '/geo-optimization', declined: '/geo-optimization', keywords: '/geo-optimization?tab=prompts', updated: '/geo-optimization?tab=prompts' };
 
 const lineValue = (r, k) => (k === 'name' ? r.name : k === 'place' ? r.location : k === 'updated' ? r.m.updated : r.m[k] ?? null);
@@ -121,11 +123,11 @@ export default function PositionTrackingHome() {
                     <tr key={`${r.id}-${r.kind}`}>
                       <td className="px-4 min-w-[210px]">{link(r, 'name', <span className="block font-semibold text-slate-900">{r.name}</span>)}<span className="block text-13 text-slate-500">{r.domain || 'No website'}</span>{ai && <span className="mt-1 inline-block text-12 px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">AI Search</span>}</td>
                       <td className="px-4"><div className="flex items-start gap-2"><D size={16} className="mt-0.5 text-slate-400 shrink-0" /><div>{link(r, 'place', r.location || 'Set a location', 'text-slate-900')}<div className="text-13 text-slate-500">{ai ? 'ChatGPT, Gemini…' : `${r.engines.join(', ')}, ${r.language}`}</div></div></div></td>
-                      <td className="px-4 text-right tabular-nums">{r.m.visibility == null ? num(null) : link(r, 'visibility', <Vis v={r.m.visibility} />)}</td>
-                      <td className="px-4 text-right tabular-nums">{link(r, 'diff', <Change v={r.m.diff} />)}</td>
-                      <td className="px-4 text-right tabular-nums text-emerald-700">{r.m.improved == null ? num(null) : link(r, 'improved', r.m.improved, 'text-emerald-700')}</td>
-                      <td className="px-4 text-right tabular-nums">{r.m.declined == null ? num(null) : link(r, 'declined', r.m.declined, r.m.declined ? 'text-red-600' : 'text-slate-500')}</td>
-                      <td className="px-4 text-right tabular-nums font-medium">{link(r, 'keywords', r.m.keywords)}</td>
+                      <td className="px-4  tabular-nums">{r.m.visibility == null ? num(null) : link(r, 'visibility', <Vis v={r.m.visibility} />)}</td>
+                      <td className="px-4  tabular-nums">{link(r, 'diff', <Change v={r.m.diff} />)}</td>
+                      <td className="px-4  tabular-nums text-emerald-700">{r.m.improved == null ? num(null) : link(r, 'improved', r.m.improved, 'text-emerald-700')}</td>
+                      <td className="px-4  tabular-nums">{r.m.declined == null ? num(null) : link(r, 'declined', r.m.declined, r.m.declined ? 'text-red-600' : 'text-slate-500')}</td>
+                      <td className="px-4  tabular-nums font-medium">{link(r, 'keywords', r.m.keywords)}</td>
                       <td className="px-4 whitespace-nowrap text-slate-600">{link(r, 'updated', ago(r.m.updated), 'text-slate-600')}</td>
                       <td className="px-4 text-right whitespace-nowrap"><span className="inline-flex items-center gap-2"><JourneyButton bid={r.id} name={r.name} stage={journeys[r.id]} /><button type="button" onClick={() => open(r, (ai ? AI : SEO).name)} className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-13 font-medium text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50 cursor-pointer">Open<ArrowRight size={13} /></button></span></td>
                     </tr>);

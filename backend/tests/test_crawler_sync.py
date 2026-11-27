@@ -206,7 +206,8 @@ def test_the_sync_registers_the_business_and_its_competitors_again(client, crawl
     assert set(own) == {"synced-clinic.in"} and comp[-1] == ("synced-clinic.in", ("rival-shop.com",)) and st["competitors_registered"]["failed"] is None
 
 
-def test_every_competitor_a_research_run_finds_is_saved_and_sent_to_the_crawler(client, crawler, monkeypatch):
+def test_competitors_a_research_run_finds_are_listed_but_only_chosen_ones_are_watched_and_sent_to_the_crawler(client, crawler, monkeypatch):
+    from app.backlinks import watch
     from app.competitors import intel_router
     from app.models import Business, Competitor
     comp: list[tuple] = []
@@ -223,8 +224,42 @@ def test_every_competitor_a_research_run_finds_is_saved_and_sent_to_the_crawler(
     try:
         b = db.get(Business, bid)
         assert intel_router.save_found(db, b, result) == 3
-        assert {c.website.split("//")[1].removeprefix("www.").split("/")[0] for c in db.query(Competitor).filter_by(business_id=bid)} == {"awrange.com", "ad2brand.com", "magemarketer.com"}
-        assert comp[-1] == ("synced-clinic.in", ("ad2brand.com", "awrange.com", "magemarketer.com"))  # all of them, tied to this business
+        rows = {c.domain: c for c in db.query(Competitor).filter_by(business_id=bid)}
+        assert set(rows) == {"awrange.com", "ad2brand.com", "magemarketer.com"}
+        assert all(c.selected is False for c in rows.values())  # found, not chosen
+        assert rows["awrange.com"].discovery == ["google_places"] and rows["magemarketer.com"].discovery == ["organic_serp"]  # how each was found is kept
         assert intel_router.save_found(db, b, result) == 0  # the same run again adds nothing
+        assert watch.competitor_domains(db, bid) == [] and not comp  # nothing is watched or sent to the crawler until the owner chooses
+        # the owner chooses one: it is watched and sent, and only it
+        assert client.patch(f"/api/v1/competitors/{rows['awrange.com'].id}", json={"selected": True}).status_code == 200
+        db.expire_all()
+        assert watch.competitor_domains(db, bid) == ["awrange.com"]
+        assert comp[-1] == ("synced-clinic.in", ("awrange.com",))
+        names = [c["name"] for c in client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()["competitors"]]
+        assert names == ["Awrange"]
+        # and takes it out again: gone from the watch
+        assert client.patch(f"/api/v1/competitors/{rows['awrange.com'].id}", json={"selected": False}).status_code == 200
+        db.expire_all()
+        assert watch.competitor_domains(db, bid) == []
+        assert client.get(f"/api/v1/businesses/{bid}/competitor-watch").json()["competitors"] == []
     finally:
         db.close()
+
+
+def test_a_report_made_for_other_competitors_says_nothing_about_them(client):
+    from datetime import date
+    from app.backlinks import watch
+    from app.backlinks.models import WatchReport
+    from app.db import SessionLocal
+    from app.models import Competitor
+    bid = client.post("/api/v1/businesses", json={"name": "Old Report Co", "website": "https://oldreport.example", "city": "Pune"}).json()["id"]
+    db = SessionLocal()
+    db.add(Competitor(business_id=bid, website="https://now-chosen.com", name="Now", source="manual", selected=True, domain="now-chosen.com"))
+    from datetime import datetime, timezone
+    db.add(WatchReport(business_id=bid, week_start=date(2026, 11, 23), created_at=datetime.now(timezone.utc), source="rules", events=0, baseline=True,
+                       summary={"headline": "Now watching 2 competitor site(s)", "summary": "We recorded 129 pages across old-a.com, old-b.com.", "what_it_means": "x", "actions": [], "highlights": ["old-a.com", "old-b.com"]}))
+    db.commit()
+    from app.models import Business
+    out = watch.status(db, db.get(Business, bid))
+    db.close()
+    assert out["latest"]["outdated"] is True and out["latest"]["other_sites"] == ["old-a.com", "old-b.com"] and out["latest"]["summary"] == ""

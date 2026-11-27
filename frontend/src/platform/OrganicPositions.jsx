@@ -133,15 +133,15 @@ export default function OrganicPositions({ research, days, setDays }) {
                 <tr className="hover:bg-slate-50 align-top">
                   <td className="pl-3 w-8 pt-2.5"><button type="button" aria-label="Show details" onClick={() => toggle(x.keyword)} className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"><ChevronRight size={14} className={`transition-transform ${open.has(x.keyword) ? 'rotate-90' : ''}`} /></button></td>
                   <td className="px-4 py-2.5 font-medium text-indigo-700">{x.keyword}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.kd ?? dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.volume != null ? fmt(x.volume) : dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.traffic != null && x.traffic_was != null ? (() => { const d = Math.round((x.traffic - x.traffic_was) * 100) / 100; return d ? <Chg v={d} /> : <span className="text-slate-500">0</span>; })() : dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums" title="Competition needs Google Keyword Planner data, which is not connected">{dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.cpc ?? dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{x.kd ?? dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{x.volume != null ? fmt(x.volume) : dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{x.traffic != null && x.traffic_was != null ? (() => { const d = Math.round((x.traffic - x.traffic_was) * 100) / 100; return d ? <Chg v={d} /> : <span className="text-slate-500">0</span>; })() : dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums" title="Competition needs Google Keyword Planner data, which is not connected">{dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{x.cpc ?? dash}</td>
                   <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{x.checked ? new Date(`${x.checked}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' }) : dash}</td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap tabular-nums"><b>{x.rank ?? <span className="text-slate-400 font-normal">&gt;20</span>}</b> <Chg v={x.change} d={0} /></td>
-                  <td className="px-4 py-2.5 text-right tabular-nums" title="Google's total result count is not reported by our results source">{dash}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{x.feature_list.length ? <span className="inline-flex items-center gap-1 text-slate-700" title={x.feature_list.join(', ')}><Sparkles size={12} className="text-emerald-500" />{x.feature_list.length}</span> : dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums" title="Google's total result count is not reported by our results source">{dash}</td>
+                  <td className="px-4 py-2.5  tabular-nums">{x.feature_list.length ? <span className="inline-flex items-center gap-1 text-slate-700" title={x.feature_list.join(', ')}><Sparkles size={12} className="text-emerald-500" />{x.feature_list.length}</span> : dash}</td>
                   <td className="px-4 py-2.5">{x.intent ? <span title={x.intent} className="inline-flex w-5 h-5 rounded text-[11px] font-bold items-center justify-center bg-indigo-100 text-indigo-700">{INTENT[x.intent] || '?'}</span> : dash}</td>
                   <td className="px-4 py-2.5 max-w-[300px]">{x.url ? <a href={x.url} target="_blank" rel="noreferrer" title={x.url} className="text-indigo-700 hover:underline inline-flex items-center gap-1 break-all">{path(x.url)}<ExternalLink size={10} className="shrink-0" /></a> : dash}</td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap"><KeywordActs keyword={x.keyword} url={x.url} /></td>

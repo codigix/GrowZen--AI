@@ -13,7 +13,11 @@ const KIND = {
 };
 const FIELD = { title: 'title', h1: 'heading', snippet: 'description', content: 'text' };
 
-const Report = ({ r, compact }) => (
+const Report = ({ r, compact }) => (r.outdated ? (
+  <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2.5 text-13 text-amber-900">
+    <b>This report is about other competitors.</b> It was made for {r.other_sites?.slice(0, 6).join(', ') || 'sites'}{r.other_sites?.length > 6 ? ` and ${r.other_sites.length - 6} more` : ''}, which you have not chosen. Nothing is shown about them. The report for the competitors you chose is written after their first visit finishes.
+  </div>
+) : (
   <div>
     <div className="flex flex-wrap items-center gap-2 mb-1">
       <span className="text-[15px] font-semibold text-gray-900">{r.headline}</span>
@@ -29,7 +33,7 @@ const Report = ({ r, compact }) => (
       </>
     )}
   </div>
-);
+));
 
 const reportMd = (r) => [`## ${r.headline}`, '', `Week of ${String(r.week_start || '').slice(0, 10)} · ${r.events} change${r.events === 1 ? '' : 's'}${r.baseline ? ' · first visit' : ''}`, '', r.summary || '', '', ...(r.what_it_means ? [`**What it means for you:** ${r.what_it_means}`, ''] : []), ...(r.actions?.length ? ['**What to do:**', ...r.actions.map(a => `- ${a}`), ''] : [])].join('\n');
 
@@ -79,10 +83,10 @@ function Body({ b }) {
               <thead className="bg-gray-50 text-11.5 uppercase tracking-wide text-gray-500">
                 <tr>
                   <th className="px-3 py-2 text-left"><Head what="A competitor you chose." why="The watch visits only these." from="your choice in Competitor Research.">Competitor</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="How many of its pages the watch remembers." why="Changes are found by comparing a page with what was remembered last time." from="the weekly visits to its public pages.">Pages watched</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="Pages it published in the last 30 days." from="pages found in its sitemap or links that were not known before.">New</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="Pages whose title, heading, description or text changed in the last 30 days." from="comparing each visit with the one before.">Changed</Head></th>
-                  <th className="px-3 py-2 text-right"><Head right what="Pages that disappeared in the last 30 days (missing for two visits)." from="the weekly visits.">Removed</Head></th>
+                  <th className="px-3 py-2 "><Head right what="How many of its pages the watch remembers." why="Changes are found by comparing a page with what was remembered last time." from="the weekly visits to its public pages.">Pages watched</Head></th>
+                  <th className="px-3 py-2 "><Head right what="Pages it published in the last 30 days." from="pages found in its sitemap or links that were not known before.">New</Head></th>
+                  <th className="px-3 py-2 "><Head right what="Pages whose title, heading, description or text changed in the last 30 days." from="comparing each visit with the one before.">Changed</Head></th>
+                  <th className="px-3 py-2 "><Head right what="Pages that disappeared in the last 30 days (missing for two visits)." from="the weekly visits.">Removed</Head></th>
                   <th className="px-3 py-2 text-left"><Head what="The date of its most recent change we noticed." from="the weekly visits.">Last change</Head></th>
                   <th className="px-3 py-2 text-left"><Head what="Top pages: where it ranks on Google. Compare: its site next to yours. Backlinks: sites that link to it and not to you. Leave out: stop watching it." from="the competitor research, site audits and the backlink crawler.">Actions</Head></th>
                 </tr>
@@ -90,7 +94,7 @@ function Body({ b }) {
               <tbody className="divide-y divide-gray-100">
                 {d.competitors.map(c => {
                   const ch = c.changes_30d || {};
-                  const num = (v, tone) => <td className={`px-3 py-2.5 text-right tabular-nums ${v ? `font-semibold ${tone}` : 'text-gray-300'}`}>{v || 0}</td>;
+                  const num = (v, tone) => <td className={`px-3 py-2.5  tabular-nums ${v ? `font-semibold ${tone}` : 'text-gray-300'}`}>{v || 0}</td>;
                   return (
                     <tr key={c.domain} className="hover:bg-gray-50">
                       <td className="px-3 py-2.5 min-w-[220px]">
@@ -98,7 +102,7 @@ function Body({ b }) {
                         <a href={c.website} target="_blank" rel="noreferrer noopener nofollow" className="text-12 text-indigo-600 hover:underline inline-flex items-center gap-1 max-w-full"><span className="truncate">{c.domain}</span><ExternalLink size={10} className="shrink-0" /></a>
                         {c.rating ? <span className="ml-2 text-12 text-gray-500 inline-flex items-center gap-0.5"><Star size={11} className="text-amber-500" />{c.rating}{c.reviews ? ` (${c.reviews})` : ''}</span> : null}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{c.pages_watched}</td>
+                      <td className="px-3 py-2.5  tabular-nums">{c.pages_watched || (d.running ? <span className="text-xs text-gray-400" title="Its pages are being visited now">Visiting…</span> : <span className="text-xs text-gray-400" title="The watch has not visited this competitor yet. Press Visit now.">Not visited yet</span>)}</td>
                       {num(ch.new_page, 'text-green-700')}{num(ch.changed, 'text-amber-700')}{num(ch.removed, 'text-red-700')}
                       <td className="px-3 py-2.5 text-12.5 text-gray-600 whitespace-nowrap">{c.last_change_at ? fmtDate(c.last_change_at) : <span className="text-gray-400">none in 30 days</span>}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-12.5 font-semibold">
@@ -115,14 +119,10 @@ function Body({ b }) {
             </table>
           </div>
           <p className="mt-2 text-11.5 text-gray-400">New, changed and removed are counted over the last 30 days.</p>
-          {d.not_chosen?.length > 0 && (
-            <p className="mt-3 text-12.5 text-gray-600">{d.not_chosen.length} more competitor{d.not_chosen.length === 1 ? ' was' : 's were'} found but not chosen ({d.not_chosen.slice(0, 3).map(x => x.name).join(', ')}{d.not_chosen.length > 3 ? '…' : ''}).{' '}
-              <Link className="font-semibold text-indigo-700 hover:underline" to="/competitor-finder?tab=competitors">Look at them <ArrowRight size={11} className="inline" /></Link></p>
-          )}
         </Card>
       )}
 
-      {d.latest && <Card className="mb-4" title="This week" action={<Button size="sm" icon={Download} onClick={() => exportReport([d.latest], 'report')}>Download report</Button>}><Report r={d.latest} /></Card>}
+      {d.latest && <Card className="mb-4" title="This week" action={d.latest.outdated ? null : <Button size="sm" icon={Download} onClick={() => exportReport([d.latest], 'report')}>Download report</Button>}><Report r={d.latest} /></Card>}
 
       <Card className="mb-4" title="What changed" subtitle="Newest first" action={d.events.length ? <Button size="sm" icon={Download} onClick={exportEvents}>Export CSV</Button> : null}>
         {d.events.length === 0 ? <div className="py-6 text-center text-13 text-gray-500">{none ? 'Nothing to show yet.' : 'No changes recorded yet. The first visit only sets the starting point.'}</div> : (

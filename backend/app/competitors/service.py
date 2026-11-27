@@ -42,7 +42,7 @@ def competitors_enabled() -> bool:
     return bool(_key())
 
 
-def find_competitors(business_type: str, location: str, own_firm_name: str = "", top_n: int = 10, region: str = "IN") -> list[dict[str, Any]]:
+def find_competitors(business_type: str, location: str, own_firm_name: str = "", top_n: int = 10, region: str = "IN", language: str = "en") -> list[dict[str, Any]]:
     """Search Google Maps for `business_type` in `location` and return up to `top_n` results,
     excluding `own_firm_name` and permanently closed businesses."""
     api_key = _key()
@@ -57,7 +57,7 @@ def find_competitors(business_type: str, location: str, own_firm_name: str = "",
     body = {
         "textQuery": f"{business_type} in {location}" if location.strip() else business_type,
         "regionCode": (region or "IN").upper()[:2],
-        "languageCode": "en",
+        "languageCode": (language or "en").lower()[:5],
         "pageSize": 20,  # fetch extra so we can drop your own firm and still have top_n left
     }
 

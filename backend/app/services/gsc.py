@@ -115,9 +115,11 @@ def _totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def report(sc: SearchConsole, site: str, range_key: str = "3m", country: str | None = None, device: str | None = None) -> dict[str, Any]:
     """The traffic report for a property over the range, with the same-length period before it for the change."""
+    from . import report_filter  # noqa: PLC0415
     days = RANGES.get(range_key, 90)
-    end = date.today() - timedelta(days=LAG_DAYS)
-    start = end - timedelta(days=days - 1)
+    start, end = report_filter.period(days, LAG_DAYS)  # the period chosen in the page header, else the range asked for
+    days = (end - start).days + 1
+    country = country or report_filter.current().country
     p_end, p_start = start - timedelta(days=1), start - timedelta(days=days)
     key = (sc.client.conn.id, site, start, end, (country or "").upper(), (device or "").upper())
     with _lock:

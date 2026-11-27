@@ -232,8 +232,8 @@ function ProfileTab({ b, toast }) {
               {!linked && <><Field label="Primary category"><input className={inputCls} value={p.primary_category} onChange={e => set('primary_category', e.target.value)} />
                 {gsvc.data?.state === 'ok' && gsvc.data.profile.category && gsvc.data.profile.category.toLowerCase() !== (p.primary_category || '').toLowerCase() && (
                   <button type="button" onClick={() => set('primary_category', gsvc.data.profile.category)} className="mt-1.5 text-12 text-indigo-700 hover:underline cursor-pointer text-left">Google shows “{gsvc.data.profile.category}” as the main category: use it</button>)}</Field>
-              <Field label="Secondary categories" hint="Comma separated"><input className={inputCls} value={p.secondary_categories.join(', ')} onChange={e => set('secondary_categories', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
-              </Field></>}
+                <Field label="Secondary categories" hint="Comma separated"><input className={inputCls} value={p.secondary_categories.join(', ')} onChange={e => set('secondary_categories', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
+                </Field></>}
             </div>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3"><LabelsField value={p.labels} onChange={v => set('labels', v)} /></div>
             {linked && <p className="mt-3 text-12 text-slate-500">Categories, address and map pin are managed in the Google cards below, because Google needs them in its own format.</p>}
@@ -467,9 +467,9 @@ function GooglePreview({ b, p, stars, pub }) {
       {cover
         ? <img src={cover} alt="" className="h-44 w-full object-cover" />
         : <div className="h-44 bg-gradient-to-br from-sky-100 via-indigo-50 to-emerald-100 flex flex-col items-center justify-center gap-2 text-slate-400">
-            <BusinessAvatar name={p.name} src={logo} size="w-16 h-16" className="shadow-sm text-24" />
-            <span className="text-12">Add a cover photo in Photos &amp; Media</span>
-          </div>}
+          <BusinessAvatar name={p.name} src={logo} size="w-16 h-16" className="shadow-sm text-24" />
+          <span className="text-12">Add a cover photo in Photos &amp; Media</span>
+        </div>}
       <div className="px-5 pt-4 pb-5">
         <div className="text-22 text-slate-900 leading-snug" style={{ fontFamily: 'Google Sans, Roboto, Arial, sans-serif' }}>{p.name || 'Business name'}</div>
         <div className="flex flex-wrap items-center gap-x-1.5 text-13 text-slate-600 mt-1">
@@ -480,13 +480,13 @@ function GooglePreview({ b, p, stars, pub }) {
         <div className="grid grid-cols-4 gap-1 mt-5">
           {actions.map(([l, I, href, main]) => (href
             ? <a key={l} href={href} target={href.startsWith('tel:') ? undefined : '_blank'} rel="noreferrer" className="group flex flex-col items-center gap-1.5 cursor-pointer">
-                <span className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${main ? 'bg-blue-600 text-white group-hover:bg-blue-700' : 'ring-1 ring-slate-300 text-blue-700 group-hover:bg-blue-50'}`}><I size={17} /></span>
-                <span className="text-12 text-blue-700">{l}</span>
-              </a>
+              <span className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${main ? 'bg-blue-600 text-white group-hover:bg-blue-700' : 'ring-1 ring-slate-300 text-blue-700 group-hover:bg-blue-50'}`}><I size={17} /></span>
+              <span className="text-12 text-blue-700">{l}</span>
+            </a>
             : <div key={l} className="flex flex-col items-center gap-1.5" title={`Add ${l === 'Book' ? 'a booking link' : l === 'Call' ? 'a phone number' : 'a website'} to turn this on`}>
-                <span className="w-11 h-11 rounded-full flex items-center justify-center ring-1 ring-dashed ring-slate-200 text-slate-300"><I size={17} /></span>
-                <span className="text-12 text-slate-300">{l}</span>
-              </div>))}
+              <span className="w-11 h-11 rounded-full flex items-center justify-center ring-1 ring-dashed ring-slate-200 text-slate-300"><I size={17} /></span>
+              <span className="text-12 text-slate-300">{l}</span>
+            </div>))}
         </div>
         <div role="tablist" className="flex border-b border-slate-200 mt-5 -mx-5 px-3 text-13">
           {[['overview', 'Overview'], ['reviews', 'Reviews'], ['photos', 'Photos'], ['about', 'About']].map(([id, t]) => (
@@ -639,19 +639,22 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
   const upload = (file) => file && run('up', async () => {
     if (!/^image\/(jpeg|png)$/.test(file.type)) throw new Error('Use a JPG or PNG photo.');
     if (file.size > 25 * 1024 * 1024) throw new Error('Photos must be under 25 MB.');
-    const r = await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category: 'ADDITIONAL', data_base64: await readBase64(file), content_type: file.type } });
-    if (!r.googleUrl) throw new Error('Google has not returned the photo address yet. Pick it from Profile photos in a moment.');
-    setBroken(false); set({ image_url: r.googleUrl }); toast('Photo added to your Google profile and attached to this post');
+    // Kept for this post only: it is not added to the profile's Photos.
+    const r = await api(`/businesses/${b.id}/gbp/post-picture`, { method: 'POST', body: { data_base64: await readBase64(file), name: file.name } });
+    setBroken(false); set({ image_url: r.url }); toast('Picture attached to this post');
   });
   const makeCard = (style) => run('card', async () => {
-    const r = await api(`/businesses/${b.id}/posts/image`, { method: 'POST', body: { title: edit.title || null, body: edit.body, post_type: edit.post_type, style: style || null, coupon_code: edit.coupon_code || null,
-      starts_on: edit.starts_on || null, ends_on: edit.ends_on || null, start_time: edit.start_time || null } });
+    const r = await api(`/businesses/${b.id}/posts/image`, {
+      method: 'POST', body: {
+        title: edit.title || null, body: edit.body, post_type: edit.post_type, style: style || null, coupon_code: edit.coupon_code || null,
+        starts_on: edit.starts_on || null, ends_on: edit.ends_on || null, start_time: edit.start_time || null
+      }
+    });
     setCard(r);
   });
   const useCard = () => card && run('up', async () => {
-    const r = await api(`/businesses/${b.id}/gbp/media`, { method: 'POST', body: { category: 'ADDITIONAL', data_base64: card.image_base64, content_type: 'image/jpeg' } });
-    if (!r.googleUrl) throw new Error('Google has not returned the picture address yet. Press Use this picture again in a moment.');
-    setBroken(false); set({ image_url: r.googleUrl }); setCard(null); toast('Picture added to your Google profile and attached to this post');
+    const r = await api(`/businesses/${b.id}/gbp/post-picture`, { method: 'POST', body: { data_base64: card.image_base64 } });
+    setBroken(false); set({ image_url: r.url }); setCard(null); toast('Picture attached to this post');
   });
   const compose = (tagsOnly) => run('ai', async () => {
     const r = await api(`/businesses/${b.id}/posts/compose`, { method: 'POST', body: { topic: tagsOnly ? (edit.body || topic).slice(0, 300) : topic, post_type: edit.post_type } });
@@ -668,7 +671,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
           <div className="text-13 font-semibold text-slate-800 mb-2">1 · Picture <span className="text-red-600" title="Required">*</span> <span className="font-normal text-12 text-slate-500">Every post needs a picture. 1200 × 900 px is Google's recommended size.</span></div>
           {img ? (
             <div className="flex items-center gap-3 p-2 rounded-lg ring-1 ring-slate-200">
-              <img src={img} alt="" className="w-20 h-20 rounded-md object-cover bg-slate-100" onError={() => setBroken(true)} />
+              <img src={img} alt="" referrerPolicy="no-referrer" className="w-20 h-20 rounded-md object-cover bg-slate-100" onError={() => setBroken(true)} />
               <div className="flex-1 min-w-0 text-12 text-slate-500 truncate">{edit.image_url}</div>
               <Button size="sm" onClick={() => set({ image_url: '' })}>Remove</Button>
             </div>
@@ -790,7 +793,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
         <div className="text-12 font-semibold uppercase tracking-wide text-slate-400">How it will look on Google</div>
         <div className="bg-white rounded-2xl ring-1 ring-slate-200 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2.5 p-3"><BusinessAvatar name={b.name} src={b.logo} size="w-9 h-9" /><div className="min-w-0"><div className="text-13 font-medium text-slate-900 truncate">{b.name}</div><div className="text-11.5 text-slate-500">Just now · {edit.post_type === 'Update' ? 'Update' : edit.post_type}</div></div></div>
-          {img ? <img src={img} alt="" className="w-full aspect-[4/3] object-cover bg-slate-100" onError={() => setBroken(true)} /> : <div className="w-full aspect-[4/3] bg-gradient-to-br from-sky-100 to-emerald-100 flex flex-col items-center justify-center gap-1 text-slate-400"><ImageIcon size={28} /><span className="text-12">Add a picture</span></div>}
+          {img ? <img src={img} alt="" referrerPolicy="no-referrer" className="w-full aspect-[4/3] object-cover bg-slate-100" onError={() => setBroken(true)} /> : <div className="w-full aspect-[4/3] bg-gradient-to-br from-sky-100 to-emerald-100 flex flex-col items-center justify-center gap-1 text-slate-400"><ImageIcon size={28} /><span className="text-12">Add a picture</span></div>}
           <div className="p-3.5">
             {edit.title && edit.post_type !== 'Update' && <div className="text-14 font-medium text-slate-900 mb-1">{edit.title}</div>}
             {edit.post_type !== 'Update' && (edit.starts_on || edit.ends_on) && <div className="text-12.5 text-slate-500 mb-1.5">{shortDay(edit.starts_on)}{edit.start_time && edit.post_type === 'Event' ? `, ${edit.start_time}` : ''}{edit.ends_on && edit.ends_on !== edit.starts_on ? ` – ${shortDay(edit.ends_on)}` : ''}{edit.end_time && edit.post_type === 'Event' ? `${edit.ends_on && edit.ends_on !== edit.starts_on ? ', ' : ' – '}${edit.end_time}` : ''}</div>}
@@ -801,7 +804,7 @@ function PostEditor({ b, edit, setEdit, toast, error }) {
             {edit.cta_type && <div className="mt-3 flex flex-wrap gap-2"><span className="inline-flex h-8 px-4 items-center rounded-full ring-1 ring-slate-300 text-13 font-medium text-blue-700">{CTA[edit.cta_type]}</span>{edit.post_type === 'Offer' && edit.redeem_url.trim() && <span className="inline-flex h-8 px-4 items-center rounded-full bg-blue-600 text-13 font-medium text-white">Redeem online</span>}</div>}
           </div>
         </div>
-        <div className={`text-12 text-right tabular-nums ${total > 1500 ? 'text-red-600' : 'text-slate-400'}`}>{total}/1500 characters</div>
+        <div className={`text-12  tabular-nums ${total > 1500 ? 'text-red-600' : 'text-slate-400'}`}>{total}/1500 characters</div>
       </aside>
     </div>
   );
@@ -853,16 +856,20 @@ function PostsTab({ b, toast }) {
       const c = mine ? clicks.data?.by_post?.[String(mine.id)] : null;
       const ok = Boolean(clicks.data?.available);
       const tracked = mine && (c || (ok && String(mine.published_at || lp.created || '').slice(0, 10) >= TAGGED_FROM));
-      out.push({ key: lp.id, live: lp, local: mine, url: lp.url, image: lp.image, heading: headingOf({ title: lp.title || mine?.title, summary: lp.summary }), text: lp.summary || mine?.body, type: String(lp.type || mine?.post_type || 'update').toLowerCase().replace('standard', 'update'),
+      out.push({
+        key: lp.id, live: lp, local: mine, url: lp.url, image: lp.image, heading: headingOf({ title: lp.title || mine?.title, summary: lp.summary }), text: lp.summary || mine?.body, type: String(lp.type || mine?.post_type || 'update').toLowerCase().replace('standard', 'update'),
         status: 'live', when: lp.created || mine?.published_at, cta: lp.cta || mine?.cta_type, ctaUrl: lp.cta_url || mine?.cta_url, clicks: tracked ? (c?.visits ?? 0) : null, users: c?.users ?? null,
-        clickNote: !mine ? 'Made outside this software: its button link has no tag, so its clicks cannot be counted.' : !ok ? (clicks.data?.reason || 'Clicks are not available.') : 'Published before clicks were counted: its link has no tag.' });
+        clickNote: !mine ? 'Made outside this software: its button link has no tag, so its clicks cannot be counted.' : !ok ? (clicks.data?.reason || 'Clicks are not available.') : 'Published before clicks were counted: its link has no tag.'
+      });
     }
     for (const p of local) {
       if (seen.has(p.id) || (p.status === 'published' && p.external_id && live.data && Date.now() - Date.parse(p.published_at || 0) > 6 * 3600 * 1000)) continue; // just published: Google's list can take a while to show it, so it stays as a Live row meanwhile // a published post whose live copy is above (or was removed on Google) is not listed twice
       const status = p.status === 'published' ? 'live' : p.status;
       const c = clicks.data?.by_post?.[String(p.id)];
-      out.push({ key: `p${p.id}`, local: p, task: taskOf[String(p.id)]?.source === 'autopilot' ? taskOf[String(p.id)] : null, image: p.image_url, heading: headingOf(p), text: p.body, type: String(p.post_type || 'update').toLowerCase(), status, when: p.status === 'published' ? p.published_at : p.status === 'scheduled' ? p.scheduled_for : p.created_at, cta: p.cta_type, ctaUrl: p.cta_url,
-        clicks: c ? c.visits : null, users: c?.users ?? null, clickNote: status === 'live' ? 'No visits counted for this post yet.' : 'Not posted yet, so there are no clicks.' });
+      out.push({
+        key: `p${p.id}`, local: p, task: taskOf[String(p.id)]?.source === 'autopilot' ? taskOf[String(p.id)] : null, image: p.image_url, heading: headingOf(p), text: p.body, type: String(p.post_type || 'update').toLowerCase(), status, when: p.status === 'published' ? p.published_at : p.status === 'scheduled' ? p.scheduled_for : p.created_at, cta: p.cta_type, ctaUrl: p.cta_url,
+        clicks: c ? c.visits : null, users: c?.users ?? null, clickNote: status === 'live' ? 'No visits counted for this post yet.' : 'Not posted yet, so there are no clicks.'
+      });
     }
     return out;
   }, [posts.data, live.data, clicks.data, taskOf]);
@@ -878,34 +885,46 @@ function PostsTab({ b, toast }) {
         <ErrorNote>{!edit && error}</ErrorNote>
         {clicks.data && !clicks.data.available && <p className="px-5 pb-2 text-12 text-amber-800">{clicks.data.reason}</p>}
         {!posts.data ? <div className="px-5 pb-4"><SkList rows={4} thumb /></div> : (
-          <DataTable bare rows={tableRows} rowKey={r => r.key} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
+          <DataTable bare rows={tableRows} rowKey={r => r.key} initialSort={{ key: 'date', dir: 'desc' }} pageSize={10} sizes={[10, 25, 50]} exportName="google-posts" label="posts" searchPlaceholder="Search posts" minWidth={980} columnsMenu={false}
             headClass="bg-slate-100 text-slate-700" rowClass={r => (POST_LOOK[r.status] || POST_LOOK.draft)[1]}
             empty="No posts yet. Press New post."
             filters={[{ id: 'status', label: 'Status', options: [['live', 'Live'], ['scheduled', 'Scheduled'], ['draft', 'Draft'], ['failed', 'Failed']], test: (r, v) => r.status === v }]}
             columns={[
-              { id: 'heading', header: 'Heading and text', value: r => r.heading, className: 'px-3 py-2.5 min-w-[280px] max-w-[420px]', thClass: 'px-3 py-2.5',
-                cell: r => <div className="flex gap-3 border-l-4 pl-3 -ml-1" style={{ borderColor: (POST_LOOK[r.status] || POST_LOOK.draft)[0] }}>{r.image && <img src={r.image} alt="" referrerPolicy="no-referrer" className="w-12 h-12 rounded object-cover shrink-0 bg-slate-100" />}<div className="min-w-0"><div className="text-13 font-semibold text-slate-900 truncate" title={r.heading}>{r.heading}</div><p className="text-12 text-slate-500 line-clamp-2" title={r.text}>{r.text}</p></div></div> },
+              {
+                id: 'heading', header: 'Heading and text', value: r => r.heading, className: 'px-3 py-2.5 min-w-[280px] max-w-[420px]', thClass: 'px-3 py-2.5',
+                cell: r => <div className="flex gap-3 border-l-4 pl-3 -ml-1" style={{ borderColor: (POST_LOOK[r.status] || POST_LOOK.draft)[0] }}>{r.image && <img src={r.image} alt="" referrerPolicy="no-referrer" className="w-12 h-12 rounded object-cover shrink-0 bg-slate-100" />}<div className="min-w-0"><div className="text-13 font-semibold text-slate-900 truncate" title={r.heading}>{r.heading}</div><p className="text-12 text-slate-500 line-clamp-2" title={r.text}>{r.text}</p></div></div>
+              },
               { id: 'type', header: 'Type', value: r => r.type, className: 'px-3 py-2.5 whitespace-nowrap', cell: r => <Badge tone={r.type === 'offer' ? 'orange' : r.type === 'event' ? 'violet' : 'blue'}>{r.type}</Badge> },
-              { id: 'status', header: 'Status', value: r => r.status, className: 'px-3 py-2.5 whitespace-nowrap',
-                cell: r => <StatusPill level={r.status === 'live' ? 'good' : r.status === 'failed' ? 'critical' : r.status === 'scheduled' ? 'info' : 'warning'}>{r.status === 'live' ? 'Live' : r.status === 'failed' ? 'Failed' : r.status === 'scheduled' ? 'Scheduled' : 'Draft'}</StatusPill> },
-              { id: 'date', header: 'Date', first: 'desc', value: r => (r.when ? Date.parse(r.when) : null), className: 'px-3 py-2.5 whitespace-nowrap text-12.5 text-slate-600',
-                cell: r => (r.when ? <>{fmtDateTime(r.when)}<span className="block text-11 text-slate-400">{r.status === 'scheduled' ? 'goes live' : r.status === 'live' ? 'posted' : 'created'}</span></> : '—') },
-              { id: 'button', header: 'Button', value: r => r.cta || '', className: 'px-3 py-2.5 text-12.5 max-w-[180px]',
-                cell: r => (r.cta ? <><span className="font-medium text-slate-700">{CTA[r.cta] || r.cta}</span>{r.ctaUrl && <a href={r.ctaUrl} target="_blank" rel="noreferrer noopener" title={r.ctaUrl} className="block text-11.5 text-indigo-600 hover:underline truncate">{String(r.ctaUrl).replace(/^https?:\/\/(www\.)?/, '').replace(/\?.*$/, '')}</a>}</> : <span className="text-slate-300">none</span>) },
-              { id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: r => r.clicks ?? null, className: 'px-3 py-2.5 text-right tabular-nums',
-                cell: r => (r.clicks != null ? <span title={`${r.clicks} visit${r.clicks === 1 ? '' : 's'} to the button link counted by Google Analytics${r.users != null ? `, ${r.users} people` : ''}`} className={`inline-block min-w-[2rem] text-center rounded-md px-2 py-0.5 font-bold ${r.clicks ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-400'}`}>{r.clicks}</span> : <span className="text-slate-300" title={r.clickNote}>—</span>) },
-              { id: 'actions', header: 'Actions', right: true, className: 'px-3 py-2.5 text-right whitespace-nowrap', thClass: 'px-3 py-2.5',
+              {
+                id: 'status', header: 'Status', value: r => r.status, className: 'px-3 py-2.5 whitespace-nowrap',
+                cell: r => <StatusPill level={r.status === 'live' ? 'good' : r.status === 'failed' ? 'critical' : r.status === 'scheduled' ? 'info' : 'warning'}>{r.status === 'live' ? 'Live' : r.status === 'failed' ? 'Failed' : r.status === 'scheduled' ? 'Scheduled' : 'Draft'}</StatusPill>
+              },
+              {
+                id: 'date', header: 'Date', first: 'desc', value: r => (r.when ? Date.parse(r.when) : null), className: 'px-3 py-2.5 whitespace-nowrap text-12.5 text-slate-600',
+                cell: r => (r.when ? <>{fmtDateTime(r.when)}<span className="block text-11 text-slate-400">{r.status === 'scheduled' ? 'goes live' : r.status === 'live' ? 'posted' : 'created'}</span></> : '—')
+              },
+              {
+                id: 'button', header: 'Button', value: r => r.cta || '', className: 'px-3 py-2.5 text-12.5 max-w-[180px]',
+                cell: r => (r.cta ? <><span className="font-medium text-slate-700">{CTA[r.cta] || r.cta}</span>{r.ctaUrl && <a href={r.ctaUrl} target="_blank" rel="noreferrer noopener" title={r.ctaUrl} className="block text-11.5 text-indigo-600 hover:underline truncate">{String(r.ctaUrl).replace(/^https?:\/\/(www\.)?/, '').replace(/\?.*$/, '')}</a>}</> : <span className="text-slate-300">none</span>)
+              },
+              {
+                id: 'clicks', header: 'Clicks', right: true, first: 'desc', value: r => r.clicks ?? null, className: 'px-3 py-2.5  tabular-nums',
+                cell: r => (r.clicks != null ? <span title={`${r.clicks} visit${r.clicks === 1 ? '' : 's'} to the button link counted by Google Analytics${r.users != null ? `, ${r.users} people` : ''}`} className={`inline-block min-w-[2rem] text-center rounded-md px-2 py-0.5 font-bold ${r.clicks ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-400'}`}>{r.clicks}</span> : <span className="text-slate-300" title={r.clickNote}>—</span>)
+              },
+              {
+                id: 'actions', header: 'Actions', right: true, className: 'px-3 py-2.5 text-right whitespace-nowrap', thClass: 'px-3 py-2.5',
                 cell: r => (
                   <span className="inline-flex flex-wrap justify-end gap-1.5">
                     {r.url && <a href={r.url} target="_blank" rel="noreferrer noopener"><Act icon={ExternalLink} tone="sky" tip="Open on Google: see the post as customers see it." /></a>}
-                    {r.live && <Act icon={Pencil} tone="indigo" tip="Edit: change this live post on Google." onClick={() => setLiveEdit(r.live)} />}
+                    {(r.live || (r.status === 'live' && r.local?.external_id)) && <Act icon={Pencil} tone="indigo" tip="Edit: change this live post on Google." onClick={() => setLiveEdit(r.live || { id: r.local.external_id, summary: r.local.body, cta: r.local.cta_type, cta_url: r.local.cta_url, title: r.local.title, type: String(r.local.post_type || 'STANDARD').toUpperCase() })} />}
                     {r.task && <Act icon={Pencil} tone="violet" tip={r.status === 'scheduled' ? 'Open: see or change the text, picture and time of this scheduled post.' : 'Edit and approve: change the text, picture or time, then approve it for its time or publish it.'} onClick={() => setReview(r.task)}>{r.status === 'scheduled' ? 'Open' : 'Edit & approve'}</Act>}
                     {r.local && r.status !== 'live' && linkedProfile && <Act tone="green" busy={busy === `p${r.local.id}`} tip={r.status === 'scheduled' ? 'Post now: send it at once instead of at the scheduled time.' : 'Post now: put it on Google at once.'} onClick={() => publish(r.local.id)}>Post now</Act>}
                     {r.local && r.status !== 'live' && linkedProfile && <Act tone="indigo" tip={r.status === 'scheduled' ? 'Change time: move the time it goes live.' : 'Schedule: choose when it goes live.'} onClick={() => setReschedule({ id: r.local.id, date: dayStr(1), time: '09:00' })}>{r.status === 'scheduled' ? 'Change time' : 'Schedule'}</Act>}
                     {r.status === 'scheduled' && <Act tone="amber" busy={busy === `u${r.local.id}`} tip="Unschedule: take it back to a draft; nothing is sent." onClick={() => unschedule(r.local.id)}>Unschedule</Act>}
                     {r.live ? <Act icon={Trash2} tone="rose" busy={busy === `d${r.live.id}`} tip="Delete: remove this post from your Google profile." onClick={() => delLive(r.live)} />
                       : r.local && <Act icon={Trash2} tone="rose" tip="Delete: remove this post." onClick={() => del(r.local.id)} />}
-                  </span>) }
+                  </span>)
+              }
             ]} />
         )}
       </Card>
@@ -940,23 +959,23 @@ function PhotosTab({ b, toast, onQueued }) {
     <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3 items-start">
       <MediaManager b={b} toast={toast} onQueued={onQueued} />
       <div className="space-y-3">
-      <Card title="Photo checklist" subtitle="What Google likes to see">
-        <div className="flex items-baseline gap-2"><span className="text-3xl font-semibold text-slate-900 tabular-nums">{b.photo_count ?? '—'}</span><span className="text-12 text-slate-500">{b.photo_count == null ? 'Connect Google to count photos.' : 'photos on Google'}</span></div>
-        <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(100, ((b.photo_count || 0) / 10) * 100)}%` }} /></div>
-        <div className="text-12 text-slate-500 mt-1.5">{(b.photo_count || 0) >= 10 ? 'Good: keep adding real photos weekly.' : 'Aim for 10 or more real photos: outside, inside, team, work. No stock images.'}</div>
-        <div className="mt-3 space-y-1.5 text-13">
-          {[['10 or more photos', (b.photo_count || 0) >= 10], ['Cover photo set', Boolean(b.cover_photo)], ['Logo set', Boolean(b.logo)]].map(([l, ok]) => <div key={l} className="flex items-center gap-2">{ok ? <CheckCircle2 size={15} className="text-emerald-600" /> : <Circle size={15} className="text-slate-300" />}<span className={ok ? 'text-slate-700' : 'text-slate-500'}>{l}</span></div>)}
-        </div>
-        <p className="text-11.5 text-slate-500 mt-3">Name files with the place, e.g. {`${(b.primaryCategory || 'business').toLowerCase().replace(/\s/g, '-')}-${(b.area || 'area').toLowerCase()}.webp`}.</p>
-      </Card>
-      {!isLinked(b) && <Card title="Cover photo and logo">
-        <div className="space-y-3">
-          <Field label="Cover photo URL"><input className={inputCls} value={cover} onChange={e => setCover(e.target.value)} placeholder="https://" /></Field>
-          <Field label="Logo URL"><input className={inputCls} value={logo} onChange={e => setLogo(e.target.value)} placeholder="https://" /></Field>
-          <ErrorNote>{error}</ErrorNote>
-          <Button variant="primary" icon={Save} busy={busy === 'save'} onClick={save}>Save</Button>
-        </div>
-      </Card>}
+        <Card title="Photo checklist" subtitle="What Google likes to see">
+          <div className="flex items-baseline gap-2"><span className="text-3xl font-semibold text-slate-900 tabular-nums">{b.photo_count ?? '—'}</span><span className="text-12 text-slate-500">{b.photo_count == null ? 'Connect Google to count photos.' : 'photos on Google'}</span></div>
+          <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(100, ((b.photo_count || 0) / 10) * 100)}%` }} /></div>
+          <div className="text-12 text-slate-500 mt-1.5">{(b.photo_count || 0) >= 10 ? 'Good: keep adding real photos weekly.' : 'Aim for 10 or more real photos: outside, inside, team, work. No stock images.'}</div>
+          <div className="mt-3 space-y-1.5 text-13">
+            {[['10 or more photos', (b.photo_count || 0) >= 10], ['Cover photo set', Boolean(b.cover_photo)], ['Logo set', Boolean(b.logo)]].map(([l, ok]) => <div key={l} className="flex items-center gap-2">{ok ? <CheckCircle2 size={15} className="text-emerald-600" /> : <Circle size={15} className="text-slate-300" />}<span className={ok ? 'text-slate-700' : 'text-slate-500'}>{l}</span></div>)}
+          </div>
+          <p className="text-11.5 text-slate-500 mt-3">Name files with the place, e.g. {`${(b.primaryCategory || 'business').toLowerCase().replace(/\s/g, '-')}-${(b.area || 'area').toLowerCase()}.webp`}.</p>
+        </Card>
+        {!isLinked(b) && <Card title="Cover photo and logo">
+          <div className="space-y-3">
+            <Field label="Cover photo URL"><input className={inputCls} value={cover} onChange={e => setCover(e.target.value)} placeholder="https://" /></Field>
+            <Field label="Logo URL"><input className={inputCls} value={logo} onChange={e => setLogo(e.target.value)} placeholder="https://" /></Field>
+            <ErrorNote>{error}</ErrorNote>
+            <Button variant="primary" icon={Save} busy={busy === 'save'} onClick={save}>Save</Button>
+          </div>
+        </Card>}
       </div>
     </div>
   );

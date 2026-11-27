@@ -61,7 +61,7 @@ function Page() {
             columns={[
               { id: 'page', header: 'Page', value: p => p.label, className: 'px-3 py-2.5 min-w-[220px]', cell: p => <Link to={p.path} className="text-13 font-semibold text-indigo-700 hover:underline">{p.label}</Link> },
               { id: 'sources', header: 'Takes its values from', value: p => p.sources.map(s => s.name).join(', '), className: 'px-3 py-2.5', cell: p => <div className="flex flex-wrap gap-1">{p.sources.map(s => <Badge key={s.key} tone={s.on ? (KIND_TONE[s.kind] || 'gray') : 'gray'} title={s.on ? s.provides : 'Not set up'}>{s.name}{s.on ? '' : ' (not set up)'}</Badge>)}</div> },
-              { id: 'n', header: 'Sources', right: true, value: p => p.sources.length, className: 'px-3 py-2.5 text-right tabular-nums', cell: p => p.sources.length },
+              { id: 'n', header: 'Sources', right: true, value: p => p.sources.length, className: 'px-3 py-2.5  tabular-nums', cell: p => p.sources.length },
             ]} />
         </Card>
       )}

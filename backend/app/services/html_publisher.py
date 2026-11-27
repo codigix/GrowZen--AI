@@ -409,7 +409,7 @@ def article_info(a: Article, b: Business, url: str, image_url: str | None) -> di
     body = re.sub(r"^\s*<h1\b[^>]*>[\s\S]*?</h1>", "", body.strip(), count=1, flags=re.I)  # the site shows the title itself
     words = len(svc._text(body).split())
     now = datetime.now(timezone.utc)
-    return {"title": a.title or a.keyword, "description": a.meta_description or "", "body": body.strip(), "url": url, "image": image_url,
+    return {"title": a.title or a.keyword, "h1": svc.blog_title_of(a), "description": a.meta_description or "", "body": body.strip(), "url": url, "image": image_url,
             "image_alt": a.featured_image_alt or a.title or "", "now": now, "date": f"{now:%B} {now.day}, {now.year}", "iso": now.isoformat(timespec="seconds"),
             "minutes": max(1, round(words / 200)), "category": (a.topic or a.keyword or "").strip().title(), "author": b.name, "id": a.id,
             "keywords": [k for k in [a.keyword, *(a.secondary_keywords or [])] if k],
@@ -618,10 +618,10 @@ def build_article(template_html: str, template_url_path: str, info: dict, image_
                      and len(s.get_text(strip=True)) < 160), None)
         if meta:
             _set_text(meta, _meta_text(meta.get_text(" ", strip=True), info["date"], info["minutes"]))
-        _set_text(old_h1, info["title"])
+        _set_text(old_h1, info.get("h1") or info["title"])  # the Blog title on the page; <title> keeps the SEO title
     else:
         h1 = soup.new_tag("h1")
-        h1.string = info["title"]
+        h1.string = info.get("h1") or info["title"]
         c.insert(0, h1)
     img = c.find("img")
     if img is not None:
@@ -675,7 +675,7 @@ def update_listing(listing_html: str, listing_url_path: str, folder: str, new_ur
             el["href"] = new_url_path
         head = el.find(["h1", "h2", "h3", "h4", "h5", "h6"])
         if head:
-            _set_text(head, info["title"])
+            _set_text(head, info.get("h1") or info["title"])
         for t in el.find_all(["p", "span", "time", "small", "div"]):
             txt = t.get_text(" ", strip=True)
             if not t.find(["p", "div", "h2", "h3"]) and (_DATE.search(txt) or _READ.search(txt)) and len(txt) < 160:
@@ -707,7 +707,7 @@ def update_listing(listing_html: str, listing_url_path: str, folder: str, new_ur
         card.insert_before(new)
         card.insert_before("\n")
         return str(soup), "Added the article's card at the top of the listing (same design as the existing cards)"
-    block = BeautifulSoup(f'<article class="growzen-post"><h2><a href="{new_url_path}">{_esc(info["title"])}</a></h2><p>{_esc(info["date"])} · {info["minutes"]} min read</p>'
+    block = BeautifulSoup(f'<article class="growzen-post"><h2><a href="{new_url_path}">{_esc(info.get("h1") or info["title"])}</a></h2><p>{_esc(info["date"])} · {info["minutes"]} min read</p>'
                           f'<p>{_esc(info["description"])}</p><p><a href="{new_url_path}">Read more →</a></p></article>', "html.parser")
     _container(soup).append(block)
     return str(soup), "Added the first article card to the listing page"

@@ -113,11 +113,11 @@ export function PagesCard({ pages, siteIssues }) {
                         : r.issues.length ? <span className={`text-11 font-bold px-2 py-0.5 rounded-full ring-1 ring-inset ${SEVERITY_TONE[worst(r.issues)]}`}>{r.issues.length}</span>
                           : <CheckCircle2 size={16} className="inline text-emerald-600" />}
                     </td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${bad(r.title_length >= 25 && r.title_length <= 60)}`}>{r.title_length || '—'}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${bad(r.meta_description_length > 0)}`}>{r.meta_description_length || '—'}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${bad(r.h1_count === 1)}`}>{r.h1_count}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${bad(r.word_count >= 300)}`}>{r.word_count}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${bad(!r.images_missing_alt)}`}>{r.images_missing_alt}</td>
+                    <td className={`px-3 py-2.5  tabular-nums ${bad(r.title_length >= 25 && r.title_length <= 60)}`}>{r.title_length || '—'}</td>
+                    <td className={`px-3 py-2.5  tabular-nums ${bad(r.meta_description_length > 0)}`}>{r.meta_description_length || '—'}</td>
+                    <td className={`px-3 py-2.5  tabular-nums ${bad(r.h1_count === 1)}`}>{r.h1_count}</td>
+                    <td className={`px-3 py-2.5  tabular-nums ${bad(r.word_count >= 300)}`}>{r.word_count}</td>
+                    <td className={`px-3 py-2.5  tabular-nums ${bad(!r.images_missing_alt)}`}>{r.images_missing_alt}</td>
                     <td className="px-3 py-2.5 text-right">{r.schema ? <span className="text-12 text-slate-700">{r.schema_types.length}</span> : <span className="text-slate-300">—</span>}</td>
                   </tr>
                   {isOpen && (

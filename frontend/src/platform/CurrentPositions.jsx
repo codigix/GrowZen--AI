@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, Search, MapPin, ExternalLink, AlertTriangle, ArrowUp, ArrowDown, Globe } from 'lucide-react';
 import { Card, Badge, Button, ErrorNote, useAction, useToast, SkTable } from './SeoUi';
 import { api, useApi, fmtDateTime } from './seoApi';
@@ -59,7 +60,9 @@ export default function CurrentPositions({ b, onChecked }) {
   const data = useApi(`/businesses/${b.id}/seo/current-positions`);
   const [busy, error, run] = useAction();
   const [toast, toastNode] = useToast();
-  const [q, setQ] = useState('');
+  const [params] = useSearchParams();
+  const fromSaved = (params.get('kw') || '').trim().toLowerCase(); // a keyword sent from Saved Keywords: shown alone, and its position read once
+  const [q, setQ] = useState(fromSaved);
   const [sort, setSort] = useState('position');
   const [bucket, setBucket] = useState('all');
   const d = data.data;
@@ -70,6 +73,19 @@ export default function CurrentPositions({ b, onChecked }) {
     data.reload(true);
     if (onChecked) onChecked();
   });
+
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!fromSaved || asked.current || params.get('track') !== '1') return;
+    asked.current = true;
+    run('check', async () => {
+      const r = await api(`/businesses/${b.id}/seo/check-ranks`, { method: 'POST', body: { keywords: [fromSaved] }, timeout: 120000 });
+      toast(`Position of “${fromSaved}” read from Google Search Console`);
+      data.reload(true);
+      if (onChecked) onChecked();
+      return r;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = useMemo(() => {
     if (!d) return [];
