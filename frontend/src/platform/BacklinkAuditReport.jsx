@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, BellRing, CheckCircle2, Download, ExternalLink, Info, Link2, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertTriangle, BellRing, CheckCircle2, ChevronDown, ChevronRight, Download, ExternalLink, Info, Link2, RefreshCw, Sparkles } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { Card, Button, ErrorNote, useAction, useToast } from './SeoUi';
 import { usePager, Pager } from './DataTable';
@@ -47,8 +47,20 @@ export default function AuditReport({ d, b, syncedAt, onChanged }) {
   const [toast, toastNode] = useToast();
   const [basis, setBasis] = useState(false);
   const [withPotential, setWithPotential] = useState(false);
-  const rows = useMemo(() => (tab === 'domains' ? rp?.domains : tab === 'links' ? rp?.backlinks : d.report?.anchors) || [], [rp, tab, d]);
+  // Backlinks are shown one row per linking site; its pages are inside it and show when it is opened.
+  const siteGroups = useMemo(() => {
+    const map = new Map();
+    for (const x of rp?.backlinks || []) {
+      const dom = (x.source_url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0] || x.source_url;
+      if (!map.has(dom)) map.set(dom, []);
+      map.get(dom).push(x);
+    }
+    return [...map.entries()].map(([domain, links]) => ({ domain, links }));
+  }, [rp]);
+  const rows = useMemo(() => (tab === 'domains' ? rp?.domains : tab === 'links' ? siteGroups : d.report?.anchors) || [], [rp, tab, d, siteGroups]);
   const pager = usePager(rows, { size: 8, resetKey: tab });
+  const [openSites, setOpenSites] = useState(() => new Set());
+  const toggleSite = (dom) => setOpenSites(prev => { const n = new Set(prev); if (n.has(dom)) n.delete(dom); else n.add(dom); return n; });
   if (!rp || rp.state !== 'ok') return null;
   const t = rp.totals, f = rp.follow, kinds = rp.kinds;
   const total = t.backlinks;
@@ -117,7 +129,25 @@ export default function AuditReport({ d, b, syncedAt, onChanged }) {
                   <td className="px-5 py-2.5 text-right whitespace-nowrap"><span className="inline-flex gap-3"><Link to={`/backlinks/links?q=${encodeURIComponent(x.domain)}`} className="text-slate-500 hover:text-indigo-700" title="See its links" aria-label={`See the links from ${x.domain}`}><Link2 size={15} /></Link><a href={`https://${x.domain}`} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-indigo-700" title="Open the site" aria-label={`Open ${x.domain}`}><ExternalLink size={15} /></a></span></td></tr>;
               })}</tbody></table>}
             {tab === 'links' && <table className="w-full text-13"><thead className="text-12 text-slate-500"><tr><th className="px-5 py-2 text-left font-medium">Linking page</th><th className="px-3 py-2 text-left font-medium">Anchor</th><th className="px-3 py-2 text-left font-medium">Follow</th><th className="px-5 py-2 text-left font-medium">Toxicity</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">{pager.rows.map((x, i) => { const [l, bgc, fg] = BAND[x.band]; return <tr key={i} className="hover:bg-slate-50"><td className="px-5 py-2.5 max-w-[300px] truncate"><a href={x.source_url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline" title={x.source_url}>{x.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a></td><td className="px-3 py-2.5 max-w-[200px] truncate text-slate-600" title={x.anchor || ''}>{x.anchor || '—'}</td><td className="px-3 py-2.5 text-slate-600">{x.follow === 'dofollow' ? 'Follow' : 'Nofollow'}</td><td className="px-5 py-2.5"><span className="rounded px-2 py-0.5 text-12 font-semibold" style={{ backgroundColor: bgc, color: fg }}>{l}</span></td></tr>; })}</tbody></table>}
+              <tbody className="divide-y divide-slate-100">{pager.rows.map(g => {
+                const RISK = ['toxic', 'potential', 'unknown', 'clean'];
+                const worst = RISK.find(r => g.links.some(x => x.band === r)) || 'unknown';
+                const [gl, gbg, gfg] = BAND[worst];
+                const many = g.links.length > 1;
+                const isOpen = openSites.has(g.domain);
+                const follows = g.links.filter(x => x.follow === 'dofollow').length;
+                const pageRow = (x, i, child) => { const [l, bgc, fg] = BAND[x.band]; return <tr key={`${g.domain}-${i}`} className="hover:bg-slate-50"><td className={`px-5 py-2.5 max-w-[300px] truncate ${child ? 'pl-12 border-l-2 border-indigo-100' : ''}`}><a href={x.source_url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline" title={x.source_url}>{x.source_url.replace(/^https?:\/\/(www\.)?/, '')}</a></td><td className="px-3 py-2.5 max-w-[200px] truncate text-slate-600" title={x.anchor || ''}>{x.anchor || '—'}</td><td className="px-3 py-2.5 text-slate-600">{x.follow === 'dofollow' ? 'Follow' : 'Nofollow'}</td><td className="px-5 py-2.5"><span className="rounded px-2 py-0.5 text-12 font-semibold" style={{ backgroundColor: bgc, color: fg }}>{l}</span></td></tr>; };
+                if (!many) return pageRow(g.links[0], 0, false);
+                return <React.Fragment key={g.domain}>
+                  <tr className="bg-slate-50/60 hover:bg-slate-100/70 cursor-pointer" onClick={() => toggleSite(g.domain)} aria-expanded={isOpen}>
+                    <td className="px-5 py-2.5 max-w-[300px]"><span className="inline-flex items-center gap-1.5 max-w-full"><button type="button" onClick={(e) => { e.stopPropagation(); toggleSite(g.domain); }} aria-label={`${isOpen ? 'Hide' : 'Show'} the ${g.links.length} links from ${g.domain}`} className="grid h-5 w-5 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-200">{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button><span className="truncate font-semibold text-slate-800">{g.domain}</span><span className="shrink-0 text-12 text-slate-400">{g.links.length} pages</span></span></td>
+                    <td className="px-3 py-2.5 text-12 text-slate-400">{isOpen ? '' : 'Open to see each page'}</td>
+                    <td className="px-3 py-2.5 text-12 text-slate-500 whitespace-nowrap">{follows}/{g.links.length} follow</td>
+                    <td className="px-5 py-2.5"><span className="rounded px-2 py-0.5 text-12 font-semibold" style={{ backgroundColor: gbg, color: gfg }}>{gl}</span></td>
+                  </tr>
+                  {isOpen && g.links.map((x, i) => pageRow(x, i, true))}
+                </React.Fragment>;
+              })}</tbody></table>}
             {tab === 'anchors' && <table className="w-full text-13"><thead className="text-12 text-slate-500"><tr><th className="px-5 py-2 text-left font-medium">Anchor text</th><th className="px-3 py-2  font-medium">Backlinks</th><th className="px-5 py-2 text-right font-medium">Domains</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{pager.rows.map((x, i) => <tr key={i} className="hover:bg-slate-50"><td className="px-5 py-2.5 max-w-[420px] truncate" title={x.text}>{x.text}</td><td className="px-3 py-2.5  tabular-nums text-indigo-700">{fmt(x.count)}</td><td className="px-5 py-2.5  tabular-nums">{fmt(x.domains)}</td></tr>)}</tbody></table>}
             {rows.length === 0 && <p className="px-5 py-8 text-center text-13 text-slate-500">Nothing to show yet.</p>}

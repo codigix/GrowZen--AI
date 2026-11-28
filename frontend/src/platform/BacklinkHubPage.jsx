@@ -262,7 +262,7 @@ function Links({ b }) {
   const [f, setF] = useState({ status: params.get('status') || 'live', follow: params.get('follow') || '', category: '', useful: params.get('useful') || '', sort: 'recent' });
   const [q, setQ] = useState(params.get('q') || ''); // opened from a site's row: only that site's links
   const dq = useDebounced(q);
-  const r = useList(b, 'links', { ...f, preset, q: dq, limit: 200 });
+  const r = useList(b, 'links', { ...f, preset, q: dq, limit: 200, group: 1 });  // 200 SITES, each with all of its pages
   const d = r.data;
   if (r.error) return <Card><ErrorNote>{r.error.message}</ErrorNote></Card>;
   if (!d) return <SkList rows={6} />;

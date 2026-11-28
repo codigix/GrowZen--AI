@@ -57,8 +57,8 @@ def summary(b: Business = Depends(get_business), db: Session = Depends(get_db)) 
 def links(b: Business = Depends(get_business), db: Session = Depends(get_db), status: str = Query("live", pattern="^(live|lost|all)$"), follow: str = Query("", pattern="^(|dofollow|nofollow|sponsored|ugc)$"),
           category: str = Query("", max_length=30), useful: str = Query("", pattern="^(|useful|neutral|risky|unscored)$"), q: str = Query("", max_length=200),
           sort: str = Query("recent", pattern="^(recent|domain|da)$"), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
-          preset: str = Query("", pattern="^(|best|new|lost_vital)$")) -> dict:
-    return hub.links(db, b, status=status, follow=follow, category=category, useful=useful, q=q, sort=sort, limit=limit, offset=offset, preset=preset)
+          preset: str = Query("", pattern="^(|best|new|lost_vital)$"), group: bool = Query(False)) -> dict:
+    return hub.links(db, b, status=status, follow=follow, category=category, useful=useful, q=q, sort=sort, limit=limit, offset=offset, preset=preset, group=group)
 
 
 @router.get("/domains")

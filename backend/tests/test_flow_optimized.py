@@ -191,7 +191,8 @@ def test_no_large_json_is_read_for_a_small_fact(projects):
     _, new = statements(lambda: flow.evaluate(db, b))
     db.close()
     text = "\n".join(new)
-    for column in ("competitors.listing", "keywords.source", "growth_actions.verify", "growth_actions.how", "growth_actions.why", "growth_actions.note", "growth_reports.data"):
+    # (keywords.source is read since the keyword mapping uses the page a keyword was planned for)
+    for column in ("competitors.listing", "growth_actions.verify", "growth_actions.how", "growth_actions.why", "growth_actions.note", "growth_reports.data"):
         assert column not in text, column
     assert len([s for s in new if "audits.result" in s]) == 1  # the crawl: once, alone, and no intel / gbp / technical result
     assert "audits.issues" not in text

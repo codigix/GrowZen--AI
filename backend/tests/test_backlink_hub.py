@@ -299,3 +299,37 @@ def test_platform_suggestions_need_an_ai_key(client, world, monkeypatch):
     from app.services import ai
     monkeypatch.setattr(ai, "is_configured", lambda: False)
     assert post(client, world, "platforms/suggest")["state"] == "no_ai"
+
+
+def test_grouped_links_count_sites_not_links_and_never_cut_a_site_in_half(client, world):
+    """With group on, limit/offset count SITES and every page of a returned site comes with it, so a page's size can never split a site."""
+    plain = get(client, world, "links", limit=200)["links"]
+    site_names = list(dict.fromkeys(x["source_domain"] for x in plain))
+    assert len(site_names) >= 2
+    d = get(client, world, "links", group=True, limit=1, offset=0)
+    sites = {x["source_domain"] for x in d["links"]}
+    assert d["sites_total"] == len(site_names) and len(sites) == 1
+    assert len(d["links"]) == len([x for x in plain if x["source_domain"] in sites])  # all of that site's pages, not a part of them
+    second = get(client, world, "links", group=True, limit=1, offset=1)
+    other = {x["source_domain"] for x in second["links"]}
+    assert len(other) == 1 and other.isdisjoint(sites)
+    assert d["total"] == len(plain)  # the link total is still the link total
+
+
+def test_one_page_linking_with_several_anchors_gives_several_links_that_keep_their_numbers(client, monkeypatch):
+    """The crawler lists a link once for each anchor. They are separate links on the page, so each is kept (and none is added again by the next sync)."""
+    s = get_settings()
+    monkeypatch.setattr(s, "crawler_url", "https://c.example")
+    monkeypatch.setattr(s, "crawler_api_key", "k")
+    me = "multi-anchor.in"
+    rows = [link("https://blog.example/post", f"https://{me}/", anchor=a) for a in ("Alpha clinic", "Beta clinic", "Gamma clinic")] + [link("https://blog.example/post?utm_source=x", f"https://{me}/", anchor="Alpha clinic")]
+    monkeypatch.setattr(cc, "backlinks", lambda domain, include_removed=False, limit=100, offset=0: {"domain": domain, "status": "ok", "backlinks": rows[offset:offset + limit]})
+    bid = client.post("/api/v1/businesses", json={"name": "Multi Anchor", "website": f"https://www.{me}/"}).json()["id"]
+    db = SessionLocal()
+    try:
+        crawler_sync.run_cycle(db, bid)
+        crawler_sync.run_cycle(db, bid)  # again: nothing is added twice
+    finally:
+        db.close()
+    got = get(client, bid, "links", limit=200)["links"]
+    assert sorted(x["anchor"] for x in got) == ["Alpha clinic", "Beta clinic", "Gamma clinic"]  # the tracking-part address is the same page and anchor as the first: one link

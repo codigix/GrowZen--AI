@@ -66,7 +66,7 @@ def evaluate(db: Session, b: Business) -> dict[str, Any]:
     from . import keywords as kwsvc
     # The tracked keywords are read once, with only the columns the journey and the mapping use, and shared by both. The journey does not use the competitor-research
     # part of the keyword progress, so that (large) read is skipped.
-    kw_rows = list(db.execute(select(Keyword.keyword, Keyword.volume, Keyword.intent, Keyword.cluster, Keyword.target_url, Keyword.rank_checked_at, Keyword.uses, Keyword.rank, Keyword.role)
+    kw_rows = list(db.execute(select(Keyword.id, Keyword.keyword, Keyword.volume, Keyword.intent, Keyword.cluster, Keyword.target_url, Keyword.rank_checked_at, Keyword.uses, Keyword.rank, Keyword.role, Keyword.mapping_status, Keyword.source)
                               .where(Keyword.business_id == b.id, Keyword.tracked.is_(True)).order_by(Keyword.id)))
     kp = kwsvc.progress(db, b, rows=kw_rows, check_research=False)
     ungrouped = kp["saved"] - kp["grouped"]

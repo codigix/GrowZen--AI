@@ -16,6 +16,7 @@ from ..services import crawler_client as cc
 from . import bot, sync, tasks
 from .models import Backlink, BacklinkEvent, BiBotConfig, BiTrackedTarget
 from .repository import LinkRecord, upsert_imported_link
+from .urls import normalize_url, text_hash
 
 log = logging.getLogger("seo.backlinks.crawler_sync")
 
@@ -53,14 +54,17 @@ def _state_of(item: dict) -> str:
     return st if st in ("LIVE", "RESTORED") else "NEW"
 
 
-def save_link(db: Session, item: dict, now: datetime) -> tuple[Backlink, bool]:
-    """Save one link of the crawler's answer. Returns (backlink, created)."""
+def save_link(db: Session, item: dict, now: datetime, instance: int = 0) -> tuple[Backlink, bool]:
+    """Save one link of the crawler's answer. Returns (backlink, created). `instance` tells apart several links from one page to the same page of the site (different anchors)."""
     rels = _rels(item.get("rel"))
     state = _state_of(item)
     rec = LinkRecord(source_url=item["source_url"], target_url=item["destination_url"], anchor_text=item.get("anchor_text"), rel_attributes=rels,
                      link_type="nofollow" if "nofollow" in rels else "dofollow", first_seen=_when(item.get("first_seen")),
-                     last_seen=_when(item.get("last_verified")), is_lost=state.startswith("LOST"))
+                     last_seen=_when(item.get("last_verified")), is_lost=state.startswith("LOST"), instance=instance)
     bl, created = upsert_imported_link(db, rec, SOURCE, "internal", now)
+    if item.get("anchor_text") is not None:
+        bl.anchor_text = item["anchor_text"]  # the crawler read the page: its anchor is the one that is there now
+        bl.anchor_hash = text_hash(item["anchor_text"])
     if str(item.get("verification_status") or item.get("link_status") or "").lower() == "verified" or state.startswith("LOST"):
         bl.verification_status = "CRAWLER_VERIFIED"
         bl.last_verified_at = _when(item.get("last_verified")) or now
@@ -105,6 +109,22 @@ def register_competitors(business_domain: str | None, competitors: list[str]) ->
     return out
 
 
+def _instances(items: list[dict]) -> list[int]:
+    """Which of the links a page gives to the same target page each item is (0, 1, 2 ...), decided by sorting that group's anchors, so the same link keeps the same number on every sync.
+    Addresses that differ only in a tracking part or a fragment are the same page here, as in the saved links."""
+    groups: dict[tuple[str, str], set[str]] = {}
+    keys = []
+    for it in items:
+        try:
+            k = (normalize_url(it["source_url"]), normalize_url(it["destination_url"]))
+        except Exception:  # noqa: BLE001 - an address that cannot be read is saved as before (instance 0)
+            k = (it.get("source_url") or "", it.get("destination_url") or "")
+        keys.append(k)
+        groups.setdefault(k, set()).add(it.get("anchor_text") or "")
+    ranks = {k: {a: i for i, a in enumerate(sorted(v))} for k, v in groups.items()}
+    return [ranks[k][it.get("anchor_text") or ""] for k, it in zip(keys, items)]
+
+
 def sync_domain(db: Session, domain: str, now: datetime | None = None) -> dict:
     """Read the crawler's links to `domain` and save them. Returns {read, created, seeded}. A domain the crawler has never seen is handed to it as a seed,
     so it starts looking for links to it (links appear on a later sync, once it has explored)."""
@@ -112,6 +132,7 @@ def sync_domain(db: Session, domain: str, now: datetime | None = None) -> dict:
     read = created = 0
     seeded = False
     offset = 0
+    items: list[dict] = []
     while offset < MAX_PER_DOMAIN:
         page = cc.backlinks(domain, include_removed=True, limit=PAGE, offset=offset)
         if offset == 0 and page.get("status") == "not_found_in_current_index":
@@ -120,22 +141,25 @@ def sync_domain(db: Session, domain: str, now: datetime | None = None) -> dict:
                 seeded = True
             except cc.CrawlerError:
                 log.warning("Could not hand %s to the crawler as a seed", domain)
-        items = page.get("backlinks") or []
-        for item in items:
-            if not item.get("source_url") or not item.get("destination_url"):
-                continue
-            try:
-                with db.begin_nested():
-                    _, new = save_link(db, item, now)
-            except Exception:  # one bad row never stops the domain
-                log.exception("Could not save a crawler link to %s", domain)
-                continue
-            read += 1
-            created += 1 if new else 0
-        db.commit()
-        if len(items) < PAGE:
+        got = page.get("backlinks") or []
+        items.extend(x for x in got if x.get("source_url") and x.get("destination_url"))
+        if len(got) < PAGE:
             break
         offset += PAGE
+    release_connection(db)  # everything is read from the crawler: saving takes the connection only for each batch
+    instances = _instances(items)
+    for n, (item, inst) in enumerate(zip(items, instances), 1):
+        try:
+            with db.begin_nested():
+                _, new = save_link(db, item, now, inst)
+        except Exception:  # one bad row never stops the domain
+            log.exception("Could not save a crawler link to %s", domain)
+            continue
+        read += 1
+        created += 1 if new else 0
+        if n % PAGE == 0:
+            db.commit()
+    db.commit()
     return {"read": read, "created": created, "seeded": seeded}
 
 

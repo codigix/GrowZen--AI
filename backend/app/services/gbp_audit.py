@@ -478,11 +478,17 @@ def _direction(dx: float, dy: float) -> str:
     return (v + ("-" if v and h else "") + h) or "centre"
 
 
-def geogrid(b: Any, scans: list[Any]) -> dict[str, Any]:
+def geogrid(b: Any, scans: list[Any], tracked: set[str] | None = None) -> dict[str, Any]:
     real = [s for s in scans if s.data_source != "sample"]
+    hidden = 0
+    if tracked is not None:  # only scans of keywords the person chose; scans the app made with its own keywords are not judged here
+        hidden = sum(1 for s in real if s.keyword.lower() not in tracked)
+        real = [s for s in real if s.keyword.lower() in tracked]
     if not real:
         msg = "No map rank scan has been run yet." if not scans else "The saved scans are sample data, not real results."
-        return _section("geogrid", [], [_fix("Run a map rank scan for your main keyword (Map Rank Tracker).", "It shows where on the map you appear and where you do not.", "high")], [], "Map Rank Tracker", False, msg)
+        if hidden:
+            msg = f"No scan exists for a keyword you chose. {hidden} older scan{'s were' if hidden != 1 else ' was'} made with keywords the app picked itself, so {'they are' if hidden != 1 else 'it is'} not shown or scored."
+        return _section("geogrid", [], [_fix("Choose your own target keyword in My Keywords, then scan it in Map Rank Tracker. Use “Write drafts with AI” for keyword ideas.", "The map ranking is only meaningful for a search your customers really make.", "high")], [], "Map Rank Tracker", False, msg)
     checks: list[dict[str, str]] = []
     fixes = _Fixes(checks)
     seen: set[str] = set()
@@ -515,7 +521,30 @@ def geogrid(b: Any, scans: list[Any]) -> dict[str, Any]:
             lead = min((c for c in s.competitors if c.get("avg_rank")), key=lambda c: c["avg_rank"], default=None)
             if lead and (s.avg_rank is None or lead["avg_rank"] < s.avg_rank):
                 rivals.append(f"“{s.keyword}”: {lead['name']} (average position {lead['avg_rank']})")
-    return _section("geogrid", checks, fixes, [(f"Scan: “{s.keyword}”", f"top 3 at {round(100 * (s.top3 or 0) / max(1, len(s.points or []) or s.grid_size ** 2))}% of points, shown at {round(100 * (s.found or 0) / max(1, len(s.points or []) or s.grid_size ** 2))}%, average position {s.avg_rank if s.avg_rank is not None else '-'}") for s in latest[:3]] + [("Strongest competitors", "; ".join(rivals))], "Map Rank Tracker (real Maps searches)")
+    sec = _section("geogrid", checks, fixes, [(f"Scan: “{s.keyword}”", f"top 3 at {round(100 * (s.top3 or 0) / max(1, len(s.points or []) or s.grid_size ** 2))}% of points, shown at {round(100 * (s.found or 0) / max(1, len(s.points or []) or s.grid_size ** 2))}%, average position {s.avg_rank if s.avg_rank is not None else '-'}") for s in latest[:3]] + [("Strongest competitors", "; ".join(rivals))], "Map Rank Tracker (real Maps searches)")
+    sec["maps"] = [_map_of(s, tracked) for s in latest[:3]]
+    return sec
+
+
+def _map_of(s: Any, tracked: set[str] | None = None) -> dict[str, Any]:
+    """One scan as a picture: the grid of points with the position at each, and the plain-words reading of it."""
+    pts = [{"x": int(p.get("x", 0)), "y": int(p.get("y", 0)), "rank": p.get("rank")} for p in (s.points or [])]
+    total = max(1, len(pts))
+    top3 = sum(1 for p in pts if p["rank"] and p["rank"] <= 3)
+    mid = sum(1 for p in pts if p["rank"] and 3 < p["rank"] <= 10)
+    low = sum(1 for p in pts if p["rank"] and p["rank"] > 10)
+    none = total - top3 - mid - low
+    if top3 / total >= 0.5:
+        verdict = "Strong: customers in most of the area see you at the top."
+    elif (top3 + mid) / total >= 0.5:
+        verdict = "Visible but not on top: you appear in most places, but only a few at the top 3."
+    elif none / total >= 0.5:
+        verdict = "Weak: Google does not show you in more than half of the area."
+    else:
+        verdict = "Low: you appear in many places, but far down the list."
+    return {"keyword": s.keyword, "source": "yours" if tracked and s.keyword.lower() in tracked else "app", "size": int(s.grid_size or 0), "radius_km": getattr(s, "radius_km", None), "points": pts, "total": total, "counts": {"top3": top3, "mid": mid, "low": low, "none": none},
+            "avg_rank": s.avg_rank, "verdict": verdict, "scanned_at": s.created_at.isoformat() if getattr(s, "created_at", None) else None,
+            "competitors": [{"name": c.get("name"), "avg_rank": c.get("avg_rank"), "top3": c.get("top3")} for c in (s.competitors or [])[:3]]}
 
 
 # ---------------------------------------------------------------------------------------------------------------- the audit
@@ -526,7 +555,7 @@ def audit(db: Session, b: Any, fresh: bool = False) -> dict[str, Any]:
     rows = list(db.scalars(select(Review).where(Review.business_id == b.id).order_by(Review.id.desc()).limit(500)))
     kws = list(db.scalars(select(Keyword).where(Keyword.business_id == b.id).order_by(Keyword.volume.desc().nullslast()).limit(20)))
     scans = list(db.scalars(select(RankScan).where(RankScan.business_id == b.id).order_by(RankScan.id.desc()).limit(12)))
-    parts = [categories(b, p, comps), name(b, p), nap(b, p), description(b, p), services(b), reviews(b, p, rows, comps), photos(b, p), visibility(db, b, p, kws), geogrid(b, scans)]
+    parts = [categories(b, p, comps), name(b, p), nap(b, p), description(b, p), services(b), reviews(b, p, rows, comps), photos(b, p), visibility(db, b, p, kws), geogrid(b, scans, {k.keyword.lower() for k in kws if getattr(k, "tracked", False)})]
     read = [x for x in parts if x["readable"] and x["score"] is not None]
     total_w = sum(x["weight"] for x in read)
     score = round(sum(x["score"] * x["weight"] for x in read) / total_w) if total_w else None
@@ -571,12 +600,14 @@ def suggest(db: Session, b: Any) -> dict[str, Any]:
     if not ai.is_configured():
         return {"state": "no_ai", "message": "AI is not set up, so drafts cannot be written. The audit and its fixes above do not need it."}
     kws = [k.keyword for k in db.scalars(select(Keyword).where(Keyword.business_id == b.id).order_by(Keyword.volume.desc().nullslast()).limit(8))]
+    from ..models import RankScan
+    scanned = list(dict.fromkeys(r.keyword for r in db.scalars(select(RankScan).where(RankScan.business_id == b.id).order_by(RankScan.id.desc()).limit(10))))
     comps = [c.name for c in db.scalars(select(Competitor).where(Competitor.business_id == b.id).limit(5))]
     from ..db import release_connection  # noqa: PLC0415
     release_connection(db)  # the facts are read: no connection is held while the AI writes the drafts
     facts = {"name": b.name, "category": b.primary_category, "secondary_categories": b.secondary_categories or [], "city": b.city, "area": b.area,
              "services": [{"name": s["name"], "description": s.get("description") or "", "price": s.get("price")} for s in _services(b)][:12], "current_description": (b.description or "")[:750],
-             "target_keywords": kws, "nearby_competitors": comps}
+             "target_keywords": kws, "already_scanned": scanned, "nearby_competitors": comps}
     system = ("You write Google Business Profile copy for a local business. Use ONLY the facts given. Never invent awards, years in business, prices, certifications or claims. "
               "No links, no phone numbers, no promotional words such as best, cheapest, #1, guaranteed. Plain, factual, friendly English. Reply with one JSON object only.")
     user = ("Facts:\n" + str(facts) + "\n\nReturn JSON with exactly these keys:\n"
@@ -586,6 +617,7 @@ def suggest(db: Session, b: Any) -> dict[str, Any]:
             "\"photo_ideas\": 8 short photo ideas specific to this business;\n"
             "\"review_request\": a short WhatsApp message asking a happy customer for a review (use the placeholder <review link>);\n"
             "\"reply_to_positive\" and \"reply_to_negative\": two short reply templates using the placeholders {name} and {phone};\n"
+            "\"geo_keywords\": 8 phrases a real customer would type into Google Maps to find this business (service plus the city or a nearby area people actually search, no tiny neighbourhood names few people use), each as {\"keyword\": phrase, \"why\": one short reason}, not repeating the tracked or scanned keywords;\n"
             "\"keyword_placement\": [{\"keyword\": one target keyword, \"where\": where on the profile to use it}].")
     try:
         d = ai.complete_json(system, user, temperature=0.4, max_tokens=2200)
@@ -599,4 +631,6 @@ def suggest(db: Session, b: Any) -> dict[str, Any]:
             "photo_ideas": [_clean(x, 140) for x in (d.get("photo_ideas") or [])][:8], "review_request": _clean(d.get("review_request"), 400),
             "reply_to_positive": _clean(d.get("reply_to_positive"), 400), "reply_to_negative": _clean(d.get("reply_to_negative"), 400),
             "keyword_placement": [{"keyword": _clean(x.get("keyword"), 80), "where": _clean(x.get("where"), 160)} for x in (d.get("keyword_placement") or []) if isinstance(x, dict)][:8],
+            "geo_keywords": [{"keyword": _clean(x.get("keyword"), 80).lower(), "why": _clean(x.get("why"), 160)} for x in (d.get("geo_keywords") or []) if isinstance(x, dict) and x.get("keyword")
+                             and _clean(x.get("keyword"), 80).lower() not in {k.lower() for k in [*kws, *scanned]}][:8],
             "written_by_ai": True}

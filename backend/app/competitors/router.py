@@ -90,8 +90,7 @@ def upsert_without_website(db: Session, business_id: int, found: list[dict]) -> 
 def find(body: CompetitorRegisterIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Top competitors on Google Maps for a type of business near a location. Pass `business_id`
     to also register the ones with a website against that business."""
-    if body.business_id is not None:
-        owned_business(db, user, body.business_id)  # checked first: nobody pays for a Google search on a project that is not theirs
+    owner = owned_business(db, user, body.business_id) if body.business_id is not None else None  # checked first: nobody pays for a Google search on a project that is not theirs
     release_connection(db)  # the Google Places search takes seconds: no database connection is held while it runs
     try:
         results, requests = discover(owner, body)

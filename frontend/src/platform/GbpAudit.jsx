@@ -84,6 +84,41 @@ function FixActions({ f }) {
 }
 
 /* Detailed Parameter Card in the main list */
+
+const RANK_STYLE = (r) => (!r ? 'bg-slate-300 text-slate-600' : r <= 3 ? 'bg-emerald-500 text-white' : r <= 10 ? 'bg-amber-400 text-slate-900' : 'bg-rose-500 text-white');
+
+/** One map scan drawn as a grid: each dot is a place around the business, its number is the position there. */
+function GeoGridMap({ m }) {
+  const n = Math.max(1, m.size || Math.round(Math.sqrt(m.total)));
+  const at = (x, y) => m.points.find(p => p.x === x && p.y === y);
+  const c = m.counts;
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-2xs space-y-3">
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <p className="font-bold text-13.5 text-slate-900">Search: “{m.keyword}”</p>
+        <Badge tone={m.source === 'yours' ? 'green' : 'gray'}>{m.source === 'yours' ? 'Your tracked keyword' : 'Chosen by the app, not by you'}</Badge>
+        <p className="text-12 text-slate-500">{m.total} places checked{m.radius_km ? ` within ${m.radius_km} km` : ''}{m.scanned_at ? ` · scanned ${String(m.scanned_at).slice(0, 10)}` : ''}</p>
+      </div>
+      <p className="text-13 font-semibold text-slate-800">{m.verdict}</p>
+      <div className="grid sm:grid-cols-[auto,1fr] gap-5 items-start">
+        <div>
+          <div className="inline-grid gap-1.5" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+            {Array.from({ length: n * n }, (_, i) => { const x = i % n, y = Math.floor(i / n); const p = at(x, y); const centre = x === (n - 1) / 2 && y === (n - 1) / 2;
+              return <div key={i} title={p?.rank ? `Position ${p.rank} here` : 'Not shown in the top 20 here'} className={`w-9 h-9 rounded-full flex items-center justify-center text-12 font-bold ${RANK_STYLE(p?.rank)} ${centre ? 'ring-2 ring-indigo-600 ring-offset-2' : ''}`}>{p?.rank || '–'}</div>; })}
+          </div>
+          <p className="text-11 text-slate-500 mt-2">The ringed dot is your business. North is up.</p>
+        </div>
+        <div className="grid gap-2 text-12.5">
+          {[['bg-emerald-500', c.top3, 'Top 3: customers here see you first'], ['bg-amber-400', c.mid, 'Position 4 to 10: on the list, not on top'], ['bg-rose-500', c.low, 'Position 11 to 20: far down'], ['bg-slate-300', c.none, 'Not shown at all']].map(([col, n2, label]) => (
+            <div key={label} className="flex items-center gap-2"><span className={`w-3.5 h-3.5 rounded-full ${col}`} /><b className="tabular-nums w-6">{n2}</b><span className="text-slate-600">{label}</span></div>))}
+          <p className="text-slate-600 mt-1">Average position: <b>{m.avg_rank ?? '–'}</b> (lower is better).</p>
+          {m.competitors?.length > 0 && <p className="text-slate-600">Strongest nearby: {m.competitors.map(k => `${k.name} (avg ${k.avg_rank})`).join('; ')}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ParameterCard({ x, open, onToggle, toast, drafts }) {
   const [word, tone] = TONE[x.status] || TONE.unknown;
   const Icon = PARAM_ICON[x.key] || Tag;
@@ -178,8 +213,15 @@ function ParameterCard({ x, open, onToggle, toast, drafts }) {
             </div>
           </div>
 
+          {x.key === 'geogrid' && x.maps?.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-12.5 text-slate-600">How to read this: we searched Google Maps from {x.maps[0].total} places around your business. Each circle is one place; the number is your position in Google's list there.</p>
+              {x.maps.map(m => <GeoGridMap key={m.keyword} m={m} />)}
+            </div>
+          )}
+
           {/* Current Profile Values */}
-          {x.found?.length > 0 && (
+          {x.found?.length > 0 && !(x.key === 'geogrid' && x.maps?.length) && (
             <div className="bg-white rounded-2xl border border-slate-200/80 p-4.5 sm:p-5 shadow-2xs space-y-3">
               <div className="flex items-center gap-2 text-11 font-bold uppercase tracking-wider text-slate-400">
                 <Info size={14} className="text-slate-400" /> Live Profile Data Extracted
@@ -302,6 +344,16 @@ function Box({ title, children, text, toast }) {
 }
 
 function DraftSection({ k, d, toast }) {
+  if (k === 'geogrid' && d.geo_keywords?.length) {
+    return (
+      <Box title="Keywords worth scanning (AI suggestions, nothing was added)" text={d.geo_keywords.map(x => x.keyword).join(', ')} toast={toast}>
+        <ul className="grid gap-1.5 text-12.5">
+          {d.geo_keywords.map(x => <li key={x.keyword} className="bg-white/90 p-2.5 rounded-lg border border-purple-100"><b className="text-slate-900">{x.keyword}</b><span className="block text-slate-600">{x.why}</span></li>)}
+        </ul>
+        <p className="text-11 text-slate-500">These are AI guesses, not real search data. Check the monthly searches in Keyword Planner, then add the ones you want in My Keywords and scan them in Map Rank Tracker.</p>
+      </Box>
+    );
+  }
   if (k === 'description' && d.description) {
     return (
       <Box title={`AI Generated SEO Description (${d.description.length}/750 chars)`} text={d.description} toast={toast}>

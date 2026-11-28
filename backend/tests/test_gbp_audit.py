@@ -77,7 +77,7 @@ def test_every_fix_says_where_it_is_made_and_the_name_fix_carries_a_value(client
     d = client.get(f"/api/v1/businesses/{r.json()['id']}/gbp-audit").json()
     fixes = [f for x in d["parameters"] for f in x["fixes"]]
     assert fixes and all(f["where"] and f["to"].startswith("/") for f in fixes)
-    scan = next(f for f in fixes if "rank scan" in f["what"])
+    scan = next(f for f in fixes if "Map Rank Tracker" in f["what"])
     assert scan["to"] == "/rank-tracking/geo"
     p = gbp_audit.name(make(name="Best Dentist in Pune"), {"title": "Best Dentist in Pune"})
     assert p["fixes"][0]["apply"]["name"] and "best" not in p["fixes"][0]["apply"]["name"].lower()
@@ -154,3 +154,19 @@ def test_a_category_that_leaves_out_what_most_services_are_about_is_a_problem_bu
     assert sec_issue["severity"] == "bad"  # none at all is a real gap
     dentist = make(gbp_location="locations/1", primary_category="Dentist", secondary_categories=["Dental clinic"], services=[{"name": "Root canal"}, {"name": "Teeth whitening"}])
     assert not any(q["title"].startswith("Category says") for q in gbp_audit.categories(dentist, None, [])["issues"])
+
+
+def test_the_geogrid_section_carries_a_picture_of_each_scan_with_a_plain_verdict():
+    pts = [{"x": x, "y": y, "rank": 2 if y == 0 else (7 if y == 1 else None)} for x in range(3) for y in range(3)]
+    s = SimpleNamespace(data_source="google", keyword="dentist pune", grid_size=3, radius_km=2.0, points=pts, top3=3, found=6, avg_rank=4.5, competitors=[{"name": "Rival", "avg_rank": 1.5, "top3": 8}], created_at=None)
+    m = gbp_audit.geogrid(make(), [s])["maps"][0]
+    assert m["counts"] == {"top3": 3, "mid": 3, "low": 0, "none": 3} and m["size"] == 3 and len(m["points"]) == 9 and "Visible" in m["verdict"]
+
+
+def test_scans_made_with_keywords_the_app_picked_are_not_shown_or_scored():
+    pts = [{"x": x, "y": y, "rank": 2} for x in range(3) for y in range(3)]
+    mk = lambda kw: SimpleNamespace(data_source="google", keyword=kw, grid_size=3, radius_km=2.0, points=pts, top3=9, found=9, avg_rank=2.0, competitors=[], created_at=None)
+    sec = gbp_audit.geogrid(make(), [mk("digital marketing agency in midc")], {"seo company pune"})
+    assert sec["readable"] is False and "app picked" in sec["summary"]
+    sec = gbp_audit.geogrid(make(), [mk("digital marketing agency in midc"), mk("seo company pune")], {"seo company pune"})
+    assert sec["readable"] and [m["keyword"] for m in sec["maps"]] == ["seo company pune"] and sec["maps"][0]["source"] == "yours"

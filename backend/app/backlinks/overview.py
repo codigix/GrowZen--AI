@@ -436,7 +436,7 @@ def toxicity_report(db: Session, b: Business) -> dict[str, Any]:
                        for k, l in (("toxic", "Toxic"), ("potential", "Potentially toxic"), ("clean", "Non-toxic"), ("unknown", "Not judged yet"))],
         "domains": [{"domain": d["domain"], "authority": d["authority"], "da": d["da"], "spam": d["spam"], "toxicity": d["toxicity"], "band": d["band"], "links": d["links"], "reason": d["reason"]} for d in ordered[:300]],
         "backlinks": [{"source_url": x["source_url"], "source_domain": x["source_domain"], "anchor": x["anchor"], "follow": x["follow"], "band": doms[x["source_domain"]]["band"], "toxicity": doms[x["source_domain"]]["toxicity"], "first_seen": x["first_seen"]}
-                      for x in sorted(live, key=lambda x: -(doms[x["source_domain"]]["toxicity"] if doms[x["source_domain"]]["toxicity"] is not None else -1))[:300]],
+                      for x in sorted(live, key=lambda x: (-(doms[x["source_domain"]]["toxicity"] if doms[x["source_domain"]]["toxicity"] is not None else -1), x["source_domain"]))[:5000]],  # every live link (the page groups them by site, so a cut-off would split a site)
         "anchors": [{"text": k, "count": v, "domains": len({x["source_domain"] for x in live if x["anchor"] == k})} for k, v in Counter(x["anchor"] for x in live if x["anchor"]).most_common(100)],
         "disavow": {"toxic": sorted(d["domain"] for d in doms.values() if d["band"] == "toxic"), "potential": sorted(d["domain"] for d in doms.values() if d["band"] == "potential")},
     }

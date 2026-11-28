@@ -268,7 +268,8 @@ def _is_lost_vital(x: dict[str, Any]) -> bool:
 PRESETS = {"best": _is_best, "new": _is_new, "lost_vital": _is_lost_vital}
 
 
-def links(db: Session, b: Business, *, status: str = "live", follow: str = "", category: str = "", useful: str = "", q: str = "", sort: str = "recent", limit: int = 50, offset: int = 0, preset: str = "") -> dict[str, Any]:
+def links(db: Session, b: Business, *, status: str = "live", follow: str = "", category: str = "", useful: str = "", q: str = "", sort: str = "recent", limit: int = 50, offset: int = 0, preset: str = "", group: bool = False) -> dict[str, Any]:
+    """`group`: `limit` and `offset` count SITES, not links, and every page of a site that is returned comes with it, so a site is never cut in half by the page size."""
     domain = own_domain(db, b.id)
     if not domain:
         return {"state": "no_target", "domain": None}
@@ -294,7 +295,15 @@ def links(db: Session, b: Business, *, status: str = "live", follow: str = "", c
     shown = [x for x in out if keep(x)]
     key = {"recent": lambda x: x["last_seen"] or "", "domain": lambda x: x["source_domain"], "da": lambda x: (x["metrics"] or {}).get("da") or -1}.get(sort, lambda x: x["last_seen"] or "")
     shown.sort(key=key, reverse=sort != "domain")
-    return {"state": "ok", "domain": domain, "links": shown[offset:offset + limit], "total": len(shown), "live_total": len(live), "offset": offset, "limit": limit,
+    sites_total = len({x["source_domain"] for x in shown})
+    if group:
+        order: dict[str, list[dict[str, Any]]] = {}
+        for x in shown:
+            order.setdefault(x["source_domain"], []).append(x)
+        page = [x for pages in list(order.values())[offset:offset + limit] for x in pages]
+    else:
+        page = shown[offset:offset + limit]
+    return {"state": "ok", "domain": domain, "links": page, "total": len(shown), "sites_total": sites_total, "live_total": len(live), "offset": offset, "limit": limit,
             "facets": {k: dict(v) for k, v in facets.items()}, "metrics_ready": bool(metrics), "scores": _scores_info(live),
             "tiles": {"all": len(out), "best": sum(1 for x in out if _is_best(x)), "new": sum(1 for x in out if _is_new(x)), "lost_vital": sum(1 for x in out if _is_lost_vital(x)), "lost": len(out) - len(live)}}
 
