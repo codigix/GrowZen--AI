@@ -24,6 +24,7 @@ from ..models import Business
 from . import analytics, quality
 from .lifecycle import LIVE_STATES
 from .models import Backlink, BiBotConfig, BiDomain, BiDomainMetric, BiPage, BiTrackedTarget
+from .urls import is_noise_page
 
 METRIC_TTL = timedelta(days=14)
 MAX_LINKS = 5000
@@ -211,7 +212,8 @@ def _rows(db: Session, domain: str, states: set[str] | frozenset[str] | None = N
          .join(TD, TD.id == Backlink.target_domain_id).where(TD.registrable_domain == domain))
     if states:
         q = q.where(Backlink.current_status.in_(states))
-    return db.execute(q.order_by(Backlink.last_seen_at.desc().nullslast(), Backlink.id.desc()).limit(limit)).all()
+    rows = db.execute(q.order_by(Backlink.last_seen_at.desc().nullslast(), Backlink.id.desc()).limit(limit)).all()
+    return [r for r in rows if not is_noise_page(r[1].normalized_url)]  # likes / follow / tag pages saved by an earlier sync are not backlinks either
 
 
 def _authority_of(metric: dict | None) -> int | None:

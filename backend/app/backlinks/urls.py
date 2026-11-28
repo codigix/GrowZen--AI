@@ -92,3 +92,14 @@ def url_hash(url: str) -> bytes:
 
 def text_hash(text: str | None) -> bytes | None:
     return hashlib.sha256(text.strip().lower().encode("utf-8")).digest() if text else None
+
+
+# Pages of a site that list or react to things instead of being a place where someone linked to you: a blog's "likes", "following", tag and archive lists, comment / reblog / notes pages.
+# The crawler returns a link for each of them (one anchor each), which made one tumblr blog look like 800 links. They are not counted as backlinks.
+NOISE_PATH_PARTS = ("/likes", "/like/", "/following", "/followers", "/follow/", "/tagged/", "/tag/", "/archive", "/comment", "/reblog", "/notes/", "/replies")
+
+
+def is_noise_page(url: str | None) -> bool:
+    """True for a page that only lists likes / follows / tags / comments (see NOISE_PATH_PARTS)."""
+    path = (urlsplit(url or "").path or "").lower().rstrip("/") + "/"
+    return any(p in path or path.endswith(p.rstrip("/") + "/") for p in NOISE_PATH_PARTS)

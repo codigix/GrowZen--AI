@@ -16,7 +16,7 @@ from ..services import crawler_client as cc
 from . import bot, sync, tasks
 from .models import Backlink, BacklinkEvent, BiBotConfig, BiTrackedTarget
 from .repository import LinkRecord, upsert_imported_link
-from .urls import normalize_url, text_hash
+from .urls import is_noise_page, text_hash
 
 log = logging.getLogger("seo.backlinks.crawler_sync")
 
@@ -109,22 +109,6 @@ def register_competitors(business_domain: str | None, competitors: list[str]) ->
     return out
 
 
-def _instances(items: list[dict]) -> list[int]:
-    """Which of the links a page gives to the same target page each item is (0, 1, 2 ...), decided by sorting that group's anchors, so the same link keeps the same number on every sync.
-    Addresses that differ only in a tracking part or a fragment are the same page here, as in the saved links."""
-    groups: dict[tuple[str, str], set[str]] = {}
-    keys = []
-    for it in items:
-        try:
-            k = (normalize_url(it["source_url"]), normalize_url(it["destination_url"]))
-        except Exception:  # noqa: BLE001 - an address that cannot be read is saved as before (instance 0)
-            k = (it.get("source_url") or "", it.get("destination_url") or "")
-        keys.append(k)
-        groups.setdefault(k, set()).add(it.get("anchor_text") or "")
-    ranks = {k: {a: i for i, a in enumerate(sorted(v))} for k, v in groups.items()}
-    return [ranks[k][it.get("anchor_text") or ""] for k, it in zip(keys, items)]
-
-
 def sync_domain(db: Session, domain: str, now: datetime | None = None) -> dict:
     """Read the crawler's links to `domain` and save them. Returns {read, created, seeded}. A domain the crawler has never seen is handed to it as a seed,
     so it starts looking for links to it (links appear on a later sync, once it has explored)."""
@@ -142,16 +126,15 @@ def sync_domain(db: Session, domain: str, now: datetime | None = None) -> dict:
             except cc.CrawlerError:
                 log.warning("Could not hand %s to the crawler as a seed", domain)
         got = page.get("backlinks") or []
-        items.extend(x for x in got if x.get("source_url") and x.get("destination_url"))
+        items.extend(x for x in got if x.get("source_url") and x.get("destination_url") and not is_noise_page(x["source_url"]))  # likes / follow / tag pages are not backlinks
         if len(got) < PAGE:
             break
         offset += PAGE
     release_connection(db)  # everything is read from the crawler: saving takes the connection only for each batch
-    instances = _instances(items)
-    for n, (item, inst) in enumerate(zip(items, instances), 1):
+    for n, item in enumerate(items, 1):
         try:
             with db.begin_nested():
-                _, new = save_link(db, item, now, inst)
+                _, new = save_link(db, item, now)
         except Exception:  # one bad row never stops the domain
             log.exception("Could not save a crawler link to %s", domain)
             continue

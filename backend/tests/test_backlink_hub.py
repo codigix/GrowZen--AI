@@ -316,20 +316,22 @@ def test_grouped_links_count_sites_not_links_and_never_cut_a_site_in_half(client
     assert d["total"] == len(plain)  # the link total is still the link total
 
 
-def test_one_page_linking_with_several_anchors_gives_several_links_that_keep_their_numbers(client, monkeypatch):
-    """The crawler lists a link once for each anchor. They are separate links on the page, so each is kept (and none is added again by the next sync)."""
+def test_likes_follow_and_tag_pages_and_repeated_anchors_are_not_counted_as_backlinks(client, monkeypatch):
+    """The crawler lists a tumblr blog's "likes" page once per anchor, and its tag pages: they are not backlinks. A real post counts once however many anchors the crawler lists for it."""
     s = get_settings()
     monkeypatch.setattr(s, "crawler_url", "https://c.example")
     monkeypatch.setattr(s, "crawler_api_key", "k")
     me = "multi-anchor.in"
-    rows = [link("https://blog.example/post", f"https://{me}/", anchor=a) for a in ("Alpha clinic", "Beta clinic", "Gamma clinic")] + [link("https://blog.example/post?utm_source=x", f"https://{me}/", anchor="Alpha clinic")]
+    rows = ([link("https://blog.example/likes", f"https://{me}/", anchor=a) for a in ("Alpha", "Beta", "Gamma")]
+            + [link("https://blog.example/tagged/seo", f"https://{me}/", anchor="Alpha")]
+            + [link("https://blog.example/post", f"https://{me}/", anchor=a) for a in ("Alpha clinic", "Beta clinic")])
     monkeypatch.setattr(cc, "backlinks", lambda domain, include_removed=False, limit=100, offset=0: {"domain": domain, "status": "ok", "backlinks": rows[offset:offset + limit]})
     bid = client.post("/api/v1/businesses", json={"name": "Multi Anchor", "website": f"https://www.{me}/"}).json()["id"]
     db = SessionLocal()
     try:
         crawler_sync.run_cycle(db, bid)
-        crawler_sync.run_cycle(db, bid)  # again: nothing is added twice
+        crawler_sync.run_cycle(db, bid)
     finally:
         db.close()
     got = get(client, bid, "links", limit=200)["links"]
-    assert sorted(x["anchor"] for x in got) == ["Alpha clinic", "Beta clinic", "Gamma clinic"]  # the tracking-part address is the same page and anchor as the first: one link
+    assert [x["source_url"].rsplit("/", 1)[-1] for x in got] == ["post"]
