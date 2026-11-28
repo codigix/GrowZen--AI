@@ -24,7 +24,7 @@ from ..models import Business
 from . import analytics, quality
 from .lifecycle import LIVE_STATES
 from .models import Backlink, BiBotConfig, BiDomain, BiDomainMetric, BiPage, BiTrackedTarget
-from .urls import is_noise_page
+from .urls import is_noise_page, normalize_url
 
 METRIC_TTL = timedelta(days=14)
 MAX_LINKS = 5000
@@ -239,6 +239,17 @@ def _link_out(bl: Backlink, page: BiPage, dom: str, score: dict | None, metric: 
             "authority": _authority_of(metric)}
 
 
+def _dedupe(out: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per linking page and target: a page that links to the same target several times (header, sidebar, tags) is one backlink. Keeps the strongest record."""
+    best: dict[tuple[str, str], tuple[tuple, dict[str, Any]]] = {}
+    for x in out:
+        k = (normalize_url(x["source_url"]), normalize_url(x["target_url"]))
+        rank = (x["is_live"], x["verified"], x["follow"] == "dofollow", x["last_seen"] or "")
+        if k not in best or rank > best[k][0]:
+            best[k] = (rank, x)
+    return [v[1] for v in best.values()]
+
+
 def _scores_info(live: list[dict[str, Any]]) -> dict[str, Any]:
     """Whether DA, PA and spam can be fetched for this list (a data service is set up) and for how many of the sites they are still missing."""
     from ..services import backlink_checker as bc
@@ -279,7 +290,8 @@ def links(db: Session, b: Business, *, status: str = "live", follow: str = "", c
     rows = _rows(db, domain)
     metrics = metrics_for(db, sorted({d for _, _, d in rows}))
     brand = brand_terms(b, domain)
-    out = [_link_out(bl, page, dom, scores.get(dom), metrics.get(dom), brand) for bl, page, dom in rows]
+    all_out = [_link_out(bl, page, dom, scores.get(dom), metrics.get(dom), brand) for bl, page, dom in rows]
+    out = _dedupe(all_out)
     facets = {"status": Counter("live" if x["is_live"] else "lost" for x in out), "follow": Counter(x["follow"] for x in out if x["is_live"]), "category": Counter(x["category"]["key"] for x in out if x["is_live"]),
               "useful": Counter(x["useful"] for x in out if x["is_live"])}
     live = [x for x in out if x["is_live"]]
@@ -305,7 +317,7 @@ def links(db: Session, b: Business, *, status: str = "live", follow: str = "", c
         page = [x for pages in list(order.values())[offset:offset + limit] for x in pages]
     else:
         page = shown[offset:offset + limit]
-    return {"state": "ok", "domain": domain, "links": page, "total": len(shown), "sites_total": sites_total, "live_total": len(live), "offset": offset, "limit": limit,
+    return {"state": "ok", "domain": domain, "links": page, "total": len(shown), "sites_total": sites_total, "live_total": len(live), "duplicates_hidden": len(all_out) - len(out), "offset": offset, "limit": limit,
             "facets": {k: dict(v) for k, v in facets.items()}, "metrics_ready": bool(metrics), "scores": _scores_info(live),
             "tiles": {"all": len(out), "best": sum(1 for x in out if _is_best(x)), "new": sum(1 for x in out if _is_new(x)), "lost_vital": sum(1 for x in out if _is_lost_vital(x)), "lost": len(out) - len(live)}}
 
